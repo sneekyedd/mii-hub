@@ -26,10 +26,10 @@ const prog = P.create({
 for (const k of Object.keys(events)) prog.on(k, (...a) => events[k].push(a));
 for (const r of records.values()) prog.ensure(r);
 
-// wishes appear over time (pretty needy)
-for (let i = 0; i < 400; i++) prog.tick(1);
+// wishes appear over time (not too many at once)
+for (let i = 0; i < 600; i++) prog.tick(1);
 const wishing = Array.from(records.values()).filter((r) => r.wish);
-assert(wishing.length >= 2, "Miis should have wishes after a few minutes");
+assert(wishing.length >= 1 && wishing.length <= 4, "a few Miis should have wishes after a while: " + wishing.length);
 
 // granting a food wish: coins, happiness, town XP
 const mia = records.get("m0");
@@ -129,4 +129,4 @@ assert(Object.keys(prog.state.stickers).length > 0, "some stickers are earned by
   assert(H.SLOTS.every((s) => prog.newFor(fresh, s.id).every((it) => !fresh.home.owned.includes(it.id))));
 }
 assert(saved, "progress is saved");
-console.log("All progress tests passed. Town level " + prog.state.level + ", " + Object.keys(prog.state.stickers).length + " stickers, " + wishing.length + " wishes after 400 s.");
+console.log("All progress tests passed. Town level " + prog.state.level + ", " + Object.keys(prog.state.stickers).length + " stickers, " + wishing.length + " wishes after 600 s.");

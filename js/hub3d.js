@@ -63,7 +63,7 @@
       this.id = record.id;
       this.record = record;
       this.template = template;
-      this.look = look; // { name, favoriteColorName, ...colours }
+      this.look = look; // { name, favoriteColorName, ...colors }
       this.group = group || hub.miiGroup;
       this.x = 0; this.z = 0;
       this.yaw = 0; this.targetYaw = 0; this.moveYaw = null;
@@ -120,9 +120,9 @@
       this.inst = M.createInstance(this.template, this.look);
       // true facts about this Mii's looks, so compliments are accurate
       const src = this.template.source, info = this.template.info;
-      const recoloured = !!this.look.shirt;
+      const recolored = !!this.look.shirt;
       this.facts = {
-        top: recoloured || src.topReliable ? M.colorName(this.look.shirt || src.shirt, "top") : null,
+        top: recolored || src.topReliable ? M.colorName(this.look.shirt || src.shirt, "top") : null,
         garment: src.garment || null,
         hair: src.hasHair ? M.colorName(this.look.hair || src.hair, "hair") : null,
         tall: info.height >= 90,
@@ -491,9 +491,9 @@
       }
       if (announce && this.world.capacity > before) {
         const floors = (this.world.capacity - before) / 4;
-        this.addFeed("The apartment building got " + (floors > 1 ? floors + " new floors" : "a new floor") + " for the new neighbours! 🏗️");
+        this.addFeed("The apartment building got " + (floors > 1 ? floors + " new floors" : "a new floor") + " for the new neighbors! 🏗️");
         const w = this.walkers[Math.floor(Math.random() * this.walkers.length)];
-        if (w) w.say(D.pick(["Whoa, the building got taller!", "A new floor! Hi, neighbours!", "Look, more apartments!"]), 2.6);
+        if (w) w.say(D.pick(["Whoa, the building got taller!", "A new floor! Hi, neighbors!", "Look, more apartments!"]), 2.6);
       }
     }
 
@@ -614,7 +614,7 @@
       const here = T ? T.placeInfo(this.world.id) : { name: this.world.name, icon: "" };
       const w = this.addWalker(record, template, look, false, {
         at: door || this.entrance(),
-        lines: from === "home" ? ["Good morning, neighbours!", "Fresh air!", "What did I miss?"] : ["Made it!", "Hi everyone!", "I love " + here.name + "!", "Hello, " + here.name + "!"],
+        lines: from === "home" ? ["Good morning, neighbors!", "Fresh air!", "What did I miss?"] : ["Made it!", "Hi everyone!", "I love " + here.name + "!", "Hello, " + here.name + "!"],
         feed: look.name + " came to " + here.name + ". " + here.icon,
       });
       w.lift = this.baseLift(w);

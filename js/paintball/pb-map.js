@@ -34,7 +34,7 @@
   function rgba(a, al, k) { k = k == null ? 1 : k; return 'rgba(' + cl(a[0] * k) + ',' + cl(a[1] * k) + ',' + cl(a[2] * k) + ',' + al + ')'; }
   var CTX_OPTS = { willReadFrequently: true }; // CPU-backed canvases: much faster for procedural drawing + readback
   function mkCanvas(w, h) { var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
-  function linCol(a, k) { // sRGB 0..255 triple -> linear THREE.Color (for vertex colours)
+  function linCol(a, k) { // sRGB 0..255 triple -> linear THREE.Color (for vertex colors)
     k = k == null ? 1 : k;
     return new THREE.Color(Math.min(1, a[0] * k / 255), Math.min(1, a[1] * k / 255), Math.min(1, a[2] * k / 255)).convertSRGBToLinear();
   }
@@ -107,7 +107,7 @@
     g.addColorStop(0, 'rgba(48,38,28,0)'); g.addColorStop(1, 'rgba(48,38,28,' + alpha + ')');
     ctx.fillStyle = g; ctx.fillRect(x, y + h * (1 - frac), w, h * frac);
   }
-  // stencil text, with weathering specks punched out in base colour
+  // stencil text, with weathering specks punched out in base color
   function stencil(ctx, text, cx, cy, size, fill, base, rnd, maxW, chip) {
     ctx.save();
     ctx.font = 'bold ' + size + 'px "Arial Black", Impact, "DejaVu Sans", Arial, sans-serif';
@@ -155,7 +155,7 @@
     { base: [44, 62, 86] },               // navy
     { base: [50, 82, 72] },               // teal green
     { base: [148, 88, 46] },              // dull orange
-    { base: [98, 100, 98] },              // grey
+    { base: [98, 100, 98] },              // gray
     { base: [156, 148, 130], dark: true } // dirty cream
   ];
   var VARIANTS = [
@@ -425,7 +425,7 @@
     return c;
   }
 
-  // generic grime texture for misc steel (tiles, used with vertex colours)
+  // generic grime texture for misc steel (tiles, used with vertex colors)
   function buildGrime(rnd) {
     var c = mkCanvas(256, 256), ctx = c.getContext('2d', CTX_OPTS);
     ctx.fillStyle = '#d8d8d8'; ctx.fillRect(0, 0, 256, 256);
@@ -521,7 +521,7 @@
     }
     var b = this.n; this.idx.push(b, b + 1, b + 2, b, b + 2, b + 3); this.n += 4;
   };
-  // axis-aligned box in M's local frame, centre (cx,cy,cz), sizes; f = {px,nx,py,ny,pz,nz} uv rects or 'auto'
+  // axis-aligned box in M's local frame, center (cx,cy,cz), sizes; f = {px,nx,py,ny,pz,nz} uv rects or 'auto'
   Geo.prototype.box = function (M, cx, cy, cz, sx, sy, sz, f, col) {
     var hx = sx / 2, hy = sy / 2, hz = sz / 2;
     if (f.px) this.quad(M, [cx + hx, cy - hy, cz + hz], [0, 0, -sz], [0, sy, 0], f.px, col);
@@ -722,19 +722,19 @@
       if (!y0) footprints.push({ x: x, z: z, hw: w / 2, hd: d / 2, rot: rot, s: 0.8 });
     }
 
-    // ---- layout: centre blocks -----------------------------------
+    // ---- layout: center blocks -----------------------------------
     var WALKTHROUGH = [];
-    var centreVar = [[0, 1], [3, 2], [4, 6], [7, 5]];
+    var centerVar = [[0, 1], [3, 2], [4, 6], [7, 5]];
     [[-3.8, -4.35], [3.8, -4.35], [-3.8, 4.35], [3.8, 4.35]].forEach(function (b, bi) {
       var sx = b[0] < 0 ? -1 : 1, sz = b[1] < 0 ? -1 : 1;
       var inX = b[0] - sx * HW, outX = b[0] + sx * HW;
       // two of them (diagonal from each other) are closed up, to cut the long sightlines through the middle
-      if (bi === 0 || bi === 3) container({ x: inX, z: b[1], rot: sz < 0 ? PI : 0, v: centreVar[bi][0], rods: true });
+      if (bi === 0 || bi === 3) container({ x: inX, z: b[1], rot: sz < 0 ? PI : 0, v: centerVar[bi][0], rods: true });
       else {
-        container({ x: inX, z: b[1], rot: 0, v: centreVar[bi][0], open: true, lane: -sx });
+        container({ x: inX, z: b[1], rot: 0, v: centerVar[bi][0], open: true, lane: -sx });
         WALKTHROUGH.push({ x: inX, z: b[1] });
       }
-      container({ x: outX, z: b[1], rot: sz < 0 ? PI : 0, v: centreVar[bi][1], rods: true });
+      container({ x: outX, z: b[1], rot: sz < 0 ? PI : 0, v: centerVar[bi][1], rods: true });
     });
     // north / south blocks (long axis X, side by side in Z)
     container({ x: -0.65, z: -15.64, rot: PI / 2, v: 4, rods: true });
@@ -1038,7 +1038,7 @@
       gg.addColorStop(0, 'rgba(' + dc + ',0.35)'); gg.addColorStop(1, 'rgba(' + dc + ',0)');
       gx.fillStyle = gg; gx.fillRect(pp[0] - rr, pp[1] - rr, rr * 2, rr * 2);
     }
-    // tyre tracks (pairs, catmull-rom paths)
+    // tire tracks (pairs, catmull-rom paths)
     function crPath(pts, n) {
       var out = [];
       for (var s2 = 0; s2 < pts.length - 1; s2++) {

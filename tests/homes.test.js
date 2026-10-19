@@ -20,7 +20,7 @@ const rec = { id: "mii-test-1", name: "Test" };
 H.ensureHome(rec);
 assert.strictEqual(rec.coins, 10);
 assert(rec.home.items.bed && rec.home.owned.includes(rec.home.items.bed));
-assert(rec.tastes.favorite !== rec.tastes.hate, "favourite and hated food must differ");
+assert(rec.tastes.favorite !== rec.tastes.hate, "favorite and hated food must differ");
 const again = H.ensureHome({ id: "mii-test-1" });
 assert.deepStrictEqual(again.tastes, rec.tastes, "tastes must stay the same for the same Mii");
 
@@ -58,7 +58,7 @@ for (let i = 0; i < 300; i++) {
     if (it.slot === "wallpaper" || it.slot === "floor") {
       const pat = it.pattern || "plain";
       assert(pat === "plain" || src.includes('pat === "' + pat + '"'), it.id + ": pattern " + pat + " is not drawn");
-      assert(/^#[0-9a-f]{6}$/i.test(it.color) && /^#[0-9a-f]{6}$/i.test(it.accent), it.id + " needs a colour and an accent");
+      assert(/^#[0-9a-f]{6}$/i.test(it.color) && /^#[0-9a-f]{6}$/i.test(it.accent), it.id + " needs a color and an accent");
     } else {
       assert(furn.includes('"' + it.id + '": {'), it.id + " has no 3D model");
     }

@@ -1,7 +1,7 @@
 /*
  * world3d.js
- * The three 3D places Miis hang out in, built in a soft, colourful,
- * Tomodachi Life-style: an island park, a cosy office, and a moon base.
+ * The three 3D places Miis hang out in, built in a soft, colorful,
+ * Tomodachi Life-style: an island park, a cozy office, and a moon base.
  *
  * Everything is made from simple rounded shapes with "toon" shading
  * (a few flat bands of light instead of smooth gradients), which gives
@@ -35,7 +35,7 @@
     return t;
   })();
 
-  // Plain colours are shared (so they can be merged together). Materials with a
+  // Plain colors are shared (so they can be merged together). Materials with a
   // picture, see-through or glowing parts get their own copy, because those are
   // often animated one by one (blinking lights, fading smoke...).
   const matCache = new Map();
@@ -119,7 +119,7 @@
     return () => ((s = (s * 16807) % 2147483647) / 2147483647);
   }
 
-  // A big sphere around everything, coloured from top to bottom.
+  // A big sphere around everything, colored from top to bottom.
   function skyDome(parent, top, middle, bottom) {
     const mat = new THREE.ShaderMaterial({
       side: THREE.BackSide,
@@ -170,7 +170,7 @@
       if (!o.isMesh || o.isInstancedMesh || skip.has(o) || Array.isArray(o.material)) return;
       if (o.material.isShaderMaterial) return;
       let g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
-      // (painted models keep their colours, see bakeGeo below)
+      // (painted models keep their colors, see bakeGeo below)
       const keep = o.material.vertexColors ? ["position", "normal", "uv", "color"] : ["position", "normal", "uv"];
       for (const name of Object.keys(g.attributes)) if (!keep.includes(name)) g.deleteAttribute(name);
       if (!g.attributes.uv) g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
@@ -205,8 +205,8 @@
       tmp.scale.set(it.sx || it.s || 1, it.sy || it.s || 1, it.sz || it.s || 1);
       tmp.updateMatrix();
       m.setMatrixAt(i, tmp.matrix);
-      // every copy gets a colour (white = the material's own colour): if a material is
-      // shared by copies with and without colours, three.js draws the plain ones black
+      // every copy gets a color (white = the material's own color): if a material is
+      // shared by copies with and without colors, three.js draws the plain ones black
       m.setColorAt(i, col.set(it.color !== undefined ? it.color : 0xffffff));
     });
     m.castShadow = !!castShadow;
@@ -226,13 +226,13 @@
     return m;
   }
 
-  // "Painted" models: every part keeps its own colour, but the whole model is
+  // "Painted" models: every part keeps its own color, but the whole model is
   // ONE shape with ONE material, so the computer draws it in a single go.
   // Great for things that move (boats, cars, satellites) and for far scenery.
   const paintedMat = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: gradient, vertexColors: true });
 
   // build(g) adds parts to g with the usual helpers (ball, block...);
-  // we get back one geometry with all the parts and their colours baked in.
+  // we get back one geometry with all the parts and their colors baked in.
   function bakeGeo(build) {
     const g = new THREE.Group();
     build(g);
@@ -313,7 +313,7 @@
   // A material that paints rows of windows onto any box, using where each bit
   // of the box is in the world (so tall and short buildings get the same size
   // windows). Some windows are lit up yellow, the rest reflect the blue sky.
-  // o = { w, h } the size of one window "cell", glass and lit colours.
+  // o = { w, h } the size of one window "cell", glass and lit colors.
   function windowMaterial(o) {
     o = o || {};
     const mat = new THREE.MeshToonMaterial({ color: o.color || 0xffffff, gradientMap: gradient });
@@ -478,8 +478,9 @@
 
     // winding stone path
     const path = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-3, 0, -13), new THREE.Vector3(0, 0, -6), new THREE.Vector3(-1.5, 0, 0),
-      new THREE.Vector3(1.5, 0, 6), new THREE.Vector3(0, 0, 13.5),
+      // (the ends stop just inside the grassy lip, so the lip doesn't cut through the path)
+      new THREE.Vector3(-2.8, 0, -12.3), new THREE.Vector3(0, 0, -6), new THREE.Vector3(-1.5, 0, 0),
+      new THREE.Vector3(1.5, 0, 6), new THREE.Vector3(0, 0, 12.4),
     ]);
     const pathOuter = toon(0xd9b98a), pathInner = toon(0xf3dfb5);
     for (let i = 0; i <= 140; i++) {
@@ -649,7 +650,7 @@
       [10, 4.5, 0x5cc84a, 0xff6fa5], [-4, 10.5, 0x4fbf47, 0xc39bff], [16.5, -8.5, 0x5cc84a, null]];
     bushes.forEach(([x, z, c, fl]) => bush(root, x, z, 1, c, fl));
 
-    // flower beds: stems + coloured heads, drawn as instances
+    // flower beds: stems + colored heads, drawn as instances
     const rnd = seeded(5);
     const heads = [], stems = [], tufts = [];
     const flowerColors = [0xff6fa5, 0xffe25a, 0xffffff, 0xb58cff, 0xff8a4c, 0x6fc3ff];
@@ -1001,7 +1002,7 @@
   }
 
   // =====================================================================
-  // OFFICE — a cosy, colourful workplace
+  // OFFICE — a cozy, colorful workplace
   // =====================================================================
   function screenTexture(kind) {
     return canvasTexture(128, 80, (ctx, w, h) => {
@@ -1088,7 +1089,7 @@
     const R = 232;    // how far out the city goes
     const rnd = seeded(77);
     // The office lights are bright, and they light the city too, so the city's
-    // colours are toned down a bit (DIM) to stop them looking washed out.
+    // colors are toned down a bit (DIM) to stop them looking washed out.
     const DIM = 0x9a9a9a;
 
     // ----- the office tower, going all the way down to the street -----
@@ -1097,7 +1098,7 @@
     const facade = (w, x, z, ry) => put(root, new THREE.PlaneGeometry(w, towerH), towerMat, { x, y: GY + towerH / 2, z, ry, shadow: false, receive: false });
     facade(37.5, 0, 11.75, 0); facade(37.5, 0, -11.75, Math.PI);
     facade(23.5, 18.75, 0, Math.PI / 2); facade(23.5, -18.75, 0, -Math.PI / 2);
-    // the edge of our floor, with a coloured stripe under it
+    // the edge of our floor, with a colored stripe under it
     block(root, 0xffffff, 0, -0.38, 0, 37.7, 0.72, 23.7, 0.06, { shadow: false, receive: false });
     block(root, 0x7fc4ec, 0, -0.95, 0, 37.6, 0.45, 23.6, 0.04, { shadow: false, receive: false });
     // a little roof over the tower's entrance, down at street level
@@ -1306,7 +1307,7 @@
     });
     put(root, new THREE.PlaneGeometry(3.2, 1.4), toon(0xffffff, { map: matTex }), { y: 0.02, z: 9.6, rx: -Math.PI / 2, shadow: false });
 
-    // walls: soft blue-grey upper wall, darker panelling below, white trim.
+    // walls: soft blue-gray upper wall, darker panelling below, white trim.
     // Each wall is its own group so it can hide when the camera is behind it
     // (like a dollhouse), letting you spin the camera all the way around.
     // The walls have REAL windows: each wall is built in pieces around its
@@ -1335,7 +1336,7 @@
     function buildWall(g, along, core, inward, from, to, openings) {
       const face = core + inward * 0.25; // the inside surface of the wall
       // a box along the wall, from u0 to u1 (along it) and y0 to y1 (up),
-      // centred "d" across, "thick" thick
+      // centerd "d" across, "thick" thick
       const piece = (color, u0, u1, y0, y1, d, thick, r) => {
         const len = u1 - u0, h = y1 - y0;
         if (len <= 0.001 || h <= 0.001) return;
@@ -1408,7 +1409,7 @@
     cylinder(leftWall, 0xff9ec7, -W.side + 0.55, 1.15, 7.4, 0.16, 0.3);
     ball(leftWall, 0x5cc84a, -W.side + 0.55, 1.45, 7.4, 0.25);
 
-    // posters with IT humour
+    // posters with IT humor
     const poster = (wall, x, y, z, ry, lines, color, emoji) => {
       const tex = canvasTexture(160, 210, (ctx, w, h) => {
         ctx.fillStyle = color; ctx.fillRect(0, 0, w, h);
@@ -1555,7 +1556,7 @@
       block(rack, 0x8f96a3, 0, 3.45, 0, 1.25, 0.08, 1.25, 0.02);
       for (let k = 0; k < 14; k++) ledSpots.push({ x: rx - 0.4 + (k % 2) * 0.08, y: 0.4 + Math.floor(k / 2) * 0.42 + 0.12, z: SR.z + 0.63 });
     }
-    // blinking lights on the servers (one shape drawn many times, colours change)
+    // blinking lights on the servers (one shape drawn many times, colors change)
     const leds = new THREE.InstancedMesh(new THREE.SphereGeometry(0.035, 6, 4), new THREE.MeshBasicMaterial({ toneMapped: false }), ledSpots.length);
     const tmpO = new THREE.Object3D();
     const ledColors = [new THREE.Color(0x3cff6e), new THREE.Color(0xffb02e), new THREE.Color(0x4ab8ff)];

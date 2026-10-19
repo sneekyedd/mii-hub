@@ -78,7 +78,7 @@
     return map;
   }
 
-  // A soft glow around a player's outline (in their paint colour) and a minimum
+  // A soft glow around a player's outline (in their paint color) and a minimum
   // brightness, so nobody can hide in a dark corner. Done in the Mii's own materials.
   function outlineGlow(obj, color) {
     const rim = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.45);
@@ -104,7 +104,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // Colours
+  // Colors
   // ---------------------------------------------------------------------
   function hexOf(v, fallback) {
     if (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v)) return v;
@@ -115,7 +115,7 @@
     const ca = new THREE.Color(a), cb = new THREE.Color(b);
     return Math.abs(ca.r - cb.r) + Math.abs(ca.g - cb.g) + Math.abs(ca.b - cb.b);
   }
-  // A paint colour that pops on the grey map (black/brown/white paint is hard to see)
+  // A paint color that pops on the gray map (black/brown/white paint is hard to see)
   function paintColor(tpl) {
     const i = tpl && tpl.info ? tpl.info.favoriteColor : 0;
     const swap = { 9: "#ff8a00", 10: "#ffe94d", 11: "#9b5cff" };
@@ -2227,7 +2227,7 @@
     updateHUD() {
       const y = this.you, a = y.arms;
       const now = this.now;
-      // scoped in: the view blurs while you're inaccurate (moving, jumping), like CS; standing still it's sharp
+      // scoped in: the crosshair blurs while you're inaccurate (moving, jumping), like CS; standing still it's sharp
       let blur = 0;
       if (a.zoom > 0 && y.alive) {
         const sc = a.gun().scoped;
@@ -2235,10 +2235,13 @@
         blur = Math.round(Math.min(1, Math.max(0, extra / 0.06)) * 8 * 2) / 2;
       }
       if (blur !== this.scopeBlur) {
+        // like CS, only the scope's crosshair goes blurry (thick and soft); the view itself stays sharp
         this.scopeBlur = blur;
-        const f = blur ? "blur(" + blur + "px)" : "";
-        this.canvas.style.filter = f;
-        this.hudScope.style.filter = blur ? "blur(" + (blur * 0.6) + "px)" : "";
+        for (const line of this.hudScope.querySelectorAll("i")) {
+          line.style.filter = blur ? "blur(" + blur * 0.6 + "px)" : "";
+          line.style[line.classList.contains("h") ? "height" : "width"] = 1 + blur * 1.2 + "px";
+          line.style[line.classList.contains("h") ? "marginTop" : "marginLeft"] = -(blur * 0.6) + "px";
+        }
       }
       // the clock: round time (rounds), or time left in the match (respawn)
       if (this.phase === "freeze") this.clockLeft = this.phaseEnd - now;

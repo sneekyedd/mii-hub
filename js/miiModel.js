@@ -1,7 +1,7 @@
 /*
  * miiModel.js
  * Loads a full-body Mii .glb (as exported by Mii Creator), makes copies of it,
- * recolours it, and moves its bones so it can walk, wave, dance and so on.
+ * recolors it, and moves its bones so it can walk, wave, dance and so on.
  *
  * The .glb has a skeleton (bones) but no built-in animations, so all the
  * movement is done here in code by rotating bones a little every frame.
@@ -10,7 +10,7 @@
   "use strict";
 
   // ---------------------------------------------------------------------
-  // Reading the Mii's info (name, favourite colour...) from the .glb file.
+  // Reading the Mii's info (name, favorite color...) from the .glb file.
   // This part doesn't need Three.js, so it also runs in Node for tests.
   // ---------------------------------------------------------------------
   const FAVORITE_COLORS = [
@@ -63,7 +63,7 @@
     };
   }
 
-  // Names for colours, so Miis can say "I love your navy top!" and be right.
+  // Names for colors, so Miis can say "I love your navy top!" and be right.
   const TOP_NAMES = FAVORITE_COLORS.concat([
     { name: "navy", hex: "#191f40" }, { name: "gray", hex: "#40464e" }, { name: "gray", hex: "#8a8f98" },
     { name: "black", hex: "#2a2a2a" }, { name: "white", hex: "#f4f4f4" }, { name: "cream", hex: "#f3e2b8" },
@@ -76,14 +76,14 @@
     { name: "blue", hex: "#3a6ad0" }, { name: "green", hex: "#3a9a4a" }, { name: "purple", hex: "#8a4ac0" },
   ];
 
-  // colour: "#rrggbb" or [r, g, b]; kind: "top" or "hair"
+  // color: "#rrggbb" or [r, g, b]; kind: "top" or "hair"
   function colorName(color, kind) {
     if (!color) return null;
     const rgb = typeof color === "string" ? [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16)) : color;
     let best = null, bestD = Infinity;
     for (const c of kind === "hair" ? HAIR_NAMES : TOP_NAMES) {
       const h = [1, 3, 5].map((i) => parseInt(c.hex.slice(i, i + 2), 16));
-      // compare in a way that's closer to how people see colour (green matters most)
+      // compare in a way that's closer to how people see color (green matters most)
       const d = 2 * (h[0] - rgb[0]) ** 2 + 4 * (h[1] - rgb[1]) ** 2 + 3 * (h[2] - rgb[2]) ** 2;
       if (d < bestD) { bestD = d; best = c.name; }
     }
@@ -101,10 +101,10 @@
   // Everything below needs Three.js (browser only).
   // ---------------------------------------------------------------------
   const THREE = root.THREE;
-  // Treat colours like "#ff0000" as normal screen colours (so they don't look washed out).
+  // Treat colors like "#ff0000" as normal screen colors (so they don't look washed out).
   THREE.ColorManagement.legacyMode = false;
 
-  // Colours used in Mii Creator's textures, so we can swap them for others.
+  // Colors used in Mii Creator's textures, so we can swap them for others.
   const SOURCE = {
     skin: [0xff, 0xd3, 0xad],
     hair: [0x40, 0x20, 0x10],
@@ -123,7 +123,7 @@
   }
 
   function srgbColor(hex) {
-    return new THREE.Color(hex); // converted to the renderer's colour space automatically
+    return new THREE.Color(hex); // converted to the renderer's color space automatically
   }
 
   // Loads a .glb from its bytes. Returns a "template" we can make copies of.
@@ -143,8 +143,8 @@
     });
   }
 
-  // Every Mii has different colours, so find this model's own skin, hair and
-  // clothes colours first. Those are the colours we replace when recolouring.
+  // Every Mii has different colors, so find this model's own skin, hair and
+  // clothes colors first. Those are the colors we replace when recoloring.
   function dominantColor(tex) {
     if (!tex || !tex.image) return null;
     const c = document.createElement("canvas");
@@ -161,11 +161,11 @@
     let best = null, bestN = 0, total = 0;
     for (const [k, n] of counts) { total += n; if (n > bestN) { best = k; bestN = n; } }
     if (!best) return null;
-    // look up the exact colour of one pixel in the winning bucket
+    // look up the exact color of one pixel in the winning bucket
     for (let i = 0; i < px.length; i += 4) {
       if ((px[i] >> 3) + "," + (px[i + 1] >> 3) + "," + (px[i + 2] >> 3) === best) {
         const rgb = [px[i], px[i + 1], px[i + 2]];
-        rgb.share = bestN / total; // how much of the picture is this colour
+        rgb.share = bestN / total; // how much of the picture is this color
         return rgb;
       }
     }
@@ -209,7 +209,7 @@
     const tops = shirtVotes.filter((c) => !near(c, src.skin, 2400));
     if (tops.length) {
       src.shirt = tops[0];
-      // only talk about the top's colour if it's clearly one main colour
+      // only talk about the top's color if it's clearly one main color
       src.topReliable = tops[0].share >= 0.3;
     }
     // what kind of top it is (ignoring trousers and sleeve parts)
@@ -218,7 +218,7 @@
     return src;
   }
 
-  // ---- recolouring textures ----
+  // ---- recoloring textures ----
   function recolorTexture(tex, swaps) {
     if (!tex || !tex.image || !swaps.length) return tex;
     const img = tex.image;
@@ -236,7 +236,7 @@
         if (s.skip) continue;
         const dr = px[i] - s.from[0], dg = px[i + 1] - s.from[1], db = px[i + 2] - s.from[2];
         if (dr * dr + dg * dg + db * db < s.tol) {
-          // keep any shading by scaling the new colour the same way
+          // keep any shading by scaling the new color the same way
           const k = (px[i] + px[i + 1] + px[i + 2] + 1) / (s.from[0] + s.from[1] + s.from[2] + 1);
           px[i] = Math.min(255, s.to[0] * k);
           px[i + 1] = Math.min(255, s.to[1] * k);
@@ -249,7 +249,7 @@
     if (!changed) return tex;
     ctx.putImageData(data, 0, 0);
     // Note: texture.clone() shares the picture with the original, so give the
-    // copy its own picture (otherwise every Mii would change colour together).
+    // copy its own picture (otherwise every Mii would change color together).
     const out = tex.clone();
     out.source = new THREE.Source(canvas);
     out.needsUpdate = true;
@@ -262,7 +262,7 @@
     look = look || {};
     const src = source || SOURCE;
     const tol = 2400;
-    // Each swap: replace colour `from` with `to`. `faceOnly` swaps only touch the
+    // Each swap: replace color `from` with `to`. `faceOnly` swaps only touch the
     // face texture (so removing a beard doesn't also remove the eyebrows).
     const swaps = [];
     if (look.skin) swaps.push({ from: src.skin, to: hexToRgb(look.skin), tol });

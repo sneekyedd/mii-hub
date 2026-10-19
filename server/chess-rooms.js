@@ -16,7 +16,7 @@
  *   chMove   { from, to, promo, n }              n = how many moves had been played (so old clicks are ignored)
  *   chResign {}
  *   chDraw   { a: "offer" | "accept" | "decline" }
- *   chRematch {}                                 after a game: when both ask, colours swap and a new game starts
+ *   chRematch {}                                 after a game: when both ask, colors swap and a new game starts
  * server -> client
  *   chRooms  { rooms }                            the lobby list
  *   chRoom   { room }                             everything about your game, sent whenever it changes
@@ -113,9 +113,9 @@ module.exports = function chessRooms(ctx) {
     const r = p.chessRoom && rooms.get(p.chessRoom);
     p.chessRoom = null;
     if (!r) return;
-    const colour = r.white === p.id ? "w" : "b";
-    if (r.state === "playing") endGame(r, colour === "w" ? "b" : "w", "left");
-    if (colour === "w") r.white = null; else r.black = null;
+    const color = r.white === p.id ? "w" : "b";
+    if (r.state === "playing") endGame(r, color === "w" ? "b" : "w", "left");
+    if (color === "w") r.white = null; else r.black = null;
     r.rematch.delete(p.id);
     if (!members(r).length) { clearTimeout(r.flag); rooms.delete(r.id); }
     else {
@@ -177,8 +177,8 @@ module.exports = function chessRooms(ctx) {
       case "chLeave": leave(p); break;
       case "chMove": {
         if (!r || r.state !== "playing") return true;
-        const colour = r.white === p.id ? "w" : r.black === p.id ? "b" : null;
-        if (!colour || Chess.turn(r.game) !== colour) return true;
+        const color = r.white === p.id ? "w" : r.black === p.id ? "b" : null;
+        if (!color || Chess.turn(r.game) !== color) return true;
         if (num(msg.n) !== r.moves.length) return true; // an old click
         const sq = (s) => typeof s === "string" && /^[a-h][1-8]$/.test(s);
         if (!sq(msg.from) || !sq(msg.to)) return true;
@@ -190,8 +190,8 @@ module.exports = function chessRooms(ctx) {
         if (!next) return update(r), true;
         if (r.time) {
           const c = clockNow(r, now);
-          if (c[colour] <= 0) { endGame(r, colour === "w" ? "b" : "w", "time"); update(r); listChanged(); return true; }
-          r.clock[colour] = c[colour] + r.inc * 1000;
+          if (c[color] <= 0) { endGame(r, color === "w" ? "b" : "w", "time"); update(r); listChanged(); return true; }
+          r.clock[color] = c[color] + r.inc * 1000;
           r.clock.turnStart = now;
         }
         r.game = next;

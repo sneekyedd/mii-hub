@@ -1433,3 +1433,30 @@ body {
 .tl-row.next .tl-badge { background: var(--accent); color: #fff; }
 .tl-body ul { margin: 2px 0 0; padding-left: 18px; font-size: 0.85rem; }
 .topbar { position: relative; z-index: 40; }
+
+/* ---------- 🎮 Play menu (top bar) ---------- */
+.play-wrap { position: relative; }
+.tb-btn.play { background: linear-gradient(#ffd23f, #ff9a1a); border-color: #e07a00; color: #2a1600; font-weight: 800; }
+.play-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 60; display: flex; flex-direction: column; gap: 6px; padding: 8px; min-width: 170px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 12px 30px rgba(20, 40, 80, 0.25); animation: menuPop 0.12s ease-out;
+}
+.play-menu[hidden] { display: none; }
+.play-menu .tb-btn { width: 100%; text-align: left; }
+.sticker-tip { margin: 8px 0 4px; padding: 8px 10px; border-radius: 10px; background: var(--bg); font-size: 0.85rem; font-weight: 700; color: var(--muted); min-height: 2.6em; }
+.sticker-tip.got { color: var(--text); }
+.sticker { cursor: help; }
+
+/* ---------- splash screen ---------- */
+#splash { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: radial-gradient(circle at 50% 35%, #bfe6ff, #6fb8ef 55%, #3d8fd6); color: #fff; transition: opacity 0.5s; }
+#splash.gone { opacity: 0; pointer-events: none; }
+.sp-inner { display: grid; justify-items: center; gap: 14px; width: min(360px, 80vw); }
+.sp-logo { display: flex; gap: 10px; }
+.sp-bubble { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: #fff; font-size: 38px; box-shadow: 0 6px 18px rgba(20, 60, 120, 0.3); animation: spBob 1.4s ease-in-out infinite; }
+.sp-bubble.b2 { animation-delay: 0.18s; }
+.sp-bubble.b3 { animation-delay: 0.36s; }
+@keyframes spBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+.sp-title { margin: 0; font-size: 2.6rem; font-weight: 800; letter-spacing: 1px; text-shadow: 0 3px 12px rgba(20, 60, 120, 0.35); }
+.sp-bar { width: 100%; height: 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.35); overflow: hidden; box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15); }
+.sp-fill { width: 4%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #fff, #ffe680); transition: width 0.35s ease-out; }
+.sp-text { font-weight: 700; opacity: 0.95; }

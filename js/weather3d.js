@@ -61,7 +61,7 @@
     const c = document.createElement("canvas");
     c.width = c.height = S * 4;
     const ctx = c.getContext("2d");
-    // draw(ctx) paints one picture centred on (0, 0), about 120 pixels across
+    // draw(ctx) paints one picture centerd on (0, 0), about 120 pixels across
     const tile = (n, draw) => {
       ctx.save();
       ctx.translate((n % 4) * S + S / 2, Math.floor(n / 4) * S + S / 2);
@@ -141,7 +141,7 @@
       x.fillStyle = radial(0, 62, [[0, "rgba(255,255,255,1)"], [0.18, "rgba(255,255,255,0.85)"], [0.45, "rgba(255,255,255,0.25)"], [1, "rgba(255,255,255,0)"]]);
       x.beginPath(); x.arc(0, 0, 62, 0, TAU); x.fill();
     });
-    // a butterfly (white, so we can colour it in)
+    // a butterfly (white, so we can color it in)
     tile(TILE.BUTTERFLY, (x) => {
       x.fillStyle = "#fff"; x.strokeStyle = "rgba(0,0,0,0.35)"; x.lineWidth = 4;
       for (const s of [-1, 1]) {
@@ -233,7 +233,7 @@
     });
 
     const tex = new THREE.CanvasTexture(c);
-    // "premultiplied" = colours are stored already faded by their see-through-ness,
+    // "premultiplied" = colors are stored already faded by their see-through-ness,
     // which stops dark fringes around the pictures when they're drawn small
     tex.premultiplyAlpha = true;
     tex.needsUpdate = true;
@@ -242,7 +242,7 @@
 
   // ------------------------------------------------------------------
   // A "pool" of sprites drawn in one go (a THREE.Points with our own shader).
-  // Each sprite has: a position, a colour (+ see-through-ness), a size,
+  // Each sprite has: a position, a color (+ see-through-ness), a size,
   // a turn (rot), which picture (tile) and a squash (for flapping/tumbling).
   // ------------------------------------------------------------------
   const VERT = [
@@ -274,7 +274,7 @@
     "  if (abs(p.x) > 0.5 || abs(p.y) > 0.5) discard;",
     "  float t = floor(vInfo.y + 0.5);",
     "  vec2 cell = vec2(mod(t, 4.0), 3.0 - floor(t / 4.0));",
-    "  vec4 tex = texture2D(uMap, (cell + p + 0.5) * 0.25);", // (colours already times alpha)
+    "  vec4 tex = texture2D(uMap, (cell + p + 0.5) * 0.25);", // (colors already times alpha)
     "  gl_FragColor = vec4(tex.rgb * vColor.rgb, tex.a) * vColor.a;",
     "  if (gl_FragColor.a < 0.01) discard;",
     "}",
@@ -373,7 +373,7 @@
     setColor(i, c, a) { this.col[i * 4] = c[0]; this.col[i * 4 + 1] = c[1]; this.col[i * 4 + 2] = c[2]; this.alpha[i] = a === undefined ? 1 : a; }
     setLook(i, tile, size) { this.info[i * 4 + 2] = tile; this.base[i] = size; this.info[i * 4] = size; }
 
-    // Sends the new positions/colours to the graphics card (only the used part).
+    // Sends the new positions/colors to the graphics card (only the used part).
     upload() {
       this.points.visible = this.alive > 0;
       if (!this.alive) return;
@@ -406,7 +406,7 @@
   // The kinds that fill the air around the place (we keep "this many" of them).
   const FIELD_KINDS = [K.RAIN, K.SNOW, K.PETAL, K.LEAF, K.BLOWN, K.GUST, K.BUTTERFLY, K.LANTERN, K.PUMPKIN, K.BAT, K.GHOST, K.SPARKLE];
 
-  // Colours (0..1) that sprites can be
+  // Colors (0..1) that sprites can be
   const hex = (h) => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
   const PAL = {
     rain: hex(0xd6e6ff),
@@ -430,8 +430,8 @@
 
   // ------------------------------------------------------------------
   // The mood: how dark / which tint for each weather, season and festival.
-  // sky = { top, mid, bot } colours the sky is mixed towards, amt = how much.
-  // light = how bright the place's lights are (1 = normal), tint = their colour.
+  // sky = { top, mid, bot } colors the sky is mixed towards, amt = how much.
+  // light = how bright the place's lights are (1 = normal), tint = their color.
   // fog = how near the fog comes (smaller = mistier).
   // ------------------------------------------------------------------
   const WEATHER_MOOD = {
@@ -442,7 +442,7 @@
     storm: { top: 0x3c4456, mid: 0x6b7484, bot: 0x4f5869, amt: 0.92, light: 0.27, tint: 0xb0bcd8, fog: 0.42 },
     snow: { top: 0xc4d0de, mid: 0xeef3f8, bot: 0xe2e9f1, amt: 0.78, light: 0.66, tint: 0xdce6fa, fog: 0.5 },
   };
-  // (spring and summer keep the place's own colours; autumn is warmer, winter cooler)
+  // (spring and summer keep the place's own colors; autumn is warmer, winter cooler)
   const SEASON_TINT = { spring: 0xffffff, summer: 0xffffff, autumn: 0xfff0e2, winter: 0xeef4ff };
   const NIGHT_MOOD = { top: 0x0b1035, mid: 0x2a3270, bot: 0x1b2252, amt: 0.9, light: 0.25, tint: 0x7890f0 };
   const DUSK_MOOD = { top: 0x46348a, mid: 0xffa585, bot: 0xd982a8, amt: 0.62, light: 0.55, tint: 0xffcfbf };
@@ -497,7 +497,7 @@
     function remember() {
       saved.lights = []; saved.domes = [];
       world.group.traverse((o) => {
-        // (lamps and other small lights are left alone, they look cosy at night)
+        // (lamps and other small lights are left alone, they look cozy at night)
         if (o.isHemisphereLight || o.isAmbientLight || o.isDirectionalLight) {
           saved.lights.push({ light: o, intensity: o.intensity, color: o.color.clone(), ground: o.groundColor ? o.groundColor.clone() : null });
         }
@@ -529,7 +529,7 @@
       }
     }
 
-    // mixes colour c towards layer colour h (a hex number) by amt
+    // mixes color c towards layer color h (a hex number) by amt
     function mixHex(c, h, amt) { if (amt > 0 && h !== undefined) c.lerp(tmpC2.setHex(h), amt); }
     function layer(m, amt) {
       if (!m || !(amt > 0)) return;
@@ -544,7 +544,7 @@
       const indoor = !!INDOOR[id];
       const space = !!NO_WEATHER[id];
       const d0 = saved.domes[0];
-      // start from the place's own colours
+      // start from the place's own colors
       target.sky[0].copy(d0 ? d0.top : (saved.bg || tmpC.set(0xcdeeff)));
       target.sky[1].copy(d0 ? d0.mid : (saved.bg || tmpC.set(0xcdeeff)));
       target.sky[2].copy(d0 ? d0.bot : (saved.bg || tmpC.set(0xcdeeff)));
@@ -846,7 +846,7 @@
         want[K.SPARKLE] = 90;
         if (sky && want[K.SNOW] < 350) want[K.SNOW] = 350;
       }
-      // clouds for grey weather
+      // clouds for gray weather
       cloudWant.setHex(w === "storm" ? 0x8a93a3 : w === "rain" ? 0xc2cad6 : w === "snow" ? 0xf2f6fa : 0xf4f7fa);
       // decorations and stars
       const decoKind = fest === "cherry" || fest === "lanterns" || fest === "snowfest" || fest === "spooky" ? fest : null;
@@ -1060,11 +1060,11 @@
         G.spin[i] = shape === "willow" ? big : -big; // (how big; willow (+): droopy and golden)
         G.aux[i] = Math.random() * 0.05;      // trail timer
       }
-      // a little flash of light in the sky's colour
+      // a little flash of light in the sky's color
       flash.amt = Math.max(flash.amt, state.night ? 0.32 : 0.15);
       flash.color.setRGB(c1[0] * 0.6 + 0.4, c1[1] * 0.6 + 0.4, c1[2] * 0.6 + 0.4);
     }
-    // a fading dot left behind by a spark, rocket or shooting star (colour r, g, b)
+    // a fading dot left behind by a spark, rocket or shooting star (color r, g, b)
     function trail(x, y, z, r, g, b, size, life, alpha) {
       const i = G.spawn(K.TRAIL);
       if (i < 0) return;
@@ -1395,7 +1395,7 @@
         clouds.rotation.y = (t || 0) * 0.004;
         clouds.scale.setScalar(0.3 + 0.7 * cloudsShown);
         cloudColor.lerp(cloudWant, Math.min(1, dt * 2));
-        // half lit by the place's lights, half glowing by itself (so clouds stay soft and grey, not green)
+        // half lit by the place's lights, half glowing by itself (so clouds stay soft and gray, not green)
         cloudMat.color.copy(cloudColor).multiplyScalar(0.55);
         cloudMat.emissive.copy(cloudColor).multiplyScalar(0.45 * (0.4 + 0.6 * cur.light));
       }

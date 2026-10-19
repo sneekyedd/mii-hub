@@ -1,6 +1,6 @@
 # Mii Hub
 
-A 3D web app where your Miis walk around, chat and become friends, a bit like the Mii plaza in the Wii's Mii Channel. The style is inspired by Tomodachi Life: soft cartoon shading, bright colours and rounded shapes. Everything is 3D: the Miis, the island park, the office, the moon base, the apartments and each Mii's home.
+A 3D web app where your Miis walk around, chat and become friends, a bit like the Mii plaza in the Wii's Mii Channel. The style is inspired by Tomodachi Life: soft cartoon shading, bright colors and rounded shapes. Everything is 3D: the Miis, the island park, the office, the moon base, the apartments and each Mii's home.
 
 ## How to run it
 
@@ -68,7 +68,7 @@ Your Miis always look exactly like they do in Mii Creator. To change how a Mii l
   - **Name and catchphrase:** rename it, and give it a catchphrase it says now and then.
   - **Best friends:** see who it gets along with.
   - **Go to…:** send the Mii to the park, the office, the moon, the apartment courtyard or home. It stays there a good while before deciding for itself again.
-  - **Favourite place:** where it likes to be most (picked from its personality at first; change it any time).
+  - **Favorite place:** where it likes to be most (picked from its personality at first; change it any time).
   - **🏠 Send home**, **🏡 Visit home** and **📦 Move away** (see below).
 - In the **Residents** list, click a Mii's picture or name to open its menu. The 🪙 number is how many coins it has.
 - **How chatty?** sets how often Miis talk and hang out.
@@ -85,7 +85,7 @@ Every Mii has its own apartment in the building by the **🏘️ Courtyard**. Yo
 - **Through the windows:** in the Courtyard, the windows of Miis who are home are open, and you can see them inside doing their thing: napping, watching TV, playing games...
 - **🏡 Visit:** go inside a Mii's home (from its menu, the *Residents* list, or by clicking its apartment in the Courtyard). It's just the Mii and its home: watch it nap in bed, watch TV, play games or water its plants, and it'll come over to chat with you. Click **← Leave** to go back outside.
 - **🛋️ Decorate:** while you visit, buy furniture with **the Mii's own coins**: beds, seats, tables, a TV or game console, rugs, lamps, plants, wall art, special things (like a fish tank or drum kit), wallpaper and flooring. Things you've bought stay owned, so you can swap back for free. Each Mii likes different things depending on its personality, and it tells you what it thinks.
-- **🍙 Give food:** every Mii has a favourite food and one it can't stand. Try things and see!
+- **🍙 Give food:** every Mii has a favorite food and one it can't stand. Try things and see!
 - **📦 Move away:** removes a Mii from your world for good. Everyone else reacts depending on how close they were: best friends are heartbroken, friends are sad, and strangers might not even notice.
 
 **Coins** are earned by the Miis themselves, for *meaningful* time together, not just lots of it:
@@ -100,7 +100,7 @@ Miis need you! This is what keeps the game going:
 
 - **💭 Wishes:** every few minutes a Mii asks you for something: food (maybe a particular dish), new furniture or wallpaper, a mini-game, a visit, a trip somewhere, a high five or a trick, a new catchphrase, meeting another Mii, help making up after a fight, or advice about a crush. Wishes show up in the **Wishes** panel (with buttons that take you straight there) and as a 💭 over the Mii's head. Grant them before the timer runs out!
 - **⭐ Mii levels:** granting wishes (and giving things a Mii loves) fills its hearts ❤️. When they're full the Mii **levels up** and you pick a present: a **special move** (spin, backflip, moonwalk, flex, bow, sing), a **song** it can sing (and use for karaoke), a **free piece of furniture**, or **coins**.
-- **🏙️ Town level:** every wish you grant gives the town XP (shown in the top bar). Each new town level gives every Mii 10 coins and unlocks something: picnics, crushes and couples, karaoke, more festivals, rivalries, storytelling, and fancier things in the shop. Every place is open from the start.
+- **🏙️ Town level:** every wish you grant gives the town XP (shown in the top bar). Each new town level gives every Mii coins (10 × the new level, up to 100) and unlocks something: picnics, crushes and couples, karaoke, more festivals, rivalries, storytelling, and fancier things in the shop. Every place is open from the start.
 - **📅 Daily goals:** three new goals every day (like "grant 3 wishes" or "visit 2 homes"). Each one gives town XP and coins for every Mii, with a bonus for finishing all three.
 - **📖 Sticker book:** collect stickers for foods tried, furniture bought, places visited, weather and festivals seen, friendships, couples, games and town milestones.
 - **💕 Relationships:** arguments can turn into real fights (the two stop talking until you help them make up). Good friends can get a **crush**; you decide whether they should confess, and it might work... or not. Couples go on dates and like to be in the same place. Miis who keep fighting become **rivals** and have contests.
@@ -110,12 +110,12 @@ Miis need you! This is what keeps the game going:
 
 ## Miis live their own lives
 
-Each Mii decides for itself where to be. It stays somewhere for a few minutes, then says bye, walks out (or to its front door) and heads somewhere else. Where it goes depends on its **favourite place** and its **personality**:
+Each Mii decides for itself where to be. It stays somewhere for a few minutes, then says bye, walks out (or to its front door) and heads somewhere else. Where it goes depends on its **favorite place** and its **personality**:
 - **Home:** lazy, calm and shy Miis spend lots of time at home.
 - **Office:** serious, hard-working Miis go to work.
 - **Moon base:** energetic, adventurous Miis visit space.
 - **Park:** active, outdoorsy Miis love the park.
-- **Apartment courtyard:** friendly neighbours hang out in front of the building.
+- **Apartment courtyard:** friendly neighbors hang out in front of the building.
 - **Beach:** fun-loving, energetic Miis (especially on sunny days).
 - **Café Street:** chatty, sociable Miis.
 - **College:** curious, studious Miis.
@@ -134,7 +134,7 @@ The *Residents* list shows where everyone is ("At the office 🏢", "On the way 
 - **Sit properly:** a Mii sits down on a bench (or a sofa, or lies down in bed at home), stays facing the same way while it sits, and stands up in the same spot before walking off.
 - **Move like themselves:** energetic Miis take big, bouncy steps and jump about; calm ones stroll; shy ones look down and keep their hands together; grumpy ones stomp and fold their arms; silly ones waddle and bop their heads; outgoing ones stand with their hands on their hips; chatty ones talk with their hands. Dances and waves change too.
 - **Act like themselves:** shy ones stammer when they meet someone new, silly ones tell more jokes, and grumpy ones argue more.
-- **Give honest compliments:** they only mention things that are really true, like someone's height, their hair colour, or their top (only when it's clearly one colour). Nothing about beards or anything else that's hard to tell from the model.
+- **Give honest compliments:** they only mention things that are really true, like someone's height, their hair color, or their top (only when it's clearly one color). Nothing about beards or anything else that's hard to tell from the model.
 - **Call each other over:** usually a Mii walks up to someone to talk. But if they're far apart and it's the loud, outgoing type, it shouts **"HEY MIA! COME HERE!"**, the other one shouts back **"COMING!"** and walks over, and then they talk face to face.
 - **Phone friends who are somewhere else:** a Mii takes out its phone, and a tag shows who it's talking to ("📱 Calling Mia" or "📱 Call from Mia"). You see what the other Mii says coming out of the phone in a blue bubble.
 - **Talk now and then.** Some lines depend on the place they're in.
@@ -147,7 +147,7 @@ The *Residents* list shows where everyone is ("At the office 🏢", "On the way 
   - have a dance party
   - argue about pizza and then make up
   - in space, hold moon-jump contests
-- **Build friendships** over time, from *Strangers* to *Best Friends* 💖. You can watch this in the *Friendships* and *What's happening* panels.
+- **Build friendships** over time, from *Strangers* to *Best Friends* 💖. You can see each Mii's friendships in its menu (right-click it), and news in the *What's happening* panel.
 - **In space**, Miis wear astronaut helmets and float in low gravity.
 
 ## Mini-games
@@ -159,22 +159,22 @@ Right-click a Mii and pick a game from **Play a game** in its menu:
 | ✊ Rock Paper Scissors | Best of 5 (first to 3) |
 | ⭕ Tic-Tac-Toe | Best of 3 (first to 2) |
 | 🔴 Connect 4 | One game, winner takes all |
-| ♟️ Chess | One game (also from the **♟️ Chess** button at the top) |
+| ♟️ Chess | One game (also from **🎮 Play → ♟️ Chess** at the top) |
 
 Every Mii has a **skill meter** for each game, from *Beginner* to *Master*. **The more you play a game with a Mii, the better it gets**, and it learns a bit more from losing. Skill changes how it plays:
 
-- **Rock Paper Scissors:** beginners pick almost at random and overuse a favourite move. Skilled Miis notice your habits and play whatever beats your next move.
+- **Rock Paper Scissors:** beginners pick almost at random and overuse a favorite move. Skilled Miis notice your habits and play whatever beats your next move.
 - **Tic-Tac-Toe:** beginners play anywhere. Better Miis take wins and block yours. A *Master* plays perfectly and can't be beaten (only drawn).
 - **Connect 4:** beginners drop pieces almost anywhere. Better Miis take wins, block yours, and think up to six moves ahead.
 - **Chess:** a new Mii is a total beginner that hangs pieces. It gets better with every finished game (Master after about 20). A Master is knowledgeable with few blunders, but beatable: it's no Stockfish.
 
-**♟️ Chess** at the top opens the chess window: play one of your Miis, or go **🌐 Online** to play other people through the same server as online Paintball. Host a game (optional password, a clock from bullet to classical, and your colour) or join one. The server checks every move and runs the clocks. You can offer a draw, resign, or ask for a rematch.
+**🎮 Play → ♟️ Chess** at the top opens the chess window: play one of your Miis, or go **🌐 Online** to play other people through the same server as online Paintball. Host a game (optional password, a clock from bullet to classical, and your color) or join one. The server checks every move and runs the clocks. You can offer a draw, resign, or ask for a rematch.
 
 While you play, the Mii stops what it's doing and faces you. It chats during the game in its own personality, and celebrates or sulks afterwards.
 
 ## 🎯 Paintball
 
-A first-person shooter on **Shipment** (from Call of Duty 4), made to feel like **CS:GO / Valorant**. Click **🎯 Paintball** in the top bar (or pick Paintball in a Mii's **Play a game** list). Paintball is its own part of the game: its files only load when you open it, so it doesn't slow down starting Mii Hub.
+A first-person shooter on **Shipment** (from Call of Duty 4), made to feel like **CS:GO / Valorant**. Click **🎮 Play → 🎯 Paintball** in the top bar (or pick Paintball in a Mii's **Play a game** list). Paintball is its own part of the game: its files only load when you open it, so it doesn't slow down starting Mii Hub.
 
 - **🤖 VS a Mii:** pick the Mii you play as and the Mii you play against.
   - **Respawn** (the default): 2 seconds after you're splattered you're back in. **First to 20 eliminations wins** (or whoever has the most after 10 minutes).
@@ -185,7 +185,7 @@ A first-person shooter on **Shipment** (from Call of Duty 4), made to feel like 
   - **In a lobby** you're straight onto the map: run around freely until someone else joins, then the match starts by itself. Online modes: **Respawn** (first to 20) and **Rounds** (no respawning: the last one standing wins the round, first to 7).
   - **Between matches** there's a 15-second vote for the next mode (and map, when there are more). A tie is picked at random. If everyone else leaves, you're back to running around until someone joins.
   - Everyone meets on the Mii Hub Paintball server: see **[server/README.md](server/README.md)** for how it's set up.
-- **You see the world through your Mii's eyes**, with its Mii hands and shirt colour holding the gun.
+- **You see the world through your Mii's eyes**, with its Mii hands and shirt color holding the gun.
 - **The HUD** shows your HP, your paint (ammo), the clock and score, and a kill feed. Hold **Tab** for the scoreboard (score, kills, deaths, headshot %, damage, accuracy, and ping online).
 - **Weapons:** a paintball gun shaped like an **AK-47** and a **butterfly knife**.
   - The gun works like CS:GO's AK: 600 shots a minute, a 30-round magazine, a 2.43-second reload. **One headshot splats a Mii.** It takes 3 chest shots or 4 leg shots.
@@ -193,12 +193,12 @@ A first-person shooter on **Shipment** (from Call of Duty 4), made to feel like 
   - **🦅 Paint Deagle** (key **2**): a sidearm in both classes, like CS:GO's Desert Eagle. One shot per click, 7 shots then a 2.2-second reload, and it loses damage over distance. Up close a headshot splats a Mii and two chest shots do. Wait a moment between shots, standing still, for the first one to be dead-on.
   - **Loadouts:** before you spawn (and whenever you press **B**) pick **1 · Rifler** (Paint AK + Deagle + knife) or **2 · Sniper** (Paint AWP + Deagle + knife). Before the match or round starts you switch right away. Otherwise you get it on your next spawn.
   - The **AWP** works like CS:GO's: right click zooms in (twice, then out), one shot to the chest or head splats a Mii, 10 shots then a 3.7-second reload, and a bolt pull after every shot (about 1.5 s) that takes you out of the scope. Shooting without scoping ("no-scoping") is very inaccurate. You move slower with it, and even slower scoped in.
-  - **Moving shots miss, like CS:** running or jumping with the AK sends your shots almost anywhere in a wide circle. With the AWP scoped in, moving at all makes it inaccurate and blurs the scope; stand still for a clean shot.
+  - **Moving shots miss, like CS:** running or jumping with the AK sends your shots almost anywhere in a wide circle. With the AWP scoped in, moving at all makes it inaccurate and blurs the scope's crosshair; stand still for a clean shot.
   - **Crates & Locker** (in the Paintball lobby): earn 🎨 credits by playing (kills, headshots, round wins, finishing and winning matches; new players start with 200) and open a **Splat Case** for 100. There are 50 skins inspired by CS, from Mil-Spec (blue, 79.92%) through Restricted (purple), Classified (pink) and Covert (red) to Rare Special (gold, 0.26%), which is always a Butterfly Knife. Trade up 10 of the same skin for one from the next tier. Equip skins in the Locker. Other players see your skins online.
   - The knife: left click slashes, right click stabs. Hitting someone in the back does a lot more damage. You run faster with the knife out.
 - **Movement is CS:GO's:** the same speeds, friction and jump height, Shift to walk quietly, Ctrl or C to crouch, and air strafing. Running makes footsteps others can hear. Walking doesn't.
 - **The Mii opponent plays by the same rules as you.** It hunts you down, follows your footsteps and gunshots, stops before it shoots, sprays and taps depending on how far away you are, and controls its recoil. **Its Paintball skill decides how good it is.** It gets better every time it wins or loses a fight with you.
-- **Settings:** mouse sensitivity (the same numbers as CS), **field of view** (60–150, like CS's: 90 is normal), volume, and crosshair colour, size, gap and style. Press **Esc** for the menu (offline it pauses; online the match keeps going).
+- **Settings:** mouse sensitivity (the same numbers as CS), **field of view** (60–150, like CS's: 90 is normal), volume, and crosshair color, size, gap and style. Press **Esc** for the menu (offline it pauses; online the match keeps going).
 
 | Key | What it does |
 | --- | --- |
@@ -220,7 +220,7 @@ A first-person shooter on **Shipment** (from Call of Duty 4), made to feel like 
 
 ## About the random Miis
 
-The random Miis (and the ones from **Add random Miis**) are built from the one bundled Mii model, with random colours, names, personalities and catchphrases. They share a face shape and hairstyle. Add your own `.glb` Miis for a crowd with different faces, and use **📦 Move away** to remove random ones.
+The random Miis (and the ones from **Add random Miis**) are built from the one bundled Mii model, with random colors, names, personalities and catchphrases. They share a face shape and hairstyle. Add your own `.glb` Miis for a crowd with different faces, and use **📦 Move away** to remove random ones.
 
 ## What's in each place
 
@@ -261,7 +261,7 @@ The `.glb` from Mii Creator has a skeleton (bones for the arms, legs, spine and 
 index.html            the page
 css/style.css         how the page looks
 js/vendor/            Three.js 3D library (r147, MIT licence)
-js/miiModel.js        loads .glb Miis, recolours them, moves their bones
+js/miiModel.js        loads .glb Miis, recolors them, moves their bones
 js/world3d.js         the 3D island park, office and moon base
 js/nav.js             route-finding, so Miis walk around obstacles
 js/dialogue.js        what Miis say and the activities they do together

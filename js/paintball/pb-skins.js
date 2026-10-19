@@ -4,7 +4,7 @@
  * Rarities go blue -> purple -> pink -> red -> gold, with CS's case odds.
  * Knives are always gold (and gold is always a knife), like in CS.
  *
- * Each skin has a pattern (how its texture is drawn) and colours. The drawing
+ * Each skin has a pattern (how its texture is drawn) and colors. The drawing
  * (textures, applying a skin to a 3D gun, small preview pictures) is added to
  * this same PBSkins object by pb-models.js.
  */
@@ -23,10 +23,10 @@
 
   const WEAPON_NAMES = { ak: "Paint AK", awp: "Paint AWP", deagle: "Paint Deagle", knife: "Butterfly Knife" };
 
-  // pattern: the kind of artwork; c: its colours (base first); fx: extras for the rarer ones
+  // pattern: the kind of artwork; c: its colors (base first); fx: extras for the rarer ones
   //   fx.glow   parts of the pattern glow a little (emissive)
   //   fx.metal  shiny metallic finish
-  //   fx.shift  colours shimmer/shift with the viewing angle (knife fades and dopplers)
+  //   fx.shift  colors shimmer/shift with the viewing angle (knife fades and dopplers)
   const S = (id, weapon, tier, name, pattern, c, fx) => ({ id, weapon, tier, name, pattern, c, fx: fx || {} });
 
   const SKINS = [
@@ -170,7 +170,7 @@
   const frac = (x) => x - Math.floor(x);
   function set(o, c, k) { k = k === undefined ? 1 : k; o[0] = c[0] * k; o[1] = c[1] * k; o[2] = c[2] * k; }
   function setMix(o, a, b, t, k) { k = k === undefined ? 1 : k; o[0] = (a[0] + (b[0] - a[0]) * t) * k; o[1] = (a[1] + (b[1] - a[1]) * t) * k; o[2] = (a[2] + (b[2] - a[2]) * t) * k; }
-  function grad3(o, stops, t) { // stops: [[t, colour], ...] sorted
+  function grad3(o, stops, t) { // stops: [[t, color], ...] sorted
     if (t <= stops[0][0]) return set(o, stops[0][1]);
     for (let i = 1; i < stops.length; i++) if (t <= stops[i][0]) return setMix(o, stops[i - 1][1], stops[i][1], sstep(stops[i - 1][0], stops[i][0], t));
     return set(o, stops[stops.length - 1][1]);
@@ -266,7 +266,7 @@
       }
       for (let i = 0; i < 2500; i++) { g.fillStyle = css(R() < 0.5 ? C[2] : C[1], 0.5); g.fillRect(R() * W, R() * H, H * 0.006 + 1, H * 0.006 + 1); }
     },
-    // Slate / Graphite / Ultraviolet: one rich colour, satin streaks
+    // Slate / Graphite / Ultraviolet: one rich color, satin streaks
     solid(g, W, H, C, R, N, sk) {
       field(g, W, H, (x, y, o) => {
         const v = y / H, u = x / H, n = N.fbm(u * 1.2, v * 1.2, 3);
@@ -450,7 +450,7 @@
       g.lineWidth = Math.max(1, H * 0.014);
       for (let i = 0; i < 6; i++) { const x = R() * W, y = R() * H; g.strokeStyle = css(i % 2 ? C[2] : C[1]); g.beginPath(); g.moveTo(x, y); for (let k = 1; k < 9; k++) g.lineTo(x + k * H * 0.05, y + (k & 1 ? -1 : 1) * H * 0.04); g.stroke(); }
     },
-    // Vulcan: white body, blue armour bands with black keylines and orange tabs
+    // Vulcan: white body, blue armor bands with black keylines and orange tabs
     vulcan(g, W, H, C, R) {
       fill(g, W, H, C[1]);
       const blue = (pts) => { g.fillStyle = css(C[0]); polyPath(g, pts); g.fill(); g.strokeStyle = css(BLACK); g.lineWidth = Math.max(1, H * 0.014); g.stroke(); };
@@ -488,7 +488,7 @@
       g.fillStyle = css(C[1]); g.beginPath(); g.ellipse(hd[0] + H * 0.08, hd[1], H * 0.14, H * 0.09, 0, 0, TAU); g.fill(); g.stroke();
       g.fillStyle = css(C[2]); g.beginPath(); g.arc(hd[0] + H * 0.12, hd[1] - H * 0.03, H * 0.022, 0, TAU); g.fill();
     },
-    // Asiimov: white sci-fi armour, orange panels, black under-plates and keylines
+    // Asiimov: white sci-fi armor, orange panels, black under-plates and keylines
     asiimov(g, W, H, C, R) {
       const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, css(C[0])); gr.addColorStop(1, css(drk(C[0], 0.1)));
       g.fillStyle = gr; g.fillRect(0, 0, W, H);
@@ -888,7 +888,7 @@
       g.fillStyle = hg; g.fillRect(W * 0.35, H * 0.6, W * 0.65, H * 0.4);
       for (let i = 0; i < 80; i++) { const x = W * (0.25 + R() * 0.75), y = R() * H * 0.8; g.fillStyle = css(R() < 0.5 ? C[2] : C[1], 0.75); g.beginPath(); g.arc(x, y, H * 0.004 * (1 + R() * 2), 0, TAU); g.fill(); }
     },
-    // Printstream: pearlescent white with flowing black printed linework (and the pearl colour shift)
+    // Printstream: pearlescent white with flowing black printed linework (and the pearl color shift)
     printstream(g, W, H, C, R, N) {
       const pearlA = mixC(C[2], [190, 255, 235], 0.55), pearlB = mixC(C[2], [255, 205, 240], 0.45);
       field(g, W, H, (x, y, o) => {
@@ -998,8 +998,8 @@
     },
   };
 
-  // Rarity finish: blue stays muted and a bit worn, higher tiers get punchier colour and contrast,
-  // gold gets polished light streaks (the material adds the metal + colour shift on top)
+  // Rarity finish: blue stays muted and a bit worn, higher tiers get punchier color and contrast,
+  // gold gets polished light streaks (the material adds the metal + color shift on top)
   const FINISH = {
     blue: { sat: 0.72, con: 0.9 }, purple: { sat: 1.05, con: 1.0 }, pink: { sat: 1.18, con: 1.07 },
     red: { sat: 1.24, con: 1.1 }, gold: { sat: 1.15, con: 1.1 },
@@ -1031,7 +1031,7 @@
     }
   }
 
-  // Glow mask for fx.glow skins: the pixels close to the pattern's glowing colours, in their own colour
+  // Glow mask for fx.glow skins: the pixels close to the pattern's glowing colors, in their own color
   const GLOW_COLS = { asiimov: [1], dragon: [2], lotus: [1, 2], doppler: [1, 2, "w"], lightning: [1, 2, "w"], hex: [1], circuit: [1, 2], neon: [1, 2], hyperbeast: [1, 2],
     blaze: [1, 2], koi: [1], oceandrive: [1, 2] };
   function glowMask(src, sk, W, H) {

@@ -4,13 +4,13 @@
  *
  *   "school"  the College: a lecture room on a little campus (a "dollhouse"
  *             like the office: the wall nearest the camera hides itself so
- *             you can see inside). Lecture desks, a chalkboard full of maths,
+ *             you can see inside). Lecture desks, a chalkboard full of math,
  *             a projector screen, a lab bench, an art studio, a piano, a study
  *             lounge, a coffee bar and the biology lab's fish tank. Out of the
  *             windows you can see the campus quad, the sports field and the town.
  *             (The id stays "school" so saved games still work.)
  *   "stage"   an outdoor concert in the park at golden hour: a big stage with
- *             coloured spotlights, a drum kit, a keyboard and a mic, a big
+ *             colored spotlights, a drum kit, a keyboard and a mic, a big
  *             screen, food stands, benches, string lights and confetti.
  *
  * Both are built with the same toolkit as the other places (World3D.kit), so
@@ -126,7 +126,7 @@
     return { tex, mat, pic, fit };
   }
 
-  // ---------- "painted" models: many colours, ONE shape, ONE draw call ----------
+  // ---------- "painted" models: many colors, ONE shape, ONE draw call ----------
   const gradientMap = toon(0xffffff).gradientMap;
   const paintMat = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap, vertexColors: true });
 
@@ -1252,7 +1252,7 @@
           lines: ["Titrating... very... carefully...", "Look at these cells!", "The data supports my hypothesis!", "My lab report is due tomorrow..."] },
         { x: E1.x + Math.sin(E1.ry) * 1.3, z: E1.z + Math.cos(E1.ry) * 1.3, yaw: E1.ry + PI, arms: "wave", emoji: "🎨", activity: "painting at an easel",
           lines: ["A little more blue...", "It's a masterpiece!", "Oops, paint on my nose!", "Happy little trees~"] },
-        { x: PN.x - 2.75, z: PN.z, yaw: PI / 2, arms: "type", emoji: "🎹", activity: "practising for a recital",
+        { x: PN.x - 2.75, z: PN.z, yaw: PI / 2, arms: "type", emoji: "🎹", activity: "practicing for a recital",
           lines: ["Do re mi fa so~", "♪ La la la ♪", "My recital is next week!", "A little Chopin, anyone?"],
           seat: { x: PN.x - 1.4, z: PN.z, y: 0.06 } },
         { x: BB1.x, z: BB1.z + 1.5, yaw: 0, emoji: "📖", activity: "studying in the lounge",
@@ -1650,7 +1650,7 @@
     const stz = (ST.z0 + ST.z1) / 2;
     block(root, 0x3a3346, 0, ST.h / 2, stz, ST.w, ST.h, ST.z1 - ST.z0, 0.06);
     bx(root, 0x5b4a6e, 0, ST.h + 0.01, stz, ST.w - 0.1, 0.02, ST.z1 - ST.z0 - 0.1, { shadow: false });
-    // glowing strip along the front of the stage (changes colour)
+    // glowing strip along the front of the stage (changes color)
     const ledMat = toon(0xff6b8a, { emissive: 0xff6b8a, emissiveIntensity: 0.9 });
     dynamic(bx(root, ledMat, 0, 0.82, ST.z1 + 0.01, ST.w - 0.2, 0.12, 0.04, { shadow: false }));
     anim.push((t) => { ledMat.emissive.setHSL((t * 0.08) % 1, 0.9, 0.55); ledMat.color.copy(ledMat.emissive); });
@@ -1696,7 +1696,7 @@
     const canopyR = 4.0;
     const canopy = new THREE.CylinderGeometry(canopyR, canopyR, 2 * PX + 1.2, 24, 1, true, PI / 2 - 0.75, 1.5).rotateZ(PI / 2);
     put(backdrop, canopy, toon(0xf4f0ff, { side: THREE.DoubleSide }), { y: TR + 0.25 - canopyR * Math.cos(0.75), z: stz, shadow: true });
-    // ---------- the light rig: lamps on the front beam that throw coloured beams ----------
+    // ---------- the light rig: lamps on the front beam that throw colored beams ----------
     const lamps = [];
     for (let i = 0; i < 8; i++) {
       const lx = -7.35 + i * 2.1;
@@ -1705,7 +1705,7 @@
       put(g, G.cyl(10), toon(0x2a2438), { y: -0.15, sx: 0.22, sy: 0.45, sz: 0.22, rx: 0.5 });
       lamps.push({ x: lx, y: TR - 0.75, z: PZ0 + 0.12, i });
     }
-    // the lamp lenses glow in the colour of their beam
+    // the lamp lenses glow in the color of their beam
     const lens = dynamic(new THREE.InstancedMesh(G.lowSphere(), new THREE.MeshBasicMaterial({ toneMapped: false }), lamps.length));
     lens.frustumCulled = false;
     root.add(lens);
@@ -1805,7 +1805,7 @@
     A(kb, "keys", 1.45, 0.26, { y: 1.015, z: 0.05, rx: -PI / 2 });
     ball(kb, glow(0x5cff8a, 1), 0.6, 1.02, -0.15, 0.025);
     ball(kb, glow(0xff5a8a, 1), 0.68, 1.02, -0.15, 0.025);
-    // microphone stand (centre front)
+    // microphone stand (center front)
     const MC = { x: 0, z: -5.95 };
     const mc = group(root, MC.x, ST.h, MC.z);
     cylinder(mc, 0x2a2438, 0, 0.03, 0, 0.25, 0.05);
@@ -2251,7 +2251,7 @@
         { x: 10.0, z: -2.6, yaw: Math.atan2(SCR.x - 10.0, SCR.z + 2.6), lookUp: 0.35, emoji: "📺", activity: "watching the big screen",
           lines: ["I can see myself on the screen!", "Wave to the camera!", "So many hearts!", "That's huge!"] },
         benchSpot(benches[0], "enjoying the show", "🎶", ["What a great band!", "My feet needed a rest.", "Such a nice evening!"]),
-        benchSpot(benches[3], "listening to the music", "🎵", ["This song is my favourite!", "*taps foot*", "What a sunset!"]),
+        benchSpot(benches[3], "listening to the music", "🎵", ["This song is my favorite!", "*taps foot*", "What a sunset!"]),
         { x: BL.x, z: tierZ[0] - 1.2, yaw: PI, emoji: "👏", activity: "watching from the bleachers",
           seat: { x: BL.x, z: tierZ[1] - 0.05, y: tierH[1] - 0.56 },
           lines: ["Great view from up here!", "*clap clap clap*", "Bravo!", "Play another one!"] },

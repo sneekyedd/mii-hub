@@ -437,7 +437,7 @@
       const caps = C.captured(state);
       const miiColor = youColor === "w" ? "b" : "w";
       miiCaps.innerHTML = ""; youCaps.innerHTML = "";
-      // pieces each side has taken (shown in the colour of the side they came from)
+      // pieces each side has taken (shown in the color of the side they came from)
       const mat = (list) => list.reduce((s, t) => s + VALUE[t], 0);
       const youTook = caps[youColor], miiTook = caps[miiColor];
       youCaps.appendChild(capturedRow(youTook, miiColor));
@@ -466,7 +466,7 @@
       movesBox.scrollTop = movesBox.scrollHeight;
     }
 
-    // ---------- before the game: pick a colour ----------
+    // ---------- before the game: pick a color ----------
     function showSetup() {
       started = false; finished = false;
       state = C.newGame();
@@ -477,7 +477,7 @@
       actions.innerHTML = "";
       status.innerHTML = "";
       const pickRow = el("div", "cg-pick");
-      pickRow.appendChild(el("div", "cg-pick-title", "Pick your colour"));
+      pickRow.appendChild(el("div", "cg-pick-title", "Pick your color"));
       const seg = el("div", "cg-seg");
       const buttons = {};
       for (const [val, label] of [["w", "⚪ White"], ["random", "🎲 Random"], ["b", "⚫ Black"]]) {

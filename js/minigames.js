@@ -75,7 +75,7 @@
     return BEATS[a] === b ? 1 : -1;
   }
 
-  // Beginners just pick (and have a favourite move they overuse).
+  // Beginners just pick (and have a favorite move they overuse).
   // Skilled Miis notice your habits: what you pick most, and what you tend to
   // pick after each move, and play whatever beats your likely next move.
   function rpsMove(skill, history, favorite, rand) {
@@ -232,7 +232,7 @@
     return score;
   }
 
-  // Looks `depth` moves ahead (alpha-beta search), centre columns first.
+  // Looks `depth` moves ahead (alpha-beta search), center columns first.
   function c4Search(board, depth, alpha, beta, maximizing, me) {
     const opp = me === 1 ? 2 : 1;
     const w = c4Winner(board);
@@ -315,7 +315,7 @@
       check: grumpy ? ["Check. Obviously.", "Check!"] : silly ? ["Check! Knock knock!", "Cheeeck!"] : shy ? ["Um... check?", "Ch-check..."] : ["Check!", "Check! Watch out!"],
       inCheck: grumpy ? ["Hmph. I saw that.", "Annoying..."] : shy ? ["Eep!", "Oh no, my king..."] : silly ? ["My king is sweating!", "Whoa there!"] : ["Yikes, check!", "Ooh, careful..."],
       capture: grumpy ? ["Mine now.", "Thanks for the snack."] : silly ? ["Om nom nom!", "Yoink!"] : sweet ? ["Sorry! I'll take that.", "Hehe, got one!"] : ["Got it!", "I'll take that!"],
-      lostPiece: grumpy ? ["Ugh.", "I meant to do that."] : shy ? ["Oh... my piece...", "Aww..."] : silly ? ["Noooo, not Steve!", "He was my favourite!"] : ["Oops!", "Ouch!", "Good one!"],
+      lostPiece: grumpy ? ["Ugh.", "I meant to do that."] : shy ? ["Oh... my piece...", "Aww..."] : silly ? ["Noooo, not Steve!", "He was my favorite!"] : ["Oops!", "Ouch!", "Good one!"],
       queenLost: grumpy ? ["MY QUEEN?!", "That's... not fair."] : silly ? ["My queen! She had a family!", "Queeeen!"] : ["Oh no, my queen!", "Not my queen!"],
       winning: grumpy ? ["This is going well. For me.", "Give up yet?"] : sweet ? ["I think I'm doing okay!", "This is fun!"] : silly ? ["I'm on fire! ♪", "Feeling like a grandmaster!"] : ["Things are looking good!", "I like my position!"],
       losing: grumpy ? ["This isn't over.", "Stop being good."] : shy ? ["Y-you're really good...", "Hmm... uh oh."] : silly ? ["Time for a comeback!", "This is all part of my plan. Probably."] : ["You're tough!", "I need to focus..."],

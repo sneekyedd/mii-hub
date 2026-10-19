@@ -139,7 +139,7 @@
 
     compliment(A, B, scene, points) {
       // Only say things that are really true about B. These come from the
-      // Mii's file (its height, its hair colour, what it's wearing) or from
+      // Mii's file (its height, its hair color, what it's wearing) or from
       // its personality. If we're not sure about something, we don't say it.
       const f = B.facts || {};
       const b = traits(B);
@@ -243,7 +243,7 @@
       ];
       // grumpy Miis don't always make up straight away: then it's a real fight
       const grump = (200 - traits(A).kindness - traits(B).kindness) / 200;
-      if (Math.random() < 0.2 + grump * 0.45) {
+      if (Math.random() < 0.08 + grump * 0.3) {
         return { fight: true, steps: start.concat([
           { who: "B", say: pick(["I'm not talking to you!", "Fine! Be that way!", "You're impossible!"]), expr: "angry", emote: "💢", dur: 2.0 },
           { who: "A", say: pick(["Good! Hmph!", "See if I care!", "*turns away*"]), expr: "angry", dur: 1.8 },
@@ -420,7 +420,7 @@
         ["chat", 3],
         ["joke", 0.5 + avg("humor") / 30],
         ["compliment", points >= 4 ? 0.3 + a.kindness / 35 : 0],
-        ["disagree", points >= 1 ? 0.2 + (100 - avg("kindness")) / 40 : 0],
+        ["disagree", points >= 1 ? 0.08 + (100 - avg("kindness")) / 110 : 0],
       ]);
     } else {
       type = points === 0 ? "chat" : weighted([
@@ -431,7 +431,7 @@
         ["rockPaperScissors", 1],
         ["dance", (points >= 4 ? 0.6 : 0.2) + avg("energy") / 40 + avg("humor") / 80],
         ["sleepy", points >= 4 ? 0.4 + (100 - a.energy) / 70 : 0],
-        ["disagree", points >= 1 ? 0.2 + (100 - avg("kindness")) / 30 : 0],
+        ["disagree", points >= 1 ? 0.08 + (100 - avg("kindness")) / 90 : 0],
         ["spaceBounce", scene.id === "space" ? 1.5 + avg("energy") / 50 : 0],
         ["date", ctx.couple ? 3 : 0],
         ["rivalry", ctx.rival ? 2.5 : 0],

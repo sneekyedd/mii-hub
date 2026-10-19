@@ -77,7 +77,7 @@ let nextId = 1;
 const players = new Map(); // id -> player
 const rooms = new Map();   // id -> room
 
-// everyone in a room gets their own paint colour
+// everyone in a room gets their own paint color
 const PALETTE = ["#ff3fa4", "#3de0ff", "#ffb21e", "#78d220", "#9b5cff", "#ff3b30", "#ffe94d", "#2b7cff", "#00c896", "#ff8a00", "#e0e0e0", "#f55a7d", "#7328ad", "#00a0a0", "#c08040", "#a0ff40"];
 
 const clean = (s, max) => String(s == null ? "" : s).replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, max);
@@ -263,7 +263,7 @@ function leaveRoom(p) {
 function joinRoom(p, room) {
   if (room.players.length >= room.max) return send(p, { t: "err", msg: "That lobby is full." });
   leaveRoom(p);
-  // a colour nobody else in the room has
+  // a color nobody else in the room has
   const used = new Set(room.players.map((id) => players.get(id).color.toLowerCase()));
   if (used.has(p.color.toLowerCase())) p.color = PALETTE.find((c) => !used.has(c)) || p.color;
   p.room = room.id;

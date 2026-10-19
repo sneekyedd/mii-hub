@@ -14,19 +14,19 @@
  *   - Knife: light slash (left click) and heavy stab (right click), with big
  *     backstab damage, and you run faster with it out.
  *
- * Units: 1 = one metre. CS:GO works in inches ("units"), so U converts them.
+ * Units: 1 = one meter. CS:GO works in inches ("units"), so U converts them.
  * This file is only loaded when you start Paintball (see app.js).
  */
 (function (root) {
   "use strict";
 
-  const U = 0.0254;            // one CS unit in metres
+  const U = 0.0254;            // one CS unit in meters
   const DEG = Math.PI / 180;
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const lerp = (a, b, t) => a + (b - a) * t;
 
   // ---------------------------------------------------------------------
-  // Numbers (from CS:GO, converted to metres)
+  // Numbers (from CS:GO, converted to meters)
   // ---------------------------------------------------------------------
   const CFG = {
     speedAK: 215 * U,          // 5.46 m/s with the AK out
@@ -165,7 +165,7 @@
             const d = Math.sqrt(d2);
             nx = dx / d; nz = dz / d; pen = r - d;
           } else {
-            // the centre is inside: leave by the nearest side
+            // the center is inside: leave by the nearest side
             const ox = b.hw - Math.abs(lx), oz = b.hd - Math.abs(lz);
             if (ox < oz) { nx = Math.sign(lx) || 1; nz = 0; pen = ox + r; } else { nx = 0; nz = Math.sign(lz) || 1; pen = oz + r; }
           }
@@ -415,7 +415,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // Aiming maths
+  // Aiming math
   // ---------------------------------------------------------------------
   // yaw 0 looks toward -Z; pitch up is positive
   function forward(yaw, pitch, out) {
@@ -655,7 +655,7 @@
       this.s = s;
       this.reaction = 0.85 - 0.6 * s;                 // seconds before the first shot after spotting you
       this.turnK = 5 + 15 * s;                        // how snappy the aim is
-      this.aimErr0 = 0.25 + 1.2 * (1 - s);            // metres of aim error when it first sees you
+      this.aimErr0 = 0.25 + 1.2 * (1 - s);            // meters of aim error when it first sees you
       this.settle = 0.9 + 4.4 * s;                    // how fast that error shrinks
       this.wobble = 0.04 + 0.35 * Math.pow(1 - s, 1.5); // shaky hands that never quite settle
       this.headPref = 0.1 + 0.6 * s;

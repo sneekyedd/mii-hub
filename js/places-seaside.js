@@ -5,7 +5,7 @@
  *   "beach"  a sunny sandy beach with the sea, a wooden pier, umbrellas,
  *            deck chairs, a lifeguard tower, volleyball, sandcastles and
  *            an ice-cream stand. A little seaside town is behind the dunes.
- *   "cafe"   a cosy shopping street: a café with a terrace, a bakery, a
+ *   "cafe"   a cozy shopping street: a café with a terrace, a bakery, a
  *            clothes shop, a toy shop, a flower stall, a fountain, a bus
  *            stop and bunting overhead. A tram rattles past now and then.
  *
@@ -37,12 +37,12 @@
   // The toon "light bands" picture, borrowed from a toolkit material.
   const gradient = toon(0xffffff).gradientMap;
 
-  // "Painted" models: every part keeps its own colour, but the whole model is
+  // "Painted" models: every part keeps its own color, but the whole model is
   // ONE shape with ONE material, so the computer draws it in a single go.
   const paintedMat = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: gradient, vertexColors: true });
 
   // build(g) adds parts to g with the usual helpers (ball, block...);
-  // we get back one geometry with all the parts and their colours baked in.
+  // we get back one geometry with all the parts and their colors baked in.
   function bakeGeo(build) {
     const g = new THREE.Group();
     build(g);
@@ -89,7 +89,7 @@
   // Copies of one shape that we move every frame (crabs, pigeons, wings...).
   // set(i, x, y, z, ry, rz, s) puts copy number i somewhere.
   // (each gets its own copy of the material: three.js gets confused when one
-  // material is shared by copies with and without their own colours)
+  // material is shared by copies with and without their own colors)
   function movingCopies(parent, geo, mat, count, shadow) {
     const m = dynamic(new THREE.InstancedMesh(geo, mat.clone(), count));
     m.castShadow = !!shadow;
@@ -196,7 +196,7 @@
   }
 
   // Stripes (for awnings, towels, umbrellas, beach balls).
-  // colors = list of colours; n stripes; across = stripes go across (horizontal)
+  // colors = list of colors; n stripes; across = stripes go across (horizontal)
   function stripeTexture(colors, n, across, scallop) {
     return canvasTexture(128, 128, (ctx, w, h) => {
       for (let i = 0; i < n; i++) {
@@ -252,7 +252,7 @@
 
   // A material that paints rows of windows onto any box (using where each bit
   // of the box is in the world, so tall and short buildings get the same size
-  // windows). Copies can each have their own wall colour.
+  // windows). Copies can each have their own wall color.
   function windowMaterial(o) {
     o = o || {};
     const mat = new THREE.MeshToonMaterial({ color: o.color || 0xffffff, gradientMap: gradient });
@@ -396,7 +396,7 @@
 
     const SEA_Y = -0.35; // the water level (the sand is at 0)
     // Where the dry sand ends, for each x. A gentle wiggle in the middle, and at
-    // the sides the land curves out into the sea (so the beach is a cosy bay).
+    // the sides the land curves out into the sea (so the beach is a cozy bay).
     const shore = (x) => {
       let z = -4.6 + 0.25 * Math.sin(x * 0.5) + 0.1 * Math.sin(x * 1.3 + 1);
       const ax = Math.abs(x);
@@ -517,8 +517,9 @@
     // "Mii Beach" sign by the boardwalk
     const SG = { x: 1.6, z: 9.0 };
     const sign = group(root, SG.x, 0, SG.z, -0.2);
-    cylinder(sign, 0x9a6a3c, -0.9, 0.7, 0, 0.08, 1.4);
-    cylinder(sign, 0x9a6a3c, 0.9, 0.7, 0, 0.08, 1.4);
+    // (the posts stand behind the board, so they don't poke through it)
+    cylinder(sign, 0x9a6a3c, -0.9, 0.8, -0.14, 0.08, 1.6);
+    cylinder(sign, 0x9a6a3c, 0.9, 0.8, -0.14, 0.08, 1.6);
     block(sign, toon(0xffffff, { map: signTexture("Mii Beach", { bg: "#3fb6e8", fg: "#ffffff", w: 384, h: 128 }) }), 0, 1.35, 0, 2.2, 0.75, 0.1, 0.04);
 
     // ---------- lifeguard tower ----------
@@ -662,7 +663,7 @@
       ball(root, c1, bx2, 1.05, SB.z + (i % 2) * 0.25, 1, { sx: 0.3, sy: 1.2, sz: 0.06, rz });
       ball(root, c2, bx2, 1.05, SB.z + (i % 2) * 0.25, 1, { sx: 0.07, sy: 1.18, sz: 0.065, rz, shadow: false });
     });
-    // one lying flat on the sand, to practise on
+    // one lying flat on the sand, to practice on
     const SF = { x: -13.6, z: 5.4 };
     ball(root, 0xffcf3a, SF.x, 0.07, SF.z, 1, { sx: 1.3, sy: 0.06, sz: 0.34 });
     ball(root, 0xff5a5a, SF.x, 0.08, SF.z, 1, { sx: 1.28, sy: 0.062, sz: 0.06, shadow: false });
@@ -795,7 +796,7 @@
           lines: ["Got it!", "Over the net!", "Woohoo!", "Rematch!"] },
         { x: IC.x - 1.85, z: IC.z, yaw: PI / 2, arms: "eat", emoji: "🍦", activity: "buying ice cream",
           lines: ["Strawberry, please!", "Two scoops!", "It's melting! Quick!", "Brain freeze!"] },
-        { x: SF.x, z: SF.z + 1.15, yaw: 0, arms: "out", emoji: "🏄", activity: "practising surfing",
+        { x: SF.x, z: SF.z + 1.15, yaw: 0, arms: "out", emoji: "🏄", activity: "practicing surfing",
           stand: { x: SF.x, z: SF.z, y: 0.12 },
           lines: ["Cowabunga!", "Hang ten!", "Surf's up!", "Whoa, whoa... balance!"] },
         { x: PX + 0.45, z: -12.2, yaw: PI / 2, arms: "out", emoji: "🎣", activity: "fishing on the pier",
@@ -1017,7 +1018,7 @@
   }
 
   // =====================================================================
-  // CAFÉ STREET — a cosy little shopping street with a fountain
+  // CAFÉ STREET — a cozy little shopping street with a fountain
   // =====================================================================
   // The shops are along the back (towards -z); a tram road runs along the front.
   function buildCafe() {
@@ -1451,7 +1452,7 @@
         .concat(planters.map((P) => ({ x: P.x, z: P.z, w: P.w, d: P.w }))),
       spots: [
         tableSpot(terraceTables[0], "sipping coffee", "☕", ["Mmm, a perfect latte!", "Careful, it's hot!", "Coffee makes everything better.", "One more cup, please!"]),
-        tableSpot(terraceTables[1], "having cake at the café", "🍰", ["This cake is amazing!", "Just one more bite...", "Strawberry shortcake, my favourite!", "Nom nom nom."]),
+        tableSpot(terraceTables[1], "having cake at the café", "🍰", ["This cake is amazing!", "Just one more bite...", "Strawberry shortcake, my favorite!", "Nom nom nom."]),
         { x: K.x + 2.0, z: K.z, yaw: -PI / 2, arms: "wave", emoji: "☕", activity: "ordering a coffee",
           lines: ["One cappuccino, please!", "Extra foam!", "Can I get a muffin too?", "Smells so good!"] },
         { x: MB.x, z: MB.z - 1.15, yaw: 0, emoji: "📋", activity: "reading the menu",
@@ -1463,7 +1464,7 @@
         { x: 12.6, z: -9.25, yaw: PI, arms: "cheer", emoji: "🧸", activity: "looking at the toys",
           lines: ["A teddy bear!", "I want that rocket!", "Toys aren't just for kids!", "So many toys!"] },
         { x: FS.x - 1.6, z: FS.z, yaw: PI / 2, emoji: "💐", activity: "smelling the flowers",
-          lines: ["Mmm, roses!", "Achoo!", "I'll buy a bunch for a friend.", "So colourful!"] },
+          lines: ["Mmm, roses!", "Achoo!", "I'll buy a bunch for a friend.", "So colorful!"] },
         { x: BS.x, z: BS.z + 1.35, yaw: 0, emoji: "🚌", activity: "waiting for the bus",
           seat: { x: BS.x, z: BS.z - 0.2, y: 0.51 - 0.56 },
           lines: ["Is the bus late again?", "Any minute now...", "I hope there's a seat.", "*checks the timetable*"] },

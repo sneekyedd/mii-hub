@@ -10,7 +10,26 @@
   "use strict";
 
   const NOTES = [
-    { v: null, date: "2026-10-16", title: "Music!", notes: ["🎵 Background music in the hub that loops smoothly (no jump where it repeats). It plays everywhere except Paintball. Turn it on or off with the 🎵 button at the top."] },
+    {
+      v: null, date: "2026-10-19", title: "Lots of little fixes",
+      notes: [
+        "A splash screen with a loading bar while Mii Hub starts.",
+        "🎮 Play: Paintball and Chess are now together under one Play button at the top.",
+        "Friendships moved into each Mii's menu (it folds up if the list is long). The Friendships panel is gone.",
+        "Sticker book: hover over a sticker to see how you got it, or a hint for how to get it.",
+        "Town level-ups now give every Mii 10 coins × the new level (up to 100).",
+        "Fewer wishes at once (especially with lots of Miis) and far fewer fights.",
+        "Clicking a Mii in Residents while you're visiting a home now takes you to that Mii.",
+        "Paintball: moving with the AWP scoped only blurs the crosshair (like CS), not the whole view.",
+        "Online chess: the board grows to fill the window once your opponent joins.",
+        "The ping pong ball goes over the net now, with two floating paddles rallying.",
+        "The big flat-screen TV is now even bigger, on the wall, and plays a movie.",
+        "Miis no longer sleep underneath the hammock.",
+        "Fixed the park path poking through the grass at its ends, and the posts going through the Mii Beach sign.",
+        "American spelling everywhere (color, favorite, practicing...).",
+      ],
+    },
+    { v: "1.2.0", date: "2026-10-16", title: "Music!", notes: ["🎵 Background music in the hub that loops smoothly (no jump where it repeats). It plays everywhere except Paintball. Turn it on or off with the 🎵 button at the top."] },
     { v: "1.1.1", date: "2026-10-16", title: "Thicker arms", notes: ["Paintball: your Mii's arms in first person are a little thicker."] },
     {
       v: "1.1.0", date: "2026-10-16", title: "Chess, the Deagle, and a big Mii Hub update",
@@ -61,7 +80,7 @@
       notes: [
         "Round Mii ball hands, a straighter gun and reworked butterfly knife animations, including a toss-and-catch inspect.",
         "Other players hold their gun like a proper shooter instead of a T-pose.",
-        "Brighter map, a soft outline glow on opponents, and two centre containers closed to cut long sightlines.",
+        "Brighter map, a soft outline glow on opponents, and two center containers closed to cut long sightlines.",
       ],
     },
     {
@@ -109,7 +128,7 @@
     {
       v: "1.0.11", date: "2026-10-14", title: "Miis live their own lives",
       notes: [
-        "Miis have favourite places, travel around, shout to call each other over and make phone calls.",
+        "Miis have favorite places, travel around, shout to call each other over and make phone calls.",
         "See-through windows: homes look out on the courtyard and flats show the Mii inside.",
       ],
     },

@@ -5,7 +5,7 @@
  *
  *   1. Opening the Online tab connects to the Mii Hub Paintball server (one
  *      server everyone uses, so nobody has to open ports). Your chosen Mii (its
- *      .glb file, or its colours for a random Mii) is sent so others can see it.
+ *      .glb file, or its colors for a random Mii) is sent so others can see it.
  *   2. Find Lobby: a list of everyone hosting (🔒 = needs a password), or
  *      Host Lobby: a name, an optional password and how many players.
  *   3. The lobby's host presses Start. Everyone plays Respawn mode: first to
@@ -240,7 +240,7 @@
         const ids = room ? room.players.map((p) => p.id).filter((id) => id !== st.net.id) : [];
         const entries = await Promise.all(ids.map((id) => st.loading.get(id) || Promise.resolve(st.roster.get(id))));
         if (!st.room || !st.net) return;
-        // the server gives everyone in the lobby their own paint colour
+        // the server gives everyone in the lobby their own paint color
         const colorOf = (id) => { const p = st.room.players.find((x) => x.id === id); return p && p.color; };
         for (const e of entries) if (e && colorOf(e.id)) e.color = colorOf(e.id);
         for (const e of entries) if (e) e.spawn = st.spawned.get(e.id) || null;

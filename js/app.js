@@ -14,7 +14,7 @@
   const errorMsg = $("errorMsg");
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-  // colours for the random Miis (your own Miis keep the colours from Mii Creator)
+  // colors for the random Miis (your own Miis keep the colors from Mii Creator)
   const SKINS = ["#ffd3ad", "#ffb669", "#de7942", "#ffaa8c", "#ad5129", "#632c18"];
   const HAIRS = ["#1e1a18", "#402010", "#5c1812", "#7c3a14", "#787878", "#4e3e10", "#84581c", "#d0a04a"];
   const SHIRTS = M.FAVORITE_COLORS.map((c) => c.hex).concat(["#191f40"]);
@@ -26,6 +26,8 @@
     await Promise.all(["400", "700", "800"].map((w) => document.fonts.load(w + " 20px Nunito")));
   } catch (e) { /* the font is optional */ }
 
+  const splash = window.MiiSplash || { set() {}, done() {} };
+  splash.set(45, "Building the town…");
   // ---------- the hub ----------
   const hub = new window.MiiHub3D.Hub3D($("hub"), $("overlay"));
   const settings = S.loadSettings();
@@ -68,7 +70,7 @@
 
   function lookFor(record, template) {
     // Your own Miis look exactly like they do in Mii Creator. Only the random
-    // Miis get colours picked here.
+    // Miis get colors picked here.
     const look = record.kind === "demo" ? Object.assign({}, record.look || {}) : {};
     look.name = record.name || template.info.name;
     look.favoriteColorName = M.colorName(look.shirt || template.source.shirt, "top");
@@ -89,7 +91,7 @@
     // every Mii gets a personality (you can change it from its menu) and a home
     if (!record.personality) record.personality = D.randomPersonality();
     H.ensureHome(record);
-    // colours can only be changed in Mii Creator now, so drop any old changes
+    // colors can only be changed in Mii Creator now, so drop any old changes
     if (record.kind === "glb" && record.look && Object.keys(record.look).length) record.look = {};
     // where it is right now, and where it likes to be
     if (!record.place) record.place = record.atHome ? "home" : viewedPlace();
@@ -299,7 +301,7 @@
     personality.catchphrase = pick(CATCHPHRASES);
     return {
       id: "mii-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
-      kind: "demo", // built from the bundled model, recoloured
+      kind: "demo", // built from the bundled model, recolored
       name,
       look: { skin: pick(SKINS), hair: pick(HAIRS), shirt: pick(SHIRTS), pants: pick(PANTS), eyes: pick(EYES), beard: Math.random() < 0.2 },
       personality,
@@ -500,6 +502,15 @@
       for (const el of [img, info]) {
         el.style.cursor = "pointer";
         el.addEventListener("click", (e) => {
+          // inside someone else's home: go out to where this Mii is
+          if (hub.visiting && hub.visiting.record.id !== rec.id) {
+            leaveHome();
+            if (isHome(rec)) { visit(rec); return; }
+            if (town.isTravelling(rec)) return;
+            if (rec.place !== viewedPlace()) goToScene(rec.place);
+            setTimeout(() => { const w2 = walkerOf(rec.id); if (w2) openMiiMenu(w2, e.clientX, e.clientY); }, 900);
+            return;
+          }
           const ww = walkerOf(rec.id);
           if (ww) openMiiMenu(ww, e.clientX, e.clientY);
           else if (isHome(rec)) visit(rec);
@@ -531,6 +542,7 @@
   // ---------- friendships & feed ----------
   function renderFriends() {
     const list = $("friends");
+    if (!list) return; // (friendships now live in each Mii's menu)
     list.innerHTML = "";
     const pairs = Object.entries(hub.friendships)
       .map(([key, pts]) => { const [a, b] = key.split("|"); return { a: records.get(a), b: records.get(b), pts }; })
@@ -626,8 +638,10 @@
   updateTabs();
   hub.start();
 
+  splash.set(55, "Waking up your Miis…");
   const saved = (await S.getAllMiis()).sort((a, b) => (a.added || 0) - (b.added || 0));
   for (const r of saved) {
+    splash.set(55 + (40 * (saved.indexOf(r) + 1)) / saved.length);
     try {
       const hadLook = r.kind === "glb" && r.look && Object.keys(r.look).length;
       const hadHome = !!r.home;
@@ -638,6 +652,7 @@
   if (!records.size) {
     // First visit: a few random generic Miis to get things going.
     try {
+      splash.set(70, "Making some new Miis…");
       await addRandomMiis(5);
     } catch (e) {
       errorMsg.textContent = "Couldn't create the starter Miis: " + e.message;
@@ -797,14 +812,14 @@
       games.appendChild(row);
     }
 
-    // best friends (including Miis who are at home right now)
+    // friendships (including Miis who are at home right now)
     const fr = document.createElement("div");
     fr.className = "mm-section";
     const pals = sortedRecords().filter((o) => o.id !== rec.id)
       .map((o) => ({ o, pts: hub.friendships[rec.id < o.id ? rec.id + "|" + o.id : o.id + "|" + rec.id] || 0 }))
       .filter((x) => x.pts > 0)
-      .sort((a, b) => b.pts - a.pts).slice(0, 3);
-    fr.innerHTML = "<h3>Best friends</h3>";
+      .sort((a, b) => b.pts - a.pts);
+    fr.innerHTML = "<h3>Friendships</h3>";
     const ul = document.createElement("ul");
     // sweethearts, rivals and fights
     const love = progress.partnerOf(rec);
@@ -824,8 +839,23 @@
       ul.appendChild(li);
     }
     fr.appendChild(ul);
+    // a long list folds up: the closest few, then "show all"
+    const items = ul.querySelectorAll("li");
+    if (items.length > 5) {
+      items.forEach((li, i) => { if (i >= 5) li.hidden = true; });
+      const more = document.createElement("button");
+      more.className = "link-btn mm-more";
+      more.textContent = "Show all (" + items.length + ")";
+      more.addEventListener("click", () => {
+        const open = more.dataset.open !== "1";
+        more.dataset.open = open ? "1" : "";
+        items.forEach((li, i) => { if (i >= 5) li.hidden = !open; });
+        more.textContent = open ? "Show fewer" : "Show all (" + items.length + ")";
+      });
+      fr.appendChild(more);
+    }
 
-    // where to go: send the Mii somewhere, and its favourite place
+    // where to go: send the Mii somewhere, and its favorite place
     const places = document.createElement("div");
     places.className = "mm-section";
     places.innerHTML = "<h3>Go to…</h3>";
@@ -841,7 +871,7 @@
     }
     const favRow = document.createElement("label");
     favRow.className = "mm-fav";
-    favRow.textContent = "Favourite place ";
+    favRow.textContent = "Favorite place ";
     const fav = document.createElement("select");
     for (const pl of T.available()) {
       const o = document.createElement("option");
@@ -1012,7 +1042,7 @@
       foodButtons(rec, grid);
       const tip = document.createElement("p");
       tip.className = "hp-tip";
-      tip.textContent = "Every Mii has a favourite food (and one they can't stand). The menu changes every day!";
+      tip.textContent = "Every Mii has a favorite food (and one they can't stand). The menu changes every day!";
       body.append(tip, grid);
     } else {
       const tip = document.createElement("p");
@@ -1182,13 +1212,20 @@
     '<div class="weather" id="weatherText"></div>' +
     '<button class="tb-btn" id="dailyBtn">📅 Daily <span id="dailyCount"></span></button>' +
     '<button class="tb-btn" id="bookBtn">📖 Book</button>' +
-    '<button class="tb-btn pb" id="paintballBtn" title="Paintball: a first-person 1v1 against one of your Miis">🎯 Paintball</button>' +
     '<button class="tb-btn" id="musicBtn" title="Music on/off">🎵</button>' +
-    '<button class="tb-btn chess" id="chessBtn" title="Chess: play one of your Miis, or someone online">♟️ Chess</button>';
+    '<div class="play-wrap"><button class="tb-btn play" id="playBtn" aria-haspopup="true" aria-expanded="false">🎮 Play ▾</button><div class="play-menu" id="playMenu" hidden>' +
+    '<button class="tb-btn pb" id="paintballBtn" title="Paintball: first-person, against a Mii or online">🎯 Paintball</button>' +
+    '<button class="tb-btn chess" id="chessBtn" title="Chess: play one of your Miis, or someone online">♟️ Chess</button></div></div>';
   document.querySelector(".topbar").appendChild(townBar);
   $("dailyBtn").addEventListener("click", openDaily);
   townBar.querySelector(".town-level").addEventListener("click", openTownLevels);
   $("bookBtn").addEventListener("click", openBook);
+  // 🎮 Play: every game with online play lives in this menu
+  const playMenu = $("playMenu"), playBtn = $("playBtn");
+  const showPlay = (on) => { playMenu.hidden = !on; playBtn.setAttribute("aria-expanded", String(on)); };
+  playBtn.addEventListener("click", () => showPlay(playMenu.hidden));
+  playMenu.addEventListener("click", (e) => { if (e.target.closest("button")) showPlay(false); });
+  document.addEventListener("pointerdown", (e) => { if (!playMenu.hidden && !e.target.closest(".play-wrap")) showPlay(false); });
   $("paintballBtn").addEventListener("click", () => openPaintball());
   $("chessBtn").addEventListener("click", () => openChessLobby());
   // background music (everywhere except Paintball)
@@ -1313,7 +1350,7 @@
         withWalker(rec, () => toast(w.type === "highFive" ? "Click " + nameOf(rec) + " to say hi! 👋" : "Right-click " + nameOf(rec) + " and pick the trick from the menu!"));
         break;
       case "together": { const o = records.get(w.target); if (o) { progress.bringTogether(rec, o); toast("🤝 " + nameOf(rec) + " and " + nameOf(o) + " are heading to the same place!"); } break; }
-      case "makeUp": progress.startMakeUp(rec); toast("🩹 " + nameOf(rec) + " is going to apologise..."); break;
+      case "makeUp": progress.startMakeUp(rec); toast("🩹 " + nameOf(rec) + " is going to apologize..."); break;
       case "confess": progress.startConfession(rec); toast("💌 " + nameOf(rec) + " is working up the courage..."); break;
       case "notYet": progress.dismiss(rec); break;
     }
@@ -1414,7 +1451,7 @@
   }
 
   // ---------- Chess lobby (VS a Mii, or online) ----------
-  // your colour online: a random Mii's shirt, or a Mii file's favourite colour
+  // your color online: a random Mii's shirt, or a Mii file's favorite color
   function favColorOf(rec) {
     if (rec.look && rec.look.shirt) return rec.look.shirt;
     const fav = (infos.get(rec.id) || {}).favoriteColor;
@@ -1450,7 +1487,7 @@
   }
   progress.on("townlevel", async (level, news) => {
     toast("🏙️ The town reached level " + level + "!");
-    await ask("🏙️ Town level " + level + "!", "Your town is growing! Every Mii got 10 coins." + (news.length ? " New:" : ""),
+    await ask("🏙️ Town level " + level + "!", "Your town is growing! Every Mii got " + progress.levelCoins(level) + " coins." + (news.length ? " New:" : ""),
       news.map((u) => ({ label: u.icon + " " + escapeHtml(u.text), value: true, kind: "plain" })).concat([{ label: "<b>Yay!</b>", value: true, kind: "primary" }]));
   });
 
@@ -1531,7 +1568,7 @@
     card.className = "choice-card big town-levels";
     const close = () => back.remove();
     const need = progress.xpNeeded(st.level);
-    card.innerHTML = "<h3>🏙️ Town level " + st.level + "</h3><p>Grant your Miis' wishes (and finish daily goals) to earn town XP. Every new level gives each Mii 🪙 10 coins, and some unlock new things.</p>" +
+    card.innerHTML = "<h3>🏙️ Town level " + st.level + "</h3><p>Grant your Miis' wishes (and finish daily goals) to earn town XP. Every new level gives each Mii coins (10 × the level, up to 100), and some unlock new things.</p>" +
       '<div class="tl-now"><div class="xp"><div class="xp-fill" style="width:' + Math.min(100, (st.xp / need) * 100) + '%"></div></div><small>' + st.xp + " / " + need + " XP to level " + (st.level + 1) + "</small></div>";
     const list = document.createElement("div");
     list.className = "tl-list";
@@ -1539,7 +1576,7 @@
       const got = lv <= st.level, next = lv === st.level + 1;
       const row = document.createElement("div");
       row.className = "tl-row" + (got ? " got" : "") + (next ? " next" : "");
-      const items = U.filter((u) => u.level === lv).map((u) => "<li>" + u.icon + " " + escapeHtml(u.text) + "</li>").join("") + "<li>🪙 10 coins for every Mii</li>";
+      const items = U.filter((u) => u.level === lv).map((u) => "<li>" + u.icon + " " + escapeHtml(u.text) + "</li>").join("") + "<li>🪙 " + progress.levelCoins(lv) + " coins for every Mii</li>";
       row.innerHTML = '<div class="tl-badge">' + (got ? "✓" : next ? "▶" : "🔒") + '</div><div class="tl-body"><b>Level ' + lv + (next ? " · next" : got ? "" : "") + "</b><ul>" + items + "</ul></div>";
       list.appendChild(row);
     }
@@ -1557,6 +1594,25 @@
   }
 
   // ---------- sticker book ----------
+  // a hint for a sticker you don't have yet (without giving it all away)
+  function stickerHint(st) {
+    const id = st.id;
+    if (id.startsWith("food-")) return "Feed a Mii something it hasn't eaten yet. Keep an eye on the daily shop.";
+    if (id.startsWith("furn-")) return "Buy something new for a Mii's home. Some things only show up at higher town levels.";
+    if (id.startsWith("place-")) return "Go and look somewhere you haven't been yet.";
+    if (id.startsWith("w-")) return "Keep playing: the weather changes from day to day.";
+    if (id.startsWith("f-")) return "Some days are festival days. Be there when it happens!";
+    if (id.startsWith("bf") || id.startsWith("couple")) return "Help your Miis get closer: let them chat, grant their wishes...";
+    if (id === "madeup") return "When two Miis fall out, help them patch things up.";
+    if (id === "rival") return "Sometimes Miis who keep arguing never quite get along...";
+    if (id.startsWith("g-")) return "Play mini-games with your Miis.";
+    if (id.startsWith("t-wish")) return "Grant your Miis' wishes.";
+    if (id.startsWith("t-lv")) return "Grow your town by granting wishes and finishing daily goals.";
+    if (id.startsWith("t-mii")) return "Help a Mii level up by keeping it happy.";
+    if (id.startsWith("t-daily")) return "Finish your daily goals (📅 Daily).";
+    // anything else: just the vaguest version of what it is
+    return "Something to do with: " + String(st.desc).split(" ").slice(0, 3).join(" ") + "…";
+  }
   function openBook() {
     const pages = progress.stickerPages();
     let page = 0;
@@ -1582,7 +1638,7 @@
       for (const st of pages[page].stickers) {
         const d = document.createElement("div");
         d.className = "sticker" + (st.got ? " got" : "");
-        d.title = st.got ? st.desc : "??? — " + st.desc;
+        d.dataset.tip = st.got ? "✔ " + st.desc : "Hint: " + stickerHint(st);
         d.innerHTML = "<span>" + (st.got ? st.icon : "❔") + "</span><small>" + escapeHtml(st.got ? st.name : "???") + "</small>";
         grid.appendChild(d);
       }
@@ -1590,7 +1646,14 @@
       ok.className = "choice-btn plain";
       ok.textContent = "Close";
       ok.addEventListener("click", close);
-      card.append(tabsEl, grid, ok);
+      // hover (or tap) a sticker: how you got it, or a hint
+      const tip = document.createElement("div");
+      tip.className = "sticker-tip";
+      tip.textContent = "Hover over a sticker to see how to get it.";
+      const showTip = (e) => { const sd = e.target.closest(".sticker"); if (sd) { tip.textContent = sd.dataset.tip; tip.classList.toggle("got", sd.classList.contains("got")); } };
+      grid.addEventListener("mouseover", showTip);
+      grid.addEventListener("click", showTip);
+      card.append(tabsEl, grid, tip, ok);
     }
     draw();
     back.appendChild(card);
@@ -1682,4 +1745,5 @@
 
   window.hub = hub; // handy for poking around in the browser console
   window.miiApp = { records, openPaintball, visit, sendHome, sendTo, inviteOut, moveAway, forgetMii, loadFiles, leaveHome, town, get prog() { return progress; } }; // for tests
+  splash.done();
 })();

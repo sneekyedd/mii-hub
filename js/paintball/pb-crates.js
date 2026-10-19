@@ -215,7 +215,7 @@
     const pat = skin.pattern;
     g.globalAlpha = 0.85;
     if (pat === "solid") {
-      // nothing: the base colour, with a sheen below
+      // nothing: the base color, with a sheen below
     } else if (/redline|lightning|asiimov|circuit|neon|vulcan|noir|bloodsport/.test(pat)) {
       for (let i = 0; i < 7; i++) {
         g.fillStyle = c[1 + (i % 2)];
@@ -670,11 +670,11 @@
         stage.append(reel, lbl);
         const CW = 150, GAP = 6, STRIDE = CW + GAP;
         const vw = reel.clientWidth || 900;
-        const centre = vw / 2;
-        // stop somewhere inside the winning card (not dead centre), like CS
+        const center = vw / 2;
+        // stop somewhere inside the winning card (not dead center), like CS
         const inCard = CW * (0.08 + Math.random() * 0.84);
-        const startX = centre - STRIDE * 2.5;
-        const endX = centre - (WIN * STRIDE + inCard);
+        const startX = center - STRIDE * 2.5;
+        const endX = center - (WIN * STRIDE + inCard);
         const T = (api.TIMING.spin + (Math.random() - 0.5) * 0.5) * 1000;
         const t0 = performance.now();
         let lastIdx = -1;
@@ -685,7 +685,7 @@
           const t = Math.min(1, (now - t0) / T);
           const xNow = startX + (endX - startX) * ease(t);
           strip.style.transform = "translate3d(" + xNow.toFixed(2) + "px,0,0)";
-          const idx = Math.floor((centre - xNow + GAP / 2) / STRIDE);
+          const idx = Math.floor((center - xNow + GAP / 2) / STRIDE);
           if (idx !== lastIdx) { if (lastIdx >= 0) play("crateTick", { vol: 0.55 }); lastIdx = idx; }
           if (t < 1) { raf = requestAnimationFrame(step); return; }
           // landed

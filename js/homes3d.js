@@ -480,7 +480,7 @@
       rentSigns.setMatrixAt(u.i, tmpO.matrix);
       rentSigns.instanceMatrix.needsUpdate = true;
     }
-    // porch lamps: one shape drawn 12 times, coloured on/off
+    // porch lamps: one shape drawn 12 times, colored on/off
     const lamps = new THREE.InstancedMesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshBasicMaterial({ toneMapped: false }), lampSpots.length);
     const lampOn = new THREE.Color(0xffe08a), lampOff = new THREE.Color(0x9aa3b0);
     lampSpots.forEach((q, i) => { tmpO.position.set(q.x, q.y, q.z); tmpO.rotation.set(0, 0, 0); tmpO.scale.setScalar(1); tmpO.updateMatrix(); lamps.setMatrixAt(i, tmpO.matrix); lamps.setColorAt(i, lampOff); });
@@ -508,7 +508,7 @@
     }
 
     // ---------- courtyard things to do ----------
-    // mailboxes (one little box per apartment, in each apartment's colour)
+    // mailboxes (one little box per apartment, in each apartment's color)
     const MB = { x: -16.7, z: -7.0 };
     const mb = group(root, MB.x, 0, MB.z, PI / 2);
     for (const sx of [-1.0, 1.0]) block(mb, 0x8f96a3, sx, 0.4, 0, 0.12, 0.8, 0.12, 0.03);
@@ -1015,12 +1015,12 @@
         { x: FB.x, z: FB.z + FB.r + 0.75, yaw: PI, emoji: "🌷", activity: "smelling the flowers",
           lines: ["Mmm, lovely!", "Achoo!", "Who planted these? So pretty!"] },
         { x: BR.x - 1.55, z: BR.z, yaw: PI / 2, emoji: "🚲", activity: "checking their bike",
-          lines: ["Time for a ride?", "Flat tyre again...", "Ding ding!"] },
+          lines: ["Time for a ride?", "Flat tire again...", "Ding ding!"] },
         { x: KP.x, z: KP.z + KP.rz + 0.85, yaw: PI, emoji: "🐟", activity: "feeding the koi",
           lines: ["Here, fishy fishy!", "That one's so big!", "Blub blub!"] },
       ],
       lines: [
-        "Home sweet home!", "I love living here!", "Hi, neighbour!", "Who's cooking? Smells great!",
+        "Home sweet home!", "I love living here!", "Hi, neighbor!", "Who's cooking? Smells great!",
         "Did you get your mail?", "Nice weather for laundry!", "The koi look hungry.", "I should water my plants.",
         "Let's have a BBQ!", "My apartment is the best one!",
       ],
@@ -1248,7 +1248,7 @@
     ctx.restore();
   }
 
-  // A rectangle of wall/floor whose picture lines up with its neighbours:
+  // A rectangle of wall/floor whose picture lines up with its neighbors:
   // (u0, v0) = where its bottom-left corner is on the wall, in units.
   function patchGeo(w, h, u0, v0) {
     const g = new THREE.PlaneGeometry(w, h);
@@ -1390,7 +1390,8 @@
       },
     },
     "bed-hammock": {
-      obs: [{ cx: 0, cz: 0.05, w: 1.7, d: 3.3 }], spot: { lx: 1.85, lz: 0.4, yaw: -PI / 2 }, lie: { lx: 0, lz: 0.05, h: 1.0, yaw: PI },
+      // (a gentle sag, and the Mii lies just on top of it: head and feet stay above the cloth)
+      obs: [{ cx: 0, cz: 0.05, w: 1.7, d: 3.3 }], spot: { lx: 1.85, lz: 0.4, yaw: -PI / 2 }, lie: { lx: 0, lz: 0.05, h: 1.07, yaw: PI },
       build(g) {
         const wood = toon(0xa47a48);
         for (const z of [-1.45, 1.55]) {
@@ -1407,7 +1408,7 @@
         const pos = [], uvs = [], idx = [];
         for (let i = 0; i <= nu; i++) for (let j = 0; j <= nv; j++) {
           const a = i / nu, b = j / nv, zt = a * 2 - 1, vt = b * 2 - 1;
-          pos.push(vt * 0.6, 0.95 + 0.55 * zt * zt + 0.12 * vt * vt, -1.15 + a * 2.4);
+          pos.push(vt * 0.6, 0.95 + 0.34 * zt * zt + 0.12 * vt * vt, -1.15 + a * 2.4);
           uvs.push(b, a);
         }
         for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
@@ -1421,7 +1422,7 @@
         put(g, geo, toon(0xffffff, { map: stripes, side: THREE.DoubleSide }), {});
         // ropes from the ends of the cloth up to the posts
         for (const [z, zz] of [[-1.15, -1.45], [1.25, 1.55]]) {
-          const y = 1.55, yy = 1.9;
+          const y = 1.32, yy = 1.9;
           cylinder(g, 0xf4efe4, 0, (y + yy) / 2, (z + zz) / 2, 0.025, Math.hypot(zz - z, yy - y), { rx: Math.atan2(zz - z, yy - y) });
         }
         ball(g, 0xffffff, 0, 1.25, -0.85, 0.24, { sx: 1.5, sy: 0.45 });
@@ -2334,14 +2335,30 @@
         plane(g, 1.55, 0.15, toon(0xffffff, { map: net, transparent: true, side: THREE.DoubleSide }), { y: 0.88, ry: PI / 2 });
         block(g, 0xffffff, 0, 0.96, 0, 0.02, 0.02, 1.55, 0.005);
         for (const s of [-1, 1]) block(g, 0x3a3f4a, 0, 0.88, s * 0.78, 0.04, 0.17, 0.04, 0.01);
-        // a bat on the table and a ball bouncing back and forth
-        cylinder(g, 0xe8424f, 0.85, 0.82, 0.35, 0.14, 0.025);
-        block(g, 0xc98b4a, 0.85, 0.82, 0.55, 0.05, 0.03, 0.18, 0.01);
+        // two floating paddles rallying a ball: it arcs over the net, bounces once on the far side, and gets hit back
+        const pads = [-1, 1].map((s) => ({
+          s, face: dynamic(cylinder(g, s < 0 ? 0xe8424f : 0x3a6bd8, s * 1.28, 0.97, 0, 0.13, 0.025, { rz: PI / 2 })),
+          grip: dynamic(block(g, 0xc98b4a, s * 1.3, 0.8, 0, 0.03, 0.18, 0.05, 0.01)),
+        }));
         const pb = dynamic(ball(g, 0xffffff, 0, 1, 0, 0.04, { shadow: false }));
+        const LAND = 0.78; // where the ball bounces (as part of the way across)
+        const zAt = (n) => Math.sin(n * 2.4) * 0.38; // each shot goes somewhere a bit different
         ctx.anim.push((t) => {
-          const k = (t * 0.45) % 2, d = k < 1 ? k : 2 - k; // 0..1..0
-          const x = -1.15 + d * 2.3, b = (d * 2) % 1;
-          pb.position.set(x, 0.85 + Math.sin(b * PI) * 0.35, Math.sin(t * 0.7) * 0.35);
+          const k = t * 0.45, n = Math.floor(k), p = k - n, dir = n % 2 ? -1 : 1;
+          const x = dir * (-1.15 + p * 2.3);
+          const arc = (u, y0, y1, h) => y0 + (y1 - y0) * u + 4 * h * u * (1 - u);
+          const y = p < LAND ? arc(p / LAND, 0.95, 0.83, 0.28) : arc((p - LAND) / (1 - LAND), 0.83, 0.95, 0.06);
+          const z = zAt(n) + (zAt(n + 1) - zAt(n)) * p;
+          pb.position.set(x, y, z);
+          // each paddle drifts to meet the ball and swings as it hits
+          for (const pd of pads) {
+            const incoming = pd.s === dir; // the ball is heading to this side
+            const tz = incoming ? zAt(n + 1) : zAt(n);
+            const near = incoming ? Math.max(0, 1 - Math.abs(1 - p) * 6) : Math.max(0, 1 - p * 6);
+            pd.face.position.set(pd.s * (1.28 - near * 0.08), 0.97, tz);
+            pd.face.rotation.set(0, 0, PI / 2 + pd.s * near * 0.5);
+            pd.grip.position.set(pd.s * (1.3 - near * 0.08), 0.8, tz);
+          }
         });
       },
     },
@@ -2429,22 +2446,39 @@
           block(g, 0xe0a868, x, 0.34, -0.02, 0.86, 0.36, 0.03, 0.02);
           block(g, 0x8f96a3, x, 0.42, 0.0, 0.2, 0.025, 0.02, 0.01);
         }
-        block(g, 0x2f3542, 0, 0.6, -0.38, 0.42, 0.04, 0.26, 0.015);
-        block(g, 0x2f3542, 0, 0.72, -0.42, 0.08, 0.22, 0.05, 0.01);
-        block(g, 0x1e1e24, 0, 1.38, -0.42, 1.9, 1.1, 0.06, 0.03);
-        const shows = [tvShow(1), gameScreen(), tvShow(2), tvShow(0)];
-        const scr = dynamic(plane(g, 1.8, 1.0, basic(shows[0]), { y: 1.38, z: -0.387 }));
+        // a big TV mounted on the wall above the unit, playing a movie (widescreen, with black bars)
+        block(g, 0x3a3f4a, 0, 1.62, -0.6, 0.5, 0.36, 0.05, 0.01); // wall bracket
+        block(g, 0x1e1e24, 0, 1.62, -0.55, 2.5, 1.45, 0.06, 0.03);
+        const movie = canvasTexture(512, 256, (c, w, h) => {
+          // a road movie at sunset: sky, sun, hills, a road and a little car, letterboxed
+          const sky = c.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, "#2b2a63"); sky.addColorStop(0.45, "#ff7a59"); sky.addColorStop(0.7, "#ffd27a");
+          c.fillStyle = sky; c.fillRect(0, 0, w, h);
+          c.fillStyle = "#fff2b0"; c.beginPath(); c.arc(w * 0.3, h * 0.58, 34, 0, TAU); c.fill();
+          c.fillStyle = "#6a3a6b"; c.beginPath(); c.moveTo(0, h * 0.7);
+          for (let x = 0; x <= w; x += 32) c.lineTo(x, h * 0.62 + Math.sin(x * 0.02) * 14 + Math.sin(x * 0.051) * 8);
+          c.lineTo(w, h); c.lineTo(0, h); c.fill();
+          c.fillStyle = "#2c2038"; c.fillRect(0, h * 0.74, w, h * 0.12);
+          c.fillStyle = "#ffd27a"; for (let x = 8; x < w; x += 40) c.fillRect(x, h * 0.795, 20, 3);
+          c.fillStyle = "#111"; c.fillRect(0, 0, w, h * 0.12); c.fillRect(0, h * 0.88, w, h * 0.12);
+        }, [1, 1]);
+        movie.wrapS = THREE.RepeatWrapping;
+        const car = canvasTexture(64, 32, (c) => {
+          c.fillStyle = "#e8424f"; c.fillRect(6, 12, 52, 12); c.fillRect(18, 4, 26, 10);
+          c.fillStyle = "#9fd8ff"; c.fillRect(21, 6, 9, 7); c.fillRect(33, 6, 9, 7);
+          c.fillStyle = "#111"; c.beginPath(); c.arc(17, 25, 6, 0, TAU); c.arc(47, 25, 6, 0, TAU); c.fill();
+        }, [1, 1]);
+        const scr = dynamic(plane(g, 2.4, 1.35, basic(movie), { y: 1.62, z: -0.517 }));
+        const carMesh = dynamic(plane(g, 0.36, 0.18, basic(car, { transparent: true }), { x: -0.2, y: 1.26, z: -0.512 }));
         block(g, 0x2f3542, 0, 0.62, -0.12, 0.9, 0.08, 0.12, 0.03); // soundbar
         ball(g, glow(0x5cff8a, 1), 0.38, 0.62, -0.06, 0.012);
         // a bucket of popcorn and the remote
         put(g, G.taper(0.11, 0.08), toon(0xe8424f), { x: 0.72, y: 0.67, z: -0.25, sy: 0.18 });
         for (let i = 0; i < 7; i++) ball(g, 0xfff6d6, 0.72 + Math.cos(i * 2.4) * 0.06, 0.78 + (i % 2) * 0.03, -0.25 + Math.sin(i * 2.4) * 0.06, 0.04);
         block(g, 0x3a3f4a, -0.7, 0.6, -0.2, 0.06, 0.03, 0.2, 0.01);
-        let show = 0, next = 4;
         ctx.anim.push((t) => {
-          if (t > next) { show = (show + 1) % shows.length; scr.material.map = shows[show]; next = t + 4 + Math.random() * 3; }
-          if (show === 1) shows[1].offset.x = (t * 0.12) % 1;
-          scr.material.color.setScalar(0.92 + Math.sin(t * 7) * 0.04);
+          movie.offset.x = (t * 0.03) % 1; // the scenery rolls past the car
+          carMesh.position.y = 1.26 + Math.abs(Math.sin(t * 9)) * 0.008; // a bumpy road
+          scr.material.color.setScalar(0.94 + Math.sin(t * 5) * 0.03);
         });
       },
     },
@@ -2530,7 +2564,7 @@
       at: { x: 0.3, z: 1.0 }, obs: [], spot: { wx: -1.5, wz: 2.75, toward: true },
       build(g, ctx) {
         // a mirror ball on a long chain (the chain must stay the first part: the
-        // little rooms in the apartments take it off), turning, with coloured spots
+        // little rooms in the apartments take it off), turning, with colored spots
         const cy = ROOM.h - 1.2;
         cylinder(g, 0xb8bcc8, 0, cy + 6, 0, 0.02, 12, { shadow: false });
         cylinder(g, 0xb8bcc8, 0, cy - 0.02, 0, 0.06, 0.1, { shadow: false });
@@ -3021,8 +3055,8 @@
     return { group: g, spot };
   }
 
-  // Joins all the plain-coloured parts of a little room into ONE shape that keeps
-  // their colours (so a whole room is only a few draw calls), then merges the rest.
+  // Joins all the plain-colored parts of a little room into ONE shape that keeps
+  // their colors (so a whole room is only a few draw calls), then merges the rest.
   let flatPaint = null;
   function bakeFlat(g) {
     if (W3D.debug && W3D.debug.noMerge) return;
@@ -3034,8 +3068,8 @@
     paintTogether(g);
     mergeStatic(g);
   }
-  // Joins the plain-coloured shapes under c (but not inside its moving parts)
-  // into one shape that keeps their colours.
+  // Joins the plain-colored shapes under c (but not inside its moving parts)
+  // into one shape that keeps their colors.
   const tmpInv = new THREE.Matrix4(), tmpM = new THREE.Matrix4();
   function paintTogether(c) {
     if (!flatPaint) flatPaint = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: toon(0xffffff).gradientMap, vertexColors: true });
@@ -3431,7 +3465,7 @@
       playerSpot: { x: 0, z: 3.1 },
       lines: [
         "Home sweet home!", "I love my room!", "Make yourself at home!", "Want some tea?",
-        "I should tidy up a bit...", "It's so cosy in here.", "Welcome to " + (name === "I" ? "my" : name + "'s") + " place!",
+        "I should tidy up a bit...", "It's so cozy in here.", "Welcome to " + (name === "I" ? "my" : name + "'s") + " place!",
         "La la la~", "What should I do today?", "Shoes off, please!",
       ],
       update(t, camera) {

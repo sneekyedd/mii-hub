@@ -59,7 +59,7 @@
     { id: "sofa-rocking", slot: "sofa", name: "Rocking chair", icon: "🪑", price: 25, tags: ["cozy", "nature"],
       use: { activity: "rocking in the chair", emoji: "🪑", sit: true, lines: ["Back and forth...", "Just like Grandma's.", "Ahh, peaceful."] } },
     { id: "sofa-egg", slot: "sofa", name: "Hanging egg chair", icon: "🥚", price: 48, tags: ["fancy", "cute"],
-      use: { activity: "curling up in the egg chair", emoji: "🥚", sit: true, lines: ["My cosy little nest!", "I could stay here all day.", "Hatching a plan..."] } },
+      use: { activity: "curling up in the egg chair", emoji: "🥚", sit: true, lines: ["My cozy little nest!", "I could stay here all day.", "Hatching a plan..."] } },
     { id: "sofa-gaming", slot: "sofa", name: "Gaming chair", icon: "🎮", price: 42, tags: ["techy", "sporty"],
       use: { activity: "lounging in the gaming chair", emoji: "🎮", sit: true, lines: ["Pro gamer mode: ON.", "So much lumbar support!", "GG, everyone."] } },
 
@@ -71,11 +71,11 @@
     { id: "table-desk", slot: "table", name: "Computer desk", icon: "🖥️", price: 40, tags: ["techy"],
       use: { activity: "using the computer", emoji: "🖥️", arms: "type", lines: ["*click clack*", "Just one more video...", "Who wrote this code?!"] } },
     { id: "table-tea", slot: "table", name: "Fancy tea table", icon: "🫖", price: 45, tags: ["fancy", "cozy"],
-      use: { activity: "having tea", emoji: "🫖", lines: ["Tea, darling?", "Pinkies up!", "Mmm, Earl Grey."] } },
+      use: { activity: "having tea", emoji: "🫖", lines: ["Tea, darling?", "Pinkies up!", "Mmm, Earl Gray."] } },
     { id: "table-kitchen", slot: "table", name: "Kitchen island", icon: "🍳", price: 50, tags: ["cozy", "fancy"],
       use: { activity: "cooking", emoji: "🍳", arms: "type", lines: ["Something smells good!", "A pinch of salt...", "Don't burn it, don't burn it!"] } },
     { id: "table-pingpong", slot: "table", name: "Ping-pong table", icon: "🏓", price: 44, tags: ["sporty", "silly"],
-      use: { activity: "practising ping-pong", emoji: "🏓", arms: "punch", lines: ["Ping! Pong!", "Smash!", "My serve!"] } },
+      use: { activity: "practicing ping-pong", emoji: "🏓", arms: "punch", lines: ["Ping! Pong!", "Smash!", "My serve!"] } },
 
     // fun
     { id: "tv-none", slot: "tv", name: "Radio", icon: "📻", price: 0, tags: [], starter: true,
@@ -87,7 +87,7 @@
     { id: "tv-treadmill", slot: "tv", name: "Treadmill", icon: "🏃", price: 45, tags: ["sporty"],
       use: { activity: "running on the treadmill", emoji: "🏃", run: true, lines: ["Feel the burn!", "*huff puff*", "Ten more minutes!"] } },
     { id: "tv-piano", slot: "tv", name: "Piano", icon: "🎹", price: 55, tags: ["fancy"],
-      use: { activity: "playing the piano", emoji: "🎹", arms: "type", lines: ["♪ Plink plonk ♪", "Chopsticks, anyone?", "I've been practising!"] } },
+      use: { activity: "playing the piano", emoji: "🎹", arms: "type", lines: ["♪ Plink plonk ♪", "Chopsticks, anyone?", "I've been practicing!"] } },
     { id: "tv-arcade", slot: "tv", name: "Arcade machine", icon: "🕹️", price: 58, tags: ["techy", "silly"],
       use: { activity: "playing the arcade machine", emoji: "🕹️", arms: "type", lines: ["New high score!", "Insert coin!", "Pew pew pew!"] } },
     { id: "tv-bookshelf", slot: "tv", name: "Bookshelf", icon: "📚", price: 28, tags: ["cozy", "fancy"],
@@ -162,7 +162,7 @@
     { id: "special-robot", slot: "special", name: "Robot buddy", icon: "🤖", price: 60, tags: ["techy", "silly"],
       use: { activity: "chatting with the robot", emoji: "🤖", arms: "up", lines: ["BEEP BOOP!", "High five, buddy!", "Do robots dream?"] } },
 
-    // wallpaper and floor (colours used by homes3d.js)
+    // wallpaper and floor (colors used by homes3d.js)
     { id: "wall-cream", slot: "wallpaper", name: "Cream", icon: "🟨", price: 0, tags: [], starter: true, color: "#f6ead2", accent: "#e8d6b2" },
     { id: "wall-mint", slot: "wallpaper", name: "Mint stripes", icon: "🟩", price: 10, tags: ["cute", "nature"], color: "#cdeedd", accent: "#ade0c6", pattern: "stripes" },
     { id: "wall-pink", slot: "wallpaper", name: "Pink hearts", icon: "🩷", price: 12, tags: ["cute"], color: "#ffd9e6", accent: "#ffb3cb", pattern: "hearts" },
@@ -228,7 +228,7 @@
     return h >>> 0;
   }
 
-  // Every Mii has a favourite food and one it can't stand.
+  // Every Mii has a favorite food and one it can't stand.
   function randomTastes(record) {
     const h = hash(String(record.id || record.name || "mii"));
     const fav = FOODS[h % FOODS.length].id;
@@ -279,7 +279,7 @@
     const grumpy = p.kindness <= 35, shy = p.social <= 35, loud = p.energy >= 70;
     const n = thing.name.toLowerCase();
     if (kind === "food") {
-      if (op === "love") return pick(loud ? ["THIS IS MY FAVOURITE!!!", "NO WAY! " + thing.name.toUpperCase() + "!!"] : ["My favourite! How did you know?!", "Mmm! " + thing.name + "! I love it!"]);
+      if (op === "love") return pick(loud ? ["THIS IS MY FAVOURITE!!!", "NO WAY! " + thing.name.toUpperCase() + "!!"] : ["My favorite! How did you know?!", "Mmm! " + thing.name + "! I love it!"]);
       if (op === "like") return pick(["Yum! Thank you!", "Mmm, tasty!", grumpy ? "Not bad. ...Thanks." : "This hits the spot!"]);
       if (op === "okay") return pick(["Thanks, I guess I'll eat it.", "It's food!", "Okay... *munch*"]);
       return pick(grumpy ? ["Blech! Who eats this?!", "No. Just no."] : ["Um... I don't really like " + n + "...", "Blech! ...Sorry!"]);

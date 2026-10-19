@@ -7,6 +7,39 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
+  <!-- the splash screen while Mii Hub starts up -->
+  <div id="splash" role="progressbar" aria-label="Loading Mii Hub" aria-valuemin="0" aria-valuemax="100">
+    <div class="sp-inner">
+      <div class="sp-logo"><span class="sp-bubble">🙂</span><span class="sp-bubble b2">😄</span><span class="sp-bubble b3">😊</span></div>
+      <h1 class="sp-title">Mii Hub</h1>
+      <div class="sp-bar"><div class="sp-fill" id="splashFill"></div></div>
+      <div class="sp-text" id="splashText">Loading…</div>
+    </div>
+  </div>
+  <script>
+    // the loading bar (app.js moves it along, then hides the splash)
+    window.MiiSplash = (function () {
+      var shown = 4, fill = document.getElementById("splashFill"), text = document.getElementById("splashText");
+      function set(p, t) { shown = Math.max(shown, Math.min(100, p)); fill.style.width = shown + "%"; document.getElementById("splash").setAttribute("aria-valuenow", Math.round(shown)); if (t) text.textContent = t; }
+      // creep forward while the big files load, so it never looks stuck
+      var creep = setInterval(function () { if (shown < 40) set(shown + 0.6); }, 120);
+      set(4, "Loading the island…");
+      var finished = false;
+      // (never get stuck on the splash: if something goes wrong, show the page anyway)
+      setTimeout(function () { if (!finished) window.MiiSplash.done(); }, 90000);
+      window.addEventListener("error", function () { setTimeout(function () { if (!finished) window.MiiSplash.done(); }, 1500); });
+      return {
+        set: set,
+        done: function () {
+          if (finished) return;
+          finished = true;
+          clearInterval(creep); set(100, "Ready!");
+          var s = document.getElementById("splash");
+          setTimeout(function () { s.classList.add("gone"); setTimeout(function () { s.remove(); }, 600); }, 250);
+        },
+      };
+    })();
+  </script>
   <header class="topbar">
     <h1>Mii Hub</h1>
     <nav class="scene-tabs" id="sceneTabs" aria-label="Choose a place"></nav>
@@ -46,11 +79,6 @@
           <button class="link-btn" id="clearBtn">Remove all</button>
         </div>
         <ul class="roster" id="roster"></ul>
-      </div>
-
-      <div class="panel">
-        <h2>Friendships</h2>
-        <ul class="friends" id="friends"></ul>
       </div>
 
       <div class="panel">

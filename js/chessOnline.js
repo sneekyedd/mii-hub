@@ -111,6 +111,10 @@
 .cho-msg{font-size:.85rem;font-weight:700;min-height:1.2em}
 .cho-msg.err{color:var(--danger)}
 .cho-game{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:14px;align-items:start}
+.cl-card.cl-playing{width:min(1060px,100%)}
+.cl-playing .cho-game{grid-template-columns:minmax(0,1fr) 250px;justify-items:center}
+.cl-playing .cho-boardwrap{width:min(100%,calc(100vh - 250px));min-width:280px}
+.cl-playing .cho-side{justify-self:stretch}
 @media (max-width:760px){.cho-game{grid-template-columns:1fr}}
 .cho-boardwrap{display:flex;flex-direction:column;gap:8px;min-width:0}
 .cho-player{display:flex;align-items:center;gap:8px;font-weight:800}
@@ -179,6 +183,7 @@
       busyNote.textContent = busy ? busy + " game" + (busy > 1 ? "s" : "") + " being played right now." : "";
     }
     function buildLobby() {
+      setPlaying(false);
       stopBoard();
       gameEls = null;
       body.innerHTML = "";
@@ -213,15 +218,18 @@
     }
 
     // ---------- your game ----------
-    function myColour() { return room && room.white && room.white.id === myId ? "w" : room && room.black && room.black.id === myId ? "b" : null; }
+    function myColor() { return room && room.white && room.white.id === myId ? "w" : room && room.black && room.black.id === myId ? "b" : null; }
     function stopBoard() {
       clearInterval(clockTimer); clockTimer = null;
       if (board) { board.destroy(); board = null; boardOrient = null; }
       lastMoves = -1;
     }
     let gameEls = null;
+    // while you're in a game, the chess window grows so the board is big
+    const setPlaying = (on) => { const card = container.closest(".cl-card"); if (card) card.classList.toggle("cl-playing", on); };
     function renderGame() {
-      const me = myColour();
+      setPlaying(!!room && room.state !== "waiting"); // (once your opponent is here)
+      const me = myColor();
       if (!gameEls || !body.contains(gameEls.root)) {
         stopBoard();
         body.innerHTML = "";
@@ -377,6 +385,7 @@
     function destroy() {
       if (destroyed) return;
       destroyed = true;
+      setPlaying(false);
       stopBoard();
       if (ws) { try { ws.close(); } catch (e) { /* closed */ } }
     }

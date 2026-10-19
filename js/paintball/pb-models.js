@@ -11,7 +11,7 @@
  *   - Mii arms: plain round sleeves with a ball for a hand (the grip goes through it). In first
  *     person both hands hold the guns (left hand under the AK's handguard / the AWP's forend,
  *     cupping the right hand on the Deagle); the knife stays one-handed.
- * Everything is built from merged, vertex-coloured BufferGeometry (few draw calls), no assets.
+ * Everything is built from merged, vertex-colored BufferGeometry (few draw calls), no assets.
  * Classic script: uses the global THREE (r147) and exposes window.PBModels.
  *
  * Weapon skins (PBSkins, see pb-skins.js): pattern textures, skin materials and preview pictures
@@ -39,7 +39,7 @@
     return new THREE.Matrix4().compose(new THREE.Vector3(px || 0, py || 0, pz || 0), _q.clone(), new THREE.Vector3(sx, sy, sz));
   }
 
-  function lin(hex) { // configurable sRGB hex -> linear working colour (renderer outputs sRGB)
+  function lin(hex) { // configurable sRGB hex -> linear working color (renderer outputs sRGB)
     var c = new THREE.Color(hex);
     if (c.convertSRGBToLinear) c.convertSRGBToLinear();
     return c;
@@ -47,9 +47,9 @@
   function shade(c, k) { return c.clone().multiplyScalar(k); }
   function mix(a, b, t) { return a.clone().lerp(b, t); }
 
-  // Builder: collects geometry parts (with a vertex colour each) and merges them into one geometry.
+  // Builder: collects geometry parts (with a vertex color each) and merges them into one geometry.
   // Skins: parts added while `b.skin` is 1 get skinMask = 1 (they wear the weapon skin; the rest keep
-  // their vertex colour), and when `b.uvp` is set every part gets box-projected UVs in gun space
+  // their vertex color), and when `b.uvp` is set every part gets box-projected UVs in gun space
   // (side faces: u along the gun, v up; top/bottom faces: v across the width), so the pattern lines
   // up across all the merged parts. `b.pivot` = where a withOffset() builder's origin sits in gun space.
   function Builder() { this.parts = []; this.off = new THREE.Matrix4(); this.pivot = null; this.skin = 0; this.uvp = null; }
@@ -146,7 +146,7 @@
     s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
     return s;
   }
-  // Rounded box: w (x) * h (y) * d (z), corner radius cr in xy, bevel b on the z faces. Centred.
+  // Rounded box: w (x) * h (y) * d (z), corner radius cr in xy, bevel b on the z faces. Centerd.
   function rbox(w, h, d, cr, b) {
     b = b === undefined ? Math.min(w, h, d) * 0.12 : b;
     var s = roundRectShape(Math.max(w - 2 * b, 1e-4), Math.max(h - 2 * b, 1e-4), Math.max(cr - b, 0));
@@ -196,7 +196,7 @@
     for (i = 1; i < pts.length; i++) q.lineTo(pts[i].x, pts[i].y);
     return q;
   }
-  function cylZ(r1, r2, len, seg, open) { // along z, centred
+  function cylZ(r1, r2, len, seg, open) { // along z, centerd
     var g = new THREE.CylinderGeometry(r2, r1, len, seg || 16, 1, !!open);
     g.rotateX(PI / 2); // top (r2) goes to +z
     return g;
@@ -251,7 +251,7 @@
   }
 
   // ---------------------------------------------------------------------------------------------
-  // AK paintball marker geometry.  Gun space: origin = top of the pistol grip (centre), barrel -Z.
+  // AK paintball marker geometry.  Gun space: origin = top of the pistol grip (center), barrel -Z.
   // ---------------------------------------------------------------------------------------------
   var AK = {
     magPivot: new THREE.Vector3(0, -0.006, -0.142),
@@ -264,14 +264,14 @@
     return {
       accent: A, accentD: shade(A, 0.55), accentL: mix(A, new THREE.Color(1, 1, 1), 0.25),
       dark: new THREE.Color(0.035, 0.037, 0.042), dark2: new THREE.Color(0.075, 0.078, 0.085),
-      grey: new THREE.Color(0.22, 0.23, 0.25), steel: new THREE.Color(0.6, 0.62, 0.65),
+      gray: new THREE.Color(0.22, 0.23, 0.25), steel: new THREE.Color(0.6, 0.62, 0.65),
       white: new THREE.Color(0.9, 0.9, 0.9), black: new THREE.Color(0.01, 0.01, 0.012),
       ball: mix(A, new THREE.Color(1, 0.85, 0.1), 0.0),
       lens: new THREE.Color(0.1, 0.28, 0.5), glint: new THREE.Color(1, 1, 1)
     };
   }
 
-  // Banana magazine curve (gun space): centreline c(s), s = 0 (top, in the magwell) .. 1 (floor plate).
+  // Banana magazine curve (gun space): centerline c(s), s = 0 (top, in the magwell) .. 1 (floor plate).
   // The mag sweeps forward like a real AK mag; its edges are offset along the curve's normal so the
   // floor plate ends up square to the mag.
   function akMagFrame(s) {
@@ -292,10 +292,10 @@
     var dc = new THREE.CylinderGeometry(0.0195, 0.0195, 0.25, 18, 1, false, PI / 2, PI);
     dc.rotateX(PI / 2);
     metal.skin = 1;
-    metal.add(dc, pal.grey, mtx(0, 0.052, -0.06));
+    metal.add(dc, pal.gray, mtx(0, 0.052, -0.06));
     metal.skin = 0;
     for (i = 0; i < 3; i++) metal.add(new THREE.TorusGeometry(0.0196, 0.0016, 4, 12, PI), pal.dark, mtx(0, 0.052, 0.04 - i * 0.012, 0, 0, 0));
-    metal.add(rbox(0.036, 0.012, 0.02, 0.004, 0.002), pal.grey, mtx(0, 0.06, 0.07)); // rear lip
+    metal.add(rbox(0.036, 0.012, 0.02, 0.004, 0.002), pal.gray, mtx(0, 0.06, 0.07)); // rear lip
     // trunnion rivets + side rail plate (left side) + accent stripe
     for (i = 0; i < 4; i++) {
       metal.add(cylX(0.0028, 0.043, 8), pal.steel, mtx(0, 0.014 + (i % 2) * 0.022, -0.2 + Math.floor(i / 2) * 0.012));
@@ -325,7 +325,7 @@
     poly.add(rbox(0.054, 0.004, 0.005, 0.002, 0.001), pal.dark, mtx(0, -0.018, -0.3));
     metal.add(rbox(0.05, 0.03, 0.012, 0.006, 0.002), pal.dark2, mtx(0, 0.01, -0.408)); // handguard retainer
     // ---- gas tube + upper handguard ----
-    metal.add(cylZ(0.0105, 0.0105, 0.27, 14), pal.grey, mtx(0, 0.052, -0.33));
+    metal.add(cylZ(0.0105, 0.0105, 0.27, 14), pal.gray, mtx(0, 0.052, -0.33));
     poly.skin = 1;
     poly.add(sideShape([[-0.2, 0.038], [-0.2, 0.066], [-0.205, 0.072], [-0.36, 0.072], [-0.37, 0.06], [-0.37, 0.038]], 0.034, 0.006), pal.accent);
     poly.skin = 0;
@@ -336,10 +336,10 @@
     metal.add(cylY(0.0018, 0.0018, 0.028, 6), pal.steel, mtx(0, 0.072, -0.521));
     // ---- rear sight block + leaf ----
     metal.add(sideShape([[-0.19, 0.056], [-0.19, 0.074], [-0.2, 0.08], [-0.232, 0.08], [-0.24, 0.07], [-0.24, 0.056]], 0.034, 0.002), pal.dark2);
-    metal.add(sideShape([[-0.2, 0.078], [-0.21, 0.087], [-0.29, 0.082], [-0.29, 0.078]], 0.022, 0.0008), pal.grey);
+    metal.add(sideShape([[-0.2, 0.078], [-0.21, 0.087], [-0.29, 0.082], [-0.29, 0.078]], 0.022, 0.0008), pal.gray);
     metal.add(rbox(0.024, 0.008, 0.008, 0.002, 0.001), pal.accentL, mtx(0, 0.084, -0.255));
     // ---- barrel: thick paintball barrel with ported tip and slanted brake ----
-    metal.add(cylZ(0.0145, 0.0145, 0.3, 20), pal.grey, mtx(0, 0.012, -0.36));
+    metal.add(cylZ(0.0145, 0.0145, 0.3, 20), pal.gray, mtx(0, 0.012, -0.36));
     metal.add(cylZ(0.0165, 0.0165, 0.012, 20), pal.dark, mtx(0, 0.012, -0.42));
     metal.add(cylZ(0.016, 0.0155, 0.07, 20), pal.accent, mtx(0, 0.012, -0.545)); // ported tip
     for (i = 0; i < 4; i++) {
@@ -368,7 +368,7 @@
     metal.add(cap, pal.steel, tankM(0, 0, 0.29));
     metal.skin = 0;
     for (i = 0; i < 2; i++) metal.add(cylZ(0.0352, 0.0352, 0.012, 24), pal.accent, tankM(0, 0, 0.15 + i * 0.1));
-    metal.add(cylZ(0.022, 0.03, 0.02, 20), pal.grey, tankM(0, 0, 0.11)); // regulator
+    metal.add(cylZ(0.022, 0.03, 0.02, 20), pal.gray, tankM(0, 0, 0.11)); // regulator
     metal.add(cylZ(0.02, 0.02, 0.03, 16), pal.dark2, tankM(0, 0.0, 0.088)); // ASA adapter
     metal.add(cylX(0.011, 0.012, 16), pal.steel, tankM(-0.018, 0.02, 0.112)); // gauge
     poly.add(cylX(0.009, 0.0125, 16), pal.white, tankM(-0.0185, 0.02, 0.112));
@@ -435,14 +435,14 @@
   // ---------------------------------------------------------------------------------------------
   // AWP paintball "sniper" marker geometry. Same gun space as the AK: origin = top of the pistol
   // grip, barrel -Z, bore axis at y = AWP.boreY. Accuracy-International style thumbhole chassis in
-  // the accent colour, round dark action, long fluted barrel with a big ported brake, a fat scope,
+  // the accent color, round dark action, long fluted barrel with a big ported brake, a fat scope,
   // a bolt handle on the right, a box mag, and a slim clear paintball feed tube along the left side.
   // ---------------------------------------------------------------------------------------------
   var AWP = {
     boreY: 0.032, scopeY: 0.108,
     magPivot: new THREE.Vector3(0, -0.03, -0.1),
     boltPos: new THREE.Vector3(0, 0.032, 0.032), // bolt rotation axis (z) / pivot
-    knob: new THREE.Vector3(0.05, -0.026, 0.006), // bolt knob centre relative to boltPos (closed)
+    knob: new THREE.Vector3(0.05, -0.026, 0.006), // bolt knob center relative to boltPos (closed)
     muzzle: new THREE.Vector3(0, 0.032, -0.805)
   };
 
@@ -504,16 +504,16 @@
     metal.add(cylZ(0.0225, 0.0225, 0.012, 22), pal.dark, mtx(0, by, 0.052));
     metal.add(cylZ(0.0225, 0.0225, 0.012, 22), pal.dark, mtx(0, by, -0.165));
     metal.add(rbox(0.024, 0.008, 0.25, 0.002, 0.001), pal.dark, mtx(0, by + 0.024, -0.06)); // picatinny rail
-    for (i = 0; i < 12; i++) metal.add(box(0.026, 0.004, 0.009), pal.grey, mtx(0, by + 0.029, 0.055 - i * 0.02));
+    for (i = 0; i < 12; i++) metal.add(box(0.026, 0.004, 0.009), pal.gray, mtx(0, by + 0.029, 0.055 - i * 0.02));
     poly.add(rbox(0.006, 0.014, 0.07, 0.003, 0.001), pal.black, mtx(0.019, by + 0.008, -0.045)); // ejection port
     metal.add(rbox(0.008, 0.012, 0.03, 0.003, 0.001), pal.accent, mtx(-0.02, by - 0.006, 0.03)); // safety / bolt release
     // ---- barrel: shank, long fluted section, crown + big ported brake ----
     metal.skin = 1; // barrel shroud / fluted barrel wears the skin too
-    metal.add(cylZ(0.016, 0.016, 0.07, 22), pal.grey, mtx(0, by, -0.2));
-    metal.add(flutedZ(0.0138, 0.44, 6, 0.17), pal.grey, mtx(0, by, -0.455));
+    metal.add(cylZ(0.016, 0.016, 0.07, 22), pal.gray, mtx(0, by, -0.2));
+    metal.add(flutedZ(0.0138, 0.44, 6, 0.17), pal.gray, mtx(0, by, -0.455));
     metal.skin = 0;
     metal.add(cylZ(0.0145, 0.0145, 0.008, 18), pal.dark, mtx(0, by, -0.24));
-    metal.add(cylZ(0.0125, 0.0125, 0.05, 18), pal.grey, mtx(0, by, -0.69));
+    metal.add(cylZ(0.0125, 0.0125, 0.05, 18), pal.gray, mtx(0, by, -0.69));
     metal.add(cylZ(0.0155, 0.0155, 0.01, 18), pal.dark, mtx(0, by, -0.715)); // lock nut
     var brake = rbox(0.038, 0.034, 0.08, 0.012, 0.004);
     metal.add(brake, pal.accent, mtx(0, by, -0.762));
@@ -537,7 +537,7 @@
     metal.add(cylX(0.011, 0.028, 16), pal.dark, mtx(0.027, sy, -0.07)); // windage
     metal.add(cylX(0.0115, 0.007, 16), pal.accent, mtx(0.043, sy, -0.07));
     metal.add(cylX(0.009, 0.024, 14), pal.dark, mtx(-0.024, sy, -0.07)); // parallax
-    for (i = 0; i < 4; i++) metal.add(cylY(0.0125, 0.0125, 0.0015, 16), pal.grey, mtx(0, sy + 0.016 + i * 0.006, -0.07));
+    for (i = 0; i < 4; i++) metal.add(cylY(0.0125, 0.0125, 0.0015, 16), pal.gray, mtx(0, sy + 0.016 + i * 0.006, -0.07));
     // rear bell / eyepiece
     metal.add(cylZ(0.0135, 0.021, 0.032, 22), pal.dark, mtx(0, sy, 0.084));
     metal.add(cylZ(0.021, 0.021, 0.04, 22), pal.dark2, mtx(0, sy, 0.12));
@@ -547,7 +547,7 @@
     metal.add(cylZ(0.03, 0.0135, 0.07, 24), pal.dark, mtx(0, sy, -0.235));
     metal.add(cylZ(0.03, 0.03, 0.05, 24), pal.dark2, mtx(0, sy, -0.295));
     metal.add(cylZ(0.031, 0.031, 0.01, 24), pal.accent, mtx(0, sy, -0.316));
-    for (i = 0; i < 2; i++) metal.add(cylZ(0.0305, 0.0305, 0.003, 24), pal.grey, mtx(0, sy, -0.28 + i * 0.01));
+    for (i = 0; i < 2; i++) metal.add(cylZ(0.0305, 0.0305, 0.003, 24), pal.gray, mtx(0, sy, -0.28 + i * 0.01));
     // lenses (glossy, with painted glints)
     lens.add(cylZ(0.0265, 0.0265, 0.002, 24), pal.lens, mtx(0, sy, -0.3215));
     lens.add(cylZ(0.0175, 0.0175, 0.002, 20), pal.lens, mtx(0, sy, 0.1545));
@@ -650,7 +650,7 @@
     // ---- slide: big and angular, rear serrations, safety levers, clear chamber window (skinned) ----
     var sOut = [[0.064, 0.012], [0.066, 0.047], [0.057, 0.056], [-0.104, 0.056], [-0.113, 0.049], [-0.113, 0.012]];
     sl.skin = 1;
-    sl.add(sideShape(sOut, 0.037, 0.003, [holeFor(sOut, stadiumPts(-0.073, -0.035, 0.033, 0.0105))]), pal.grey);
+    sl.add(sideShape(sOut, 0.037, 0.003, [holeFor(sOut, stadiumPts(-0.073, -0.035, 0.033, 0.0105))]), pal.gray);
     sl.skin = 0;
     for (i = -1; i <= 1; i += 2) {
       for (var k = 0; k < 7; k++) sl.add(box(0.0025, 0.03, 0.0028), pal.dark, mtx(i * 0.0186, 0.034, 0.022 + k * 0.0056, 0, 0, 0));
@@ -667,7 +667,7 @@
     var bar = new THREE.ExtrudeGeometry(tri, { depth: 0.146, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.0015, bevelSegments: 2 });
     bar.translate(0, 0, -0.255);
     metal.skin = 1;
-    metal.add(bar, pal.grey);
+    metal.add(bar, pal.gray);
     metal.skin = 0;
     metal.add(box(0.002, 0.011, 0.12), pal.dark, mtx(0.0146, 0.03, -0.185, 0, 0, 0.214)); // side flutes
     metal.add(box(0.002, 0.011, 0.12), pal.dark, mtx(-0.0146, 0.03, -0.185, 0, 0, -0.214));
@@ -689,7 +689,7 @@
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Butterfly knife geometry. Knife frame: tang centre at origin, blade forward (-Z), spine +Y.
+  // Butterfly knife geometry. Knife frame: tang center at origin, blade forward (-Z), spine +Y.
   // The two pivot pins run along X through the tang: the safe handle (A) on the spine-side pin at
   // y = +PIN, the bite handle (B) on the edge-side pin at y = -PIN.
   //
@@ -921,7 +921,7 @@
   }
 
   var _ballMats = {};
-  function paintBallMaterial(color) { // cached per colour (shared instance: do not dispose per ball)
+  function paintBallMaterial(color) { // cached per color (shared instance: do not dispose per ball)
     var key = String(color || "#ff3fa4");
     if (_ballMats[key]) return _ballMats[key];
     return (_ballMats[key] = new THREE.MeshPhongMaterial({ color: lin(color || "#ff3fa4"), shininess: 120, specular: new THREE.Color(0.55, 0.55, 0.55), emissive: lin(color || "#ff3fa4").multiplyScalar(0.12) }));
@@ -931,10 +931,10 @@
   // Weapon skins: pattern textures (drawn by PBSkins.drawPattern in pb-skins.js) and materials,
   // both cached per skin id. A skin material is a MeshStandardMaterial with a small shader patch:
   // parts whose skinMask is 1 take the pattern (and the skin's metalness / roughness / glow), the
-  // rest of the merged mesh keeps its vertex colours, so skinning a gun costs no extra draw calls.
-  //   fx.glow  -> emissive map (the pattern's bright accent colours)
+  // rest of the merged mesh keeps its vertex colors, so skinning a gun costs no extra draw calls.
+  //   fx.glow  -> emissive map (the pattern's bright accent colors)
   //   fx.metal -> high metalness, reflecting the shared envMap
-  //   fx.shift -> fresnel hue shift (colours slide with the viewing angle) + a slow shimmer
+  //   fx.shift -> fresnel hue shift (colors slide with the viewing angle) + a slow shimmer
   // ---------------------------------------------------------------------------------------------
   var _skinTime = { value: 0 }; // shared shimmer clock (advanced by the viewmodel's update)
   var _skinTex = {}, _skinMats = {};
@@ -1193,7 +1193,7 @@
     var mats = { metal: stdMat({ rough: 0.3, metal: 0.7 }), steel: stdMat({ rough: 0.18, metal: 0.95, envI: 1.2 }) };
     var k = makeBalisong(accent || "#ff3fa4", mats);
     var g = new THREE.Group();
-    var inner = new THREE.Group(); inner.rotation.y = PI; inner.position.z = 0.06; // grip centre at origin
+    var inner = new THREE.Group(); inner.rotation.y = PI; inner.position.z = 0.06; // grip center at origin
     inner.add(k.root); g.add(inner);
     k.set(0, 0);
     g.userData.setOpen = function (open) { if (open) k.set(0, 0); else k.set(PI, PI); };
@@ -1355,7 +1355,7 @@
 
     // ------------------------------------------------------------------ knife rig
     // knAll holds everything knife-related. Each ball hand has its own frame whose axes are the
-    // knife axes when held (blade -Z, pins X, spine +Y) with the ball centre at the origin; the
+    // knife axes when held (blade -Z, pins X, spine +Y) with the ball center at the origin; the
     // grip runs through the ball. The knife itself lives in knNode, placed every frame from the
     // holding hand(s) (or the air, during tosses).
     var knAll = new THREE.Group(); swayRoot.add(knAll);
@@ -1370,7 +1370,7 @@
     var bali = makeBalisong(accentHex, { metal: M.kmetal, steel: M.ksteel });
     knNode.add(bali.root);
     bali.root.scale.setScalar(1.45);
-    var KN_GRIP = 0.1; // ball centre sits this far behind the pivot, on the closed handles
+    var KN_GRIP = 0.1; // ball center sits this far behind the pivot, on the closed handles
 
     // ------------------------------------------------------------------ sleeves
     var bS = new Builder(); buildSleeve(bS, sleeveCol);
@@ -1380,7 +1380,7 @@
     swayRoot.add(sleeveR, sleeveL);
     var wristR_AK = new THREE.Object3D(); wristR_AK.position.copy(WRIST(HR)); rHandAK.add(wristR_AK);
     var wristR_AWP = new THREE.Object3D(); wristR_AWP.position.copy(WRIST(HR)); rHandAWP.add(wristR_AWP);
-    // left arms (and both Deagle arms): the sleeve starts at the ball centre (hidden inside the ball),
+    // left arms (and both Deagle arms): the sleeve starts at the ball center (hidden inside the ball),
     // so it stays attached however the hand moves around the gun
     var wristL_AK = new THREE.Object3D(); lHandAK.add(wristL_AK);
     var wristL_AWP = new THREE.Object3D(); lHandAWP.add(wristL_AWP);
@@ -1388,7 +1388,7 @@
     var wristL_DG = new THREE.Object3D(); lHandDG.add(wristL_DG);
     var SHOULDER_R_DG = new THREE.Vector3(0.32, -0.62, 0.0), SHOULDER_L_DG = new THREE.Vector3(-0.3, -0.75, -0.1);
     var SLEEVE_L_LEN = 1.6; // the left sleeve is stretched while holding a gun so it always reaches out of the frame
-    // knife arms: the sleeve starts at the ball centre (hidden inside the ball), so it stays attached in any pose
+    // knife arms: the sleeve starts at the ball center (hidden inside the ball), so it stays attached in any pose
     var wristR_K = new THREE.Object3D(); kHand.add(wristR_K);
     var wristL_K = new THREE.Object3D(); kHandL.add(wristL_K);
     var SHOULDER_LK = new THREE.Vector3(-0.75, -0.35, 0.0);
@@ -1918,7 +1918,7 @@
     var _kq = new THREE.Quaternion(), _kq2 = new THREE.Quaternion(), _ke = new THREE.Euler(), _kp = new THREE.Vector3();
     var _kX = new THREE.Vector3(1, 0, 0);
     var knPR = new THREE.Vector3(), knQR = new THREE.Quaternion(), knPL = new THREE.Vector3(), knQL = new THREE.Quaternion();
-    // knife root pose for a hand = hand * trick (offset + rotation about the ball centre) * grip offset
+    // knife root pose for a hand = hand * trick (offset + rotation about the ball center) * grip offset
     function knHeld(hand, ex, ey, ez, rx, ry, rz, outP, outQ) {
       outQ.copy(hand.quaternion).multiply(_kq.setFromEuler(_ke.set(rx, ry, rz)));
       outP.set(0, 0, -KN_GRIP).applyQuaternion(outQ).add(_kp.set(ex, ey, ez).applyQuaternion(hand.quaternion)).add(hand.position);

@@ -57,7 +57,7 @@ async function player(port, name, mii) {
   assert.strictEqual(room.players.length, 2);
   assert(room.players.find((p) => p.id === b.id).name === "Bobscript", "names are cleaned");
   assert(a.last("mii").id === b.id && b.last("mii").mii.look.shirt === "#ff0000", "Miis shared");
-  assert.notStrictEqual(room.players[0].color, room.players[1].color, "different colours");
+  assert.notStrictEqual(room.players[0].color, room.players[1].color, "different colors");
   assert(b.last("spawn") && b.last("spawn").id === a.id, "B sees A already running around");
   const st = a.last("start");
   assert(st && st.mode === "respawn" && st.toWin === 20 && b.last("start"), "match started (respawn)");
@@ -215,7 +215,7 @@ async function player(port, name, mii) {
   w1.send({ t: "chRematch" }); b1.send({ t: "chRematch" });
   await wait(60);
   cr = w1.last("chRoom").room;
-  assert(cr.state === "playing" && cr.white.name === "Carlsen" && cr.game === 2, "rematch swaps colours");
+  assert(cr.state === "playing" && cr.white.name === "Carlsen" && cr.game === 2, "rematch swaps colors");
   // draw offer, then resign
   await play(cr.white.name === "Carlsen" ? b1 : w1, "e2", "e4", 0);
   w1.send({ t: "chDraw", a: "offer" }); await wait(30);

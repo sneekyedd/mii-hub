@@ -68,6 +68,7 @@
     { level: 8, key: "tier5", icon: "🛍️", text: "Rare foods from far away" },
   ];
   const xpNeeded = (level) => 80 + level * 45; // XP to go from `level` to the next
+  const levelCoins = (level) => Math.min(100, 10 * level); // what every Mii gets when the town reaches `level`
 
   // ---------------------------------------------------------------------
   // Weather, seasons and festivals
@@ -98,7 +99,7 @@
   };
   const WEATHER_LINES = {
     sunny: ["What a sunny day!", "I love sunshine!", "Perfect weather!"],
-    cloudy: ["Looks a bit grey today.", "I hope it doesn't rain.", "That cloud looks like a sandwich."],
+    cloudy: ["Looks a bit gray today.", "I hope it doesn't rain.", "That cloud looks like a sandwich."],
     rain: ["It's raining! ☔", "Pitter patter...", "I forgot my umbrella!", "Splash! Puddles!"],
     storm: ["Eek! Thunder!", "What a storm!", "I'm staying inside today."],
     snow: ["Snow! ❄️", "Let's build a snowman!", "Brrr, so cold!", "Snowball fight?!"],
@@ -227,7 +228,7 @@
         st.level += 1;
         const news = UNLOCKS.filter((u) => u.level === st.level);
         // every Miis gets a little present when the town grows
-        for (const r of records.values()) { r.coins = (r.coins || 0) + 10; opts.saveMii(r); }
+        for (const r of records.values()) { r.coins = (r.coins || 0) + levelCoins(st.level); opts.saveMii(r); }
         emit("townlevel", st.level, news);
       }
       changed();
@@ -273,7 +274,7 @@
       { type: "game", icon: "🎮", w: 1.2, make(rec) {
         const G = root.MiniGames && root.MiniGames.GAMES;
         const g = G ? pick(Object.values(G)) : { id: "rps", name: "Rock Paper Scissors", icon: "✊" };
-        return { text: pick(["Play " + g.name + " with me!", "I've been practising " + g.name + "! Wanna play?", "I bet I can beat you at " + g.name + "!"]), game: g.id, icon: g.icon };
+        return { text: pick(["Play " + g.name + " with me!", "I've been practicing " + g.name + "! Wanna play?", "I bet I can beat you at " + g.name + "!"]), game: g.id, icon: g.icon };
       } },
       { type: "meet", icon: "🤝", w: 0.9, can: (rec) => others(rec).some((o) => points(rec.id, o.id) === 0), make(rec) {
         const o = pick(others(rec).filter((o) => points(rec.id, o.id) === 0));
@@ -299,7 +300,7 @@
         const kinds = ["dance", "jump", "wave"].concat(ensure(rec).moves);
         const k = pick(kinds);
         const mv = MOVES.find((m) => m.id === k);
-        return { text: "Ask me to " + (mv ? mv.name.toLowerCase() : k) + "! I've been practising!", kind: k, icon: mv ? mv.icon : k === "dance" ? "💃" : k === "jump" ? "🦘" : "👋" };
+        return { text: "Ask me to " + (mv ? mv.name.toLowerCase() : k) + "! I've been practicing!", kind: k, icon: mv ? mv.icon : k === "dance" ? "💃" : k === "jump" ? "🦘" : "👋" };
       } },
     ];
     const typeOf = (t) => WISH_TYPES.find((w) => w.type === t);
@@ -316,7 +317,7 @@
     function wishOf(rec) { return rec.wish || null; }
 
     // How many wishes can be waiting at once (pretty needy!)
-    const maxWishes = () => Math.max(2, Math.ceil(records.size * 0.6));
+    const maxWishes = () => Math.min(4, Math.max(1, Math.ceil(records.size * 0.25)));
 
     function grant(rec, how) {
       const w = rec.wish;
@@ -704,7 +705,8 @@
         }
         r.wishIn -= dt;
         if (r.wishIn <= 0) {
-          r.wishIn = rnd(40, 110);
+          // (the more Miis in town, the longer each one waits, so the town doesn't drown in wishes)
+          r.wishIn = rnd(80, 180) * Math.max(1, records.size / 4);
           if (waiting >= maxWishes()) continue;
           const w = makeWish(rec);
           if (w) { rec.wish = w; opts.saveMii(rec); emit("event", { type: "newWish", rec, wish: w }); changed(); }
@@ -740,7 +742,7 @@
       state: st, on, tick, event, ensure, happyNeeded, addHappy, applyGift, makeWish, wishOf, wishActions, grant, dismiss,
       startMakeUp, startConfession, bringTogether, context, partnerOf, claim, rollDaily, weather, weatherText, weatherLine,
       placeMood, stickerPages, shopFoods, shopItems, newFor, deals, priceOf, lockedTier, unlockLevelForTier, tierOf, allFoods,
-      xpNeeded, unlocked, forget, pair, MOVES, SONGS, UNLOCKS, FESTIVALS,
+      xpNeeded, levelCoins, unlocked, forget, pair, MOVES, SONGS, UNLOCKS, FESTIVALS,
     };
   }
 

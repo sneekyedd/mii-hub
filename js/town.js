@@ -2,13 +2,13 @@
  * town.js
  * Every Mii lives its own life: it decides where it wants to be (the park, the
  * office, the moon base, the apartment courtyard or at home), walks off, travels
- * there, stays a while, and moves on. Each Mii has a favourite place, and its
+ * there, stays a while, and moves on. Each Mii has a favorite place, and its
  * personality decides how much it likes the others:
  *   - lazy / shy Miis spend lots of time at home
  *   - serious, hard-working Miis go to the office
  *   - energetic, outdoorsy Miis like the park
  *   - adventurous Miis visit the moon
- *   - friendly neighbours hang out in the apartment courtyard
+ *   - friendly neighbors hang out in the apartment courtyard
  *
  * Only the place you're looking at is shown in 3D (by hub3d.js). For the other
  * places, this file keeps track of who's there, and lets them chat with each other
@@ -35,14 +35,14 @@
   const rnd = (a, b) => a + Math.random() * (b - a);
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-  // How much a personality likes each place (before the favourite-place bonus).
+  // How much a personality likes each place (before the favorite-place bonus).
   function placeLikes(p) {
     const e = p.energy / 100, s = p.social / 100, h = p.humor / 100, k = p.kindness / 100;
     return {
       park: 0.8 + e * 1.0 + s * 0.4,              // active, outdoorsy
       office: 0.5 + (1 - h) * 1.3 + e * 0.3,      // serious, hard-working
       space: 0.4 + e * 0.7 + h * 0.4 + (1 - s) * 0.2, // adventurous, curious
-      apartments: 0.5 + s * 0.8 + k * 0.6,        // friendly neighbours
+      apartments: 0.5 + s * 0.8 + k * 0.6,        // friendly neighbors
       home: 0.3 + (1 - e) * 1.2 + (1 - s) * 0.4,  // lazy homebodies
       beach: 0.5 + e * 0.8 + h * 0.4,               // fun in the sun
       cafe: 0.4 + s * 0.7 + p.chatty / 100 * 0.6,   // chatty socialisers
@@ -51,7 +51,7 @@
     };
   }
 
-  // A Mii's favourite place, worked out from its personality (with a little luck).
+  // A Mii's favorite place, worked out from its personality (with a little luck).
   function guessFavorite(p) {
     const likes = placeLikes(p);
     let best = "park", bestV = -1;
@@ -84,7 +84,7 @@
     const walkerOf = (id) => hub.walkers.find((w) => w.id === id) || null;
     const visitingId = () => (hub.visiting ? hub.visiting.record.id : null);
 
-    // How long a Mii stays somewhere (longer at its favourite place).
+    // How long a Mii stays somewhere (longer at its favorite place).
     function stayFor(rec, place) {
       const p = D.traits(rec);
       let t = rnd(70, 200);

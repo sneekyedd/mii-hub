@@ -94,8 +94,8 @@ assert.deepStrictEqual(C.status(fifty), { over: true, result: "draw", reason: "f
 assert.strictEqual(C.status(C.fromFEN("8/8/8/4k3/8/8/4K3/4R3 w - - 98 80")).over, false);
 assert.strictEqual(C.status(C.fromFEN("8/8/8/4k3/8/8/4K3/4B3 w - - 0 1")).reason, "material", "K+B vs K is a draw");
 assert.strictEqual(C.status(C.fromFEN("8/8/8/4k3/8/8/4K3/8 w - - 0 1")).reason, "material");
-assert.strictEqual(C.status(C.fromFEN("8/8/3b4/4k3/8/8/4K3/4B3 w - - 0 1")).reason, "material", "bishops on the same colour");
-assert.strictEqual(C.status(C.fromFEN("8/8/2b5/4k3/8/8/4K3/4B3 w - - 0 1")).over, false, "bishops on different colours can still mate");
+assert.strictEqual(C.status(C.fromFEN("8/8/3b4/4k3/8/8/4K3/4B3 w - - 0 1")).reason, "material", "bishops on the same color");
+assert.strictEqual(C.status(C.fromFEN("8/8/2b5/4k3/8/8/4K3/4B3 w - - 0 1")).over, false, "bishops on different colors can still mate");
 assert.strictEqual(C.status(C.fromFEN("8/8/8/4k3/8/8/4K3/4P3 w - - 0 1")).over, false);
 // captured pieces
 assert.deepStrictEqual(C.captured(play(start, "e4", "d5", "exd5", "Qxd5")), { w: ["p"], b: ["p"] });
