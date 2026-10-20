@@ -652,6 +652,8 @@
         ? name + " got better at chess! +" + gained.toFixed(0) + " skill (" + G.skillLevel(stats.skill) + ")"
         : name + "'s chess skill: " + G.skillLevel(stats.skill));
       status.append(big, grow);
+      // game review: how good each of your moves was
+      if (root.ChessAnalysis) root.ChessAnalysis.render(status, { startFen: state.startFen, moves: state.history.slice(), you: youColor, names: { [youColor]: "You", [youColor === "w" ? "b" : "w"]: name } });
       actions.innerHTML = "";
       footer.innerHTML = "";
       const again = el("button", "gm-btn primary", "Play again");

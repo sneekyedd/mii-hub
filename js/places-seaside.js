@@ -1432,6 +1432,7 @@
       // (the ones further out start beyond it), so they can't block the view
       cameraMaxDistance: 30,
       riders: zones.riders, // random Miis on the bikes (the hub adds them)
+      rare: zones.rare,     // the rare Mustang (see cafeScenery)
       bounds: { minX: -17, maxX: 17, minZ: -9.8, maxZ: 10 },
       entrance: { x: 0.6, z: 9.4 },
       water: [{ x: F.x, z: F.z, r: 1.7 }],
@@ -1644,6 +1645,93 @@
       const x = cycle < 18 ? -90 + cycle * 10 - Math.sin((cycle / 18) * PI) * 25 : 200;
       tram.position.x = x;
     });
+
+    // ---------- RARE: a 1969 Mustang fastback rolls down the tram road ----------
+    // (well under 1% of the time, and only while you're watching). Click it: it honks,
+    // stops, revs its engine and speeds off, and you get a sticker.
+    const stang = mover(root, (c) => {
+      const red = 0xc4161c, black = 0x1a1a1e, chrome = 0xdfe4ea;
+      block(c, red, 0, 0.62, 0, 4.6, 0.5, 1.85, 0.18);                 // body
+      block(c, red, -0.25, 1.28, 0, 1.3, 0.42, 1.5, 0.16);             // the cabin
+      for (const sz of [-0.755, 0.755]) block(c, 0x9fd8ff, -0.2, 1.3, sz, 1.0, 0.26, 0.02, 0.03); // side windows
+      block(c, 0x9fd8ff, 0.47, 1.25, 0, 0.04, 0.38, 1.36, 0.02, { rz: 0.6 }); // windshield, leaning back
+      // the fastback: one long slope from the roof down to the tail
+      block(c, red, -1.55, 1.2, 0, 1.45, 0.1, 1.5, 0.04, { rz: 0.39 });
+      block(c, 0x9fd8ff, -1.32, 1.3, 0, 0.75, 0.02, 1.25, 0.01, { rz: 0.39 }); // rear glass
+      block(c, black, 1.5, 0.89, 0, 1.4, 0.02, 0.42, 0.01);           // black hood stripe
+      block(c, black, 2.32, 0.6, 0, 0.06, 0.3, 1.45, 0.02);           // grille
+      for (const sz of [-0.58, 0.58]) ball(c, 0xfff6c0, 2.33, 0.62, sz, 0.12, { sx: 0.4 }); // headlights
+      for (const sx of [2.38, -2.32]) block(c, chrome, sx, 0.4, 0, 0.08, 0.1, 1.9, 0.03); // bumpers
+      for (const sz of [-0.45, -0.2, 0.2, 0.45]) block(c, 0xff3b3b, -2.31, 0.66, sz, 0.04, 0.12, 0.18, 0.01); // tail lights
+      for (const sx of [-1.45, 1.4]) for (const sz of [-0.88, 0.88]) {
+        cylinder(c, black, sx, 0.36, sz, 0.36, 0.26, { rx: PI / 2, seg: 14 });
+        cylinder(c, chrome, sx, 0.36, sz * 1.08, 0.18, 0.04, { rx: PI / 2, seg: 10 });
+      }
+    }, true);
+    stang.visible = false;
+    let sfx = null;
+    const sound = (kind) => {
+      try {
+        sfx = sfx || new (window.AudioContext || window.webkitAudioContext)();
+        const t0 = sfx.currentTime, g = sfx.createGain();
+        g.connect(sfx.destination);
+        if (kind === "honk") {
+          for (const [f, at] of [[392, 0], [494, 0], [392, 0.28], [494, 0.28]]) {
+            const o = sfx.createOscillator(); o.type = "square"; o.frequency.value = f;
+            const og = sfx.createGain(); og.gain.setValueAtTime(0, t0 + at); og.gain.linearRampToValueAtTime(0.07, t0 + at + 0.02); og.gain.setValueAtTime(0.07, t0 + at + 0.2); og.gain.linearRampToValueAtTime(0, t0 + at + 0.24);
+            o.connect(og).connect(g); o.start(t0 + at); o.stop(t0 + at + 0.26);
+          }
+        } else {
+          // the V8: a growly sawtooth that revs up twice, then roars off
+          const o = sfx.createOscillator(), o2 = sfx.createOscillator(), lp = sfx.createBiquadFilter();
+          o.type = "sawtooth"; o2.type = "square"; lp.type = "lowpass"; lp.frequency.value = 700;
+          const f = (v, at) => { o.frequency.linearRampToValueAtTime(v, t0 + at); o2.frequency.linearRampToValueAtTime(v * 0.5, t0 + at); };
+          o.frequency.setValueAtTime(45, t0); o2.frequency.setValueAtTime(22, t0);
+          f(140, 0.35); f(55, 0.75); f(170, 1.1); f(60, 1.5); f(220, 2.4); f(260, 3.2);
+          g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.12, t0 + 0.1); g.gain.setValueAtTime(0.12, t0 + 2.6); g.gain.linearRampToValueAtTime(0, t0 + 3.4);
+          o.connect(lp); o2.connect(lp); lp.connect(g); o.start(t0); o2.start(t0); o.stop(t0 + 3.5); o2.stop(t0 + 3.5);
+        }
+      } catch (e) { /* no sound */ }
+    };
+    const CAR_Z = TZ - 1.6;
+    const car = { state: "idle", x: -80, v: 0, timer: 0, check: 4 };
+    const startCar = () => { Object.assign(car, { state: "drive", x: -75, v: 11, timer: 0 }); stang.visible = true; };
+    zones.rare = {
+      update(dt, t, ctx) {
+        if (car.state === "idle") {
+          car.check -= dt;
+          if (car.check <= 0) {
+            car.check = 4;
+            if (Math.random() < 0.008 && tram.position.x > 150) startCar();
+          }
+          return;
+        }
+        car.timer += dt;
+        if (car.state === "honk") { // slow down and stop
+          car.v = Math.max(0, car.v - dt * 9);
+          if (car.v === 0 && car.timer > 0.5) { car.state = "rev"; car.timer = 0; sound("rev"); }
+        } else if (car.state === "rev") { // rev the engine, bouncing on its springs
+          stang.rotation.z = Math.sin(car.timer * 38) * 0.012 + (car.timer % 0.75 < 0.3 ? 0.025 : 0);
+          if (car.timer > 2.3) { car.state = "go"; car.timer = 0; stang.rotation.z = 0.04; }
+        } else if (car.state === "go") { // floor it
+          car.v += dt * 22;
+          stang.rotation.z = Math.max(0, stang.rotation.z - dt * 0.05);
+        }
+        car.x += car.v * dt;
+        stang.position.set(car.x, 0, CAR_Z);
+        if (car.x > 80) {
+          if (car.state === "go") ctx.event("mustang");
+          car.state = "idle"; stang.visible = false; stang.rotation.z = 0;
+        }
+      },
+      pick(ray) {
+        if (car.state !== "drive") return false;
+        if (!ray.intersectsBox(new THREE.Box3().setFromObject(stang))) return false;
+        car.state = "honk"; car.timer = 0; sound("honk");
+        return true;
+      },
+      force: startCar, _car: stang, _state: car, // (for testing)
+    };
 
     // ---------- cyclists on the street in front of the shops ----------
     const bikeGeo = (shirt) => bakeGeo((b) => {

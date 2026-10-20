@@ -2251,14 +2251,72 @@
       const a = (i / 6) * TAU;
       ufoLights.push(ball(ufo, toon(0xffcf3a, { emissive: 0xffcf3a, emissiveIntensity: 1 }), Math.cos(a) * 1.35, -0.05, Math.sin(a) * 1.35, 0.12, { shadow: false }));
     }
+    // RARE: now and then (very rarely, and only while you watch) the UFO stops and tries to
+    // beam up a Mii. It never works: the Mii drops back down and the UFO flees. (A sticker!)
+    const beam = put(ufo, G.taper ? G.taper(0.18, 1) : new THREE.CylinderGeometry(0.18, 1, 1, 18, 1, true), toon(0x9dffc0, { transparent: true, opacity: 0.35, emissive: 0x6cff9a, emissiveIntensity: 0.6, side: THREE.DoubleSide, depthWrite: false }), { y: -0.2, shadow: false });
+    beam.visible = false;
+    let abduct = null, lastK = 1;
     anim.push((t) => {
+      ufo.rotation.y = t * 3;
+      ufoLights.forEach((l, i) => {
+        l.material.emissiveIntensity = (Math.floor(t * 6) + i) % 2 ? 1 : 0.2;
+        l.material.emissive.setHex(abduct && abduct.phase === "leave" ? 0xff4a4a : 0xffcf3a);
+      });
+      if (abduct) return; // (the rare event is flying it)
       const cycle = t % 28;
       const k = cycle / 7;
       ufo.visible = k < 1;
       ufo.position.set(-60 + k * 120, 14 + Math.sin(k * 12) * 1.5, -25);
-      ufo.rotation.y = t * 3;
-      ufoLights.forEach((l, i) => { l.material.emissiveIntensity = (Math.floor(t * 6) + i) % 2 ? 1 : 0.2; });
     });
+    const smooth = (u) => u * u * (3 - 2 * u);
+    const ufoRare = {
+      update(dt, t, ctx) {
+        const k = (t % 28) / 7;
+        if (!abduct) {
+          // as each normal pass begins, there's a tiny chance it comes down instead
+          const starting = k < lastK && k < 0.2;
+          lastK = k;
+          if (!starting || Math.random() > 0.012) return;
+          this.force(ctx);
+          return;
+        }
+        const a = abduct, w = a.w;
+        // (the Mii left or got picked up: never mind)
+        if (w.held || w.vanish > 0 || w.leaving) { w.rareLift = 0; abduct = null; ufo.visible = false; beam.visible = false; return; }
+        a.time += dt;
+        const above = () => ({ x: w.x, y: 7.5, z: w.z });
+        if (a.phase === "come") {
+          const u = smooth(Math.min(1, a.time / 3)), p = above();
+          ufo.visible = true;
+          ufo.position.set(a.from.x + (p.x - a.from.x) * u, a.from.y + (p.y - a.from.y) * u, a.from.z + (p.z - a.from.z) * u);
+          if (a.time >= 3) { a.phase = "beam"; a.time = 0; beam.visible = true; ctx.say(w, "Wh-whoa!! Put me down!!", 3); }
+        } else if (a.phase === "beam") {
+          const p = above();
+          ufo.position.set(p.x, p.y + Math.sin(a.time * 3) * 0.15, p.z);
+          beam.scale.set(1.6, 7.3, 1.6); beam.position.y = -0.2 - 3.65;
+          beam.material.opacity = 0.25 + Math.sin(a.time * 14) * 0.08;
+          w.rareLift = smooth(Math.min(1, a.time / 2.8)) * 1.6 + Math.sin(a.time * 5) * 0.08;
+          if (a.time >= 3.4) { a.phase = "fail"; a.time = 0; a.liftV = 0; }
+        } else if (a.phase === "fail") {
+          // the beam sputters out: the Mii falls back down
+          beam.visible = Math.floor(a.time * 16) % 3 === 0 && a.time < 0.4;
+          a.liftV -= dt * 14;
+          w.rareLift = Math.max(0, (w.rareLift || 0) + a.liftV * dt);
+          if (w.rareLift === 0 && !a.landed) { a.landed = true; ctx.say(w, "Phew... that was close!", 2.5); }
+          if (a.time >= 1.3) { a.phase = "leave"; a.time = 0; a.from = ufo.position.clone(); beam.visible = false; w.rareLift = 0; }
+        } else if (a.phase === "leave") {
+          const u = Math.min(1, a.time / 2.2), e = u * u;
+          ufo.position.set(a.from.x + 70 * e, a.from.y + 28 * e, a.from.z - 30 * e);
+          if (a.time >= 2.2) { abduct = null; ufo.visible = false; ctx.event("ufo"); }
+        }
+      },
+      _state: () => abduct, // (for testing)
+      force(ctx) { // (also used for testing)
+        const miis = ctx.miis();
+        if (!miis.length || abduct) return;
+        abduct = { w: miis[Math.floor(Math.random() * miis.length)], phase: "come", time: 0, from: ufo.visible ? ufo.position.clone() : new THREE.Vector3(-60, 14, -25) };
+      },
+    };
 
     mergeStatic(root);
 
@@ -2268,6 +2326,7 @@
       fog: [0x2c2068, 110, 330],
       cameraTilt: 0.2,
       cameraTargetY: 3.2,
+      rare: ufoRare, // the UFO's (failed) abduction
       helmet: true,
       floaty: true,
       bounds: { minX: -18, maxX: 18, minZ: -11, maxZ: 11 },

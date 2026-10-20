@@ -426,6 +426,7 @@
   }
 
   // Click an apartment in the Apartments to visit whoever lives there.
+  hub.onRareEvent = (id) => progress.hiddenEvent(id); // a rare event was seen: its sticker
   hub.onApartmentClick = (id) => {
     const rec = records.get(id);
     if (rec) visit(rec, { empty: !isHome(rec) || town.isTravelling(rec) }); // (out? you can still look around)
@@ -482,6 +483,17 @@
       const name = document.createElement("div");
       name.className = "name";
       name.textContent = nameOf(rec);
+      const flag = document.createElement("button");
+      flag.className = "wish-flag";
+      flag.dataset.wishFlag = rec.id;
+      flag.hidden = true;
+      flag.textContent = "💭";
+      flag.addEventListener("click", (e) => {
+        e.stopPropagation();
+        // go to the Mii: you have to talk to it to find out what it wants
+        withWalker(rec, (ww) => { openMiiMenu(ww, e.clientX, e.clientY); });
+      });
+      name.appendChild(flag);
       const meta = document.createElement("div");
       meta.className = "meta";
       meta.innerHTML = '<span class="coins" data-coins="' + rec.id + '">🪙 ' + (rec.coins || 0) + "</span> · " +
@@ -615,7 +627,7 @@
   // force = rebuild the roster even if nobody came or went
   function refreshAll(force) {
     const key = sortedRecords().map((r) => r.id + r.place + nameOf(r)).join(",");
-    if (force || key !== rosterKey) { rosterKey = key; renderRoster(); updateResidents(); }
+    if (force || key !== rosterKey) { rosterKey = key; renderRoster(); updateResidents(); if (typeof renderWishes === "function") renderWishes(true); }
     renderFriends();
     renderFeed();
     updateTabs();
@@ -929,7 +941,26 @@
     if (!atHomeVisit) foot.append(visitBtn, peekBtn);
     foot.append(away);
 
-    menu.append(head, acts, places, games, pers, fr, foot);
+    // its wish, if it has one: you only find out by talking to it (here)
+    let wishSec = null;
+    if (rec.wish) {
+      wishSec = document.createElement("div");
+      wishSec.className = "mm-section mm-wish";
+      wishSec.innerHTML = "<h3>💭 " + escapeHtml(nameOf(rec)) + "'s wish</h3><p>" + rec.wish.icon + " “" + escapeHtml(rec.wish.text) + "”</p>";
+      const wa = document.createElement("div");
+      wa.className = "mm-wish-acts";
+      for (const a of progress.wishActions(rec)) {
+        const b = document.createElement("button");
+        b.textContent = a.text;
+        b.addEventListener("click", (e) => { closeMiiMenu(); wishAction(rec, a.id, e); });
+        wa.appendChild(b);
+      }
+      wishSec.appendChild(wa);
+      if (!rec.wish.heard) { rec.wish.heard = true; saveSoon(rec); renderWishes(true); }
+    }
+    menu.append(head);
+    if (wishSec) menu.append(wishSec);
+    menu.append(acts, places, games, pers, fr, foot);
     menu.hidden = false;
 
     // place it next to where you clicked, but keep it inside the hub area
@@ -1183,7 +1214,8 @@
   hub.onHangout = (e) => progress.event(Object.assign({ type: "hangout" }, e));
   hub.onPerform = (w, kind) => progress.event({ type: "perform", id: w.id, kind });
   hub.onPoke = (w) => progress.event({ type: "poke", id: w.id });
-  hub.wishIconFor = (rec) => (rec.wish ? rec.wish.icon : null);
+  // over its head: just a 💭 until you've talked to it, then what it wants
+  hub.wishIconFor = (rec) => (rec.wish ? (rec.wish.heard ? rec.wish.icon : "❗") : null);
   hub.weatherLine = () => progress.weatherLine();
   progress.event({ type: "view", place: hub.world.id });
 
@@ -1298,14 +1330,19 @@
   const stateNow = () => { const w = progress.weather(); return { weather: w.weather, season: w.season, festival: w.festival, night: !!w.night }; };
 
   // ---------- wishes panel ----------
-  const wishPanel = document.createElement("div");
-  wishPanel.className = "panel wishes-panel";
-  wishPanel.innerHTML = '<h2>Wishes <span class="count" id="wishCount">0</span></h2><ul class="wishes" id="wishes"></ul>';
-  document.querySelector(".sidebar").prepend(wishPanel);
   let wishKey = "";
 
+  // Who has a wish: a 💭 by their name in Residents (and over their head). What the wish is,
+  // you find out by talking to them (their menu).
   function renderWishes(force) {
     const list = sortedRecords().filter((r) => r.wish);
+    for (const el of document.querySelectorAll("[data-wish-flag]")) {
+      const r = records.get(el.dataset.wishFlag);
+      el.hidden = !(r && r.wish);
+      if (r && r.wish) el.title = nameOf(r) + " wants something! Go and talk to " + nameOf(r) + " to find out what.";
+      el.classList.toggle("new", !!(r && r.wish && !r.wish.heard));
+    }
+    if (!$("wishes")) return;
     const key = list.map((r) => r.id + r.wish.type + r.wish.at + (r.wish.target || "")).join(",");
     $("wishCount").textContent = list.length;
     // just update the timers if nothing else changed
@@ -1636,6 +1673,7 @@
     if (id.startsWith("t-lv")) return "Grow your town by granting wishes and finishing daily goals.";
     if (id.startsWith("t-mii")) return "Help a Mii level up by keeping it happy.";
     if (id.startsWith("t-daily")) return "Finish your daily goals (📅 Daily).";
+    if (id.startsWith("h-")) return st.hint || "Something rare happens somewhere, but only while you're watching...";
     // anything else: just the vaguest version of what it is
     return "Something to do with: " + String(st.desc).split(" ").slice(0, 3).join(" ") + "…";
   }

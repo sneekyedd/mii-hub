@@ -295,7 +295,16 @@
         const won = room.result === me, draw = room.result === "draw";
         E.result.textContent = (draw ? "½–½ Draw" : won ? "🏆 You won" : room.result ? "You lost" : "Game over") + " · " + (REASONS[room.reason] || room.reason || "");
         E.result.style.borderColor = draw ? "var(--muted)" : won ? "#2fbf5a" : "var(--danger)";
-      }
+        // game review (once per game)
+        const key = room.id + ":" + room.game;
+        if (root.ChessAnalysis && E.reviewed !== key) {
+          E.reviewed = key;
+          if (E.review) E.review.remove();
+          E.review = el("div");
+          E.result.after(E.review);
+          root.ChessAnalysis.render(E.review, { moves: room.moves.slice(), you: me || "w", names: { w: room.white ? room.white.name : "White", b: room.black ? room.black.name : "Black" } });
+        }
+      } else if (E.review) { E.review.remove(); E.review = null; E.reviewed = null; }
       E.status.textContent = room.state === "waiting" ? "Waiting for someone to join \"" + room.name + "\"…"
         : room.state === "playing" ? (C.turn(st) === me ? "Your move" + (room.check ? " · check!" : "") : "Opponent's move" + (room.check ? " · check!" : ""))
         : "";

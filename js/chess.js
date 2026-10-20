@@ -1043,9 +1043,26 @@
     return pos.side === WHITE ? sc : -sc;
   }
 
+  // For game reviews: a deeper look at a position. score = centipawns (+ = good for white),
+  // best = the engine's best move there (with its SAN), or null when the game is over.
+  function analyze(state, depth) {
+    const pos = parseFEN(state.fen);
+    const st = status(state);
+    if (st.over) return { score: st.result === "w" ? MATE : st.result === "b" ? -MATE : 0, best: null };
+    S.qMax = 8; S.extend = true;
+    const legalInt = legalList(pos);
+    const root = rootSearch(pos, gameHashes(state), depth || 3, 0, 450);
+    S.pos = null;
+    if (!root.length) return { score: 0, best: null };
+    const sc = root[0].score;
+    const bm = apiMove(parseFEN(state.fen), root[0].m, legalInt);
+    const legal = legalMoves(state, bm.from).find((m) => m.to === bm.to && (m.promo || null) === (bm.promo || null));
+    return { score: pos.side === WHITE ? sc : -sc, best: legal || bm };
+  }
+
   const api = {
     START_FEN, newGame, fromFEN, toFEN, turn, piece, legalMoves, move, status, aiMove,
-    evaluate: evaluateState, captured, perft, sqName, sqIndex, profile,
+    evaluate: evaluateState, analyze, MATE, captured, perft, sqName, sqIndex, profile,
     lastMove: (state) => (state.moves && state.moves.length ? state.moves[state.moves.length - 1] : null),
     BOOK_LINES: BOOK.map((l) => l.join(" ")),
   };

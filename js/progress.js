@@ -67,6 +67,11 @@
     { level: 7, key: "stories", icon: "📚", text: "Miis tell each other stories" },
     { level: 8, key: "tier5", icon: "🛍️", text: "Rare foods from far away" },
   ];
+  // Rare events: they almost never happen, and only while you're looking at the place
+  const HIDDEN_EVENTS = [
+    { id: "mustang", icon: "🏎️", name: "Fastback", desc: "Got a honk and a rev from a '69 Mustang on Café Street", hint: "Keep an eye on the traffic on Café Street. Something classic might roll by..." },
+    { id: "ufo", icon: "🛸", name: "Close Encounter", desc: "Saw the UFO try (and fail) to beam up a Mii on the Moon", hint: "The UFO on the Moon is up to something. Keep watching the sky..." },
+  ];
   const xpNeeded = (level) => 80 + level * 45; // XP to go from `level` to the next
   const levelCoins = (level) => Math.min(100, 10 * level); // what every Mii gets when the town reaches `level`
 
@@ -662,7 +667,23 @@
           { id: "t-daily", icon: "📅", name: "Busy Day", desc: "Finished all daily goals", got: (t.dailyStreak || 0) >= 1 },
           { id: "t-daily7", icon: "🗓️", name: "Every Day!", desc: "Finished all daily goals 7 times", got: (t.dailyStreak || 0) >= 7 },
         ] },
+        // rare things that only happen while you're watching: the page is "???" until you've seen one
+        (() => {
+          const h = t.seen.hidden || {};
+          const list = HIDDEN_EVENTS.map((e) => ({ id: "h-" + e.id, icon: e.icon, name: e.name, desc: e.desc, hint: e.hint, got: !!h[e.id] }));
+          const any = list.some((x) => x.got);
+          return { name: any ? "Hidden Events" : "???", icon: any ? "✨" : "❔", hidden: true, stickers: list };
+        })(),
       ];
+    }
+    // a rare event (see HIDDEN_EVENTS) was seen in full
+    function hiddenEvent(id) {
+      if (!HIDDEN_EVENTS.some((e) => e.id === id)) return;
+      st.seen.hidden = st.seen.hidden || {};
+      if (st.seen.hidden[id]) return;
+      st.seen.hidden[id] = true;
+      checkStickers();
+      changed();
     }
     function checkStickers() {
       for (const page of stickerPages()) for (const s of page.stickers) {
@@ -742,7 +763,7 @@
       state: st, on, tick, event, ensure, happyNeeded, addHappy, applyGift, makeWish, wishOf, wishActions, grant, dismiss,
       startMakeUp, startConfession, bringTogether, context, partnerOf, claim, rollDaily, weather, weatherText, weatherLine,
       placeMood, stickerPages, shopFoods, shopItems, newFor, deals, priceOf, lockedTier, unlockLevelForTier, tierOf, allFoods,
-      xpNeeded, levelCoins, unlocked, forget, pair, MOVES, SONGS, UNLOCKS, FESTIVALS,
+      xpNeeded, levelCoins, unlocked, hiddenEvent, HIDDEN_EVENTS, forget, pair, MOVES, SONGS, UNLOCKS, FESTIVALS,
     };
   }
 

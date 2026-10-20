@@ -11,7 +11,15 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-20", title: "Sleepy eyes, favorites and more",
+      v: null, date: "2026-10-20", title: "Game reviews, wishes you have to ask about, and secrets",
+      notes: [
+        "Chess: after every game (vs a Mii or online), 📊 Review the game shows your accuracy and how good each move was, from Book and Best to Blunder, with the better move for your mistakes.",
+        "Wishes: the Wishes list is gone. A 💭 by a Mii's name in Residents (and a ❗ over its head) means it wants something: go and talk to it (its menu) to find out what and help.",
+        "Something very rare might happen on Café Street or the Moon... but only while you're watching. The sticker book has a new ??? page.",
+      ],
+    },
+    {
+      v: "1.2.2", date: "2026-10-20", title: "Sleepy eyes, favorites and more",
       notes: [
         "Miis close their eyes when they're asleep.",
         "Every Mii has exactly one favorite thing in each furniture category (it gets a ❤️ in the shop once they have it).",

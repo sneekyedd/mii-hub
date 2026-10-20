@@ -1307,6 +1307,12 @@
       if (this.onTick) this.onTick(dt);
       if (this.world.windowSpot || this.windowMiis.size) this.syncWindowMiis(dt);
       if (this.world.riders) this.syncRiders(dt);
+      // rare events (world.rare): they only run while you're looking at the place
+      if (this.world.rare && !this.visiting) this.world.rare.update(dt, this.time, this.rareCtx || (this.rareCtx = {
+        miis: () => this.walkers.filter((w) => !w.held && !w.anchored && !w.leaving && w.vanish <= 0 && !this.calls.has(w.id)),
+        say: (w, text, secs) => w.say(text, secs || 2.5),
+        event: (id) => { if (this.onRareEvent) this.onRareEvent(id); },
+      }));
       this.runDirector(dt);
       this.tickCalls(dt);
       const floaty = this.world.floaty;
@@ -1905,7 +1911,7 @@
         legsOut: sitting && anchor.at.legs === "out",
         lie: lying,
       });
-      holder.position.set(px, w.lift + py + hopY - (anchor ? 0 : rig.drop * w.sizeScale), pz);
+      holder.position.set(px, w.lift + (w.rareLift || 0) + py + hopY - (anchor ? 0 : rig.drop * w.sizeScale), pz);
     }
 
     // ---------- floating text over each Mii ----------
@@ -2077,8 +2083,9 @@
         } else if (down && down.w && e.type === "pointerup") {
           this.poke(down.w);
         } else if (down && !down.w && e.type === "pointerup" && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 6) {
-          // clicked the scenery: an apartment, maybe?
-          if (this.world.pickApartment && this.onApartmentClick) {
+          // clicked the scenery: something rare going by, or an apartment?
+          if (this.world.rare && this.world.rare.pick && this.world.rare.pick(this.pointerRay(e))) { /* handled */ }
+          else if (this.world.pickApartment && this.onApartmentClick) {
             const id = this.world.pickApartment(this.pointerRay(e));
             if (id) this.onApartmentClick(id, e.clientX, e.clientY);
           }

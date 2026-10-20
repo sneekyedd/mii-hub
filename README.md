@@ -98,7 +98,7 @@ Every Mii has its own apartment in the building by the **🏘️ Courtyard**. Yo
 
 Miis need you! This is what keeps the game going:
 
-- **💭 Wishes:** every few minutes a Mii asks you for something: food (maybe a particular dish), new furniture or wallpaper, a mini-game, a visit, a trip somewhere, a high five or a trick, a new catchphrase, meeting another Mii, help making up after a fight, or advice about a crush. Wishes show up in the **Wishes** panel (with buttons that take you straight there) and as a 💭 over the Mii's head. Grant them before the timer runs out!
+- **💭 Wishes:** every few minutes a Mii asks you for something: food (maybe a particular dish), new furniture or wallpaper, a mini-game, a visit, a trip somewhere, a high five or a trick, a new catchphrase, meeting another Mii, help making up after a fight, or advice about a crush. A Mii with a wish gets a 💭 by its name in *Residents* (and over its head). To find out what it wants, go and talk to it: its menu (right-click it, or click the 💭) shows the wish and the ways to help. Grant it before the timer runs out!
 - **⭐ Mii levels:** granting wishes (and giving things a Mii loves) fills its hearts ❤️. When they're full the Mii **levels up** and you pick a present: a **special move** (spin, backflip, moonwalk, flex, bow, sing), a **song** it can sing (and use for karaoke), a **free piece of furniture**, or **coins**.
 - **🏙️ Town level:** every wish you grant gives the town XP (shown in the top bar). Each new town level gives every Mii coins (10 × the new level, up to 100) and unlocks something: picnics, crushes and couples, karaoke, more festivals, rivalries, storytelling, and fancier things in the shop. Every place is open from the start.
 - **📅 Daily goals:** three new goals every day (like "grant 3 wishes" or "visit 2 homes"). Each one gives town XP and coins for every Mii, with a bonus for finishing all three.
@@ -167,6 +167,8 @@ Every Mii has a **skill meter** for each game, from *Beginner* to *Master*. **Th
 - **Tic-Tac-Toe:** beginners play anywhere. Better Miis take wins and block yours. A *Master* plays perfectly and can't be beaten (only drawn).
 - **Connect 4:** beginners drop pieces almost anywhere. Better Miis take wins, block yours, and think up to six moves ahead.
 - **Chess:** a new Mii is a total beginner that hangs pieces. It gets better with every finished game (Master after about 20). A Master is knowledgeable with few blunders, but beatable: it's no Stockfish.
+
+After a game, **📊 Review the game** works like chess.com's review: your accuracy, and every move rated (Book, Best, Excellent, Good, Inaccuracy, Mistake, Blunder) with the better move for your mistakes.
 
 **🎮 Play → ♟️ Chess** at the top opens the chess window: play one of your Miis, or go **🌐 Online** to play other people through the same server as online Paintball. Host a game (optional password, a clock from bullet to classical, and your color) or join one. The server checks every move and runs the clocks. You can offer a draw, resign, or ask for a rematch.
 
