@@ -745,6 +745,71 @@
     return inst.lieDepth;
   }
 
+  // ---- closed eyes (sleeping) ----
+  // The face is one picture (the "Mask" texture). To close the eyes we find each eye by its
+  // white part, rub the eye out, and draw a sleepy curve in its place. Made once per face.
+  function closedEyesMap(map) {
+    const img = map && map.image;
+    if (!img || !img.width) return null;
+    const W = img.width, Hh = img.height;
+    const c = document.createElement("canvas");
+    c.width = W; c.height = Hh;
+    const g = c.getContext("2d");
+    g.drawImage(img, 0, 0);
+    let data;
+    try { data = g.getImageData(0, 0, W, Hh).data; } catch (e) { return null; }
+    // white pixels (the whites of the eyes), split into the left and right eye
+    const box = [null, null];
+    for (let y = Math.floor(Hh * 0.25); y < Hh * 0.75; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4;
+        if (data[i + 3] > 200 && data[i] > 225 && data[i + 1] > 225 && data[i + 2] > 225) {
+          const k = x < W / 2 ? 0 : 1;
+          const b = box[k] || (box[k] = { x0: x, x1: x, y0: y, y1: y });
+          if (x < b.x0) b.x0 = x; if (x > b.x1) b.x1 = x; if (y < b.y0) b.y0 = y; if (y > b.y1) b.y1 = y;
+        }
+      }
+    }
+    if (!box[0] || !box[1]) return null;
+    for (const b of box) {
+      const w = b.x1 - b.x0, h = b.y1 - b.y0;
+      if (w < 4 || h < 3) return null;
+      // rub out the eye (whites, iris and its dark outline), then a closed-eye curve
+      const px = w * 0.22, top = h * 0.6, bottom = h * 0.62;
+      g.clearRect(b.x0 - px, b.y0 - top, w + px * 2, h + top + bottom);
+      const cx = (b.x0 + b.x1) / 2, cy = b.y0 + h * 0.55;
+      g.strokeStyle = "#1a1210"; g.lineCap = "round"; g.lineWidth = Math.max(3, w * 0.09);
+      g.beginPath();
+      g.moveTo(cx - w * 0.5, cy);
+      g.quadraticCurveTo(cx, cy + h * 0.55, cx + w * 0.5, cy);
+      g.stroke();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.flipY = map.flipY; t.wrapS = map.wrapS; t.wrapT = map.wrapT;
+    if (map.encoding !== undefined) t.encoding = map.encoding;
+    t.needsUpdate = true;
+    return t;
+  }
+  const closedCache = new WeakMap(); // open-eyes texture -> closed-eyes texture (or null if we can't)
+  function setEyesClosed(inst, closed) {
+    if (inst.eyesClosed === !!closed) return;
+    inst.eyesClosed = !!closed;
+    if (inst.maskMesh === undefined) {
+      inst.maskMesh = null;
+      inst.inner.traverse((o) => { if (!inst.maskMesh && o.isMesh && o.name === "Mask" && o.material && o.material.map) inst.maskMesh = o; });
+      if (inst.maskMesh) { inst.maskMesh.material = inst.maskMesh.material.clone(); inst.openEyes = inst.maskMesh.material.map; }
+    }
+    const m = inst.maskMesh;
+    if (!m) return;
+    if (closed) {
+      if (!closedCache.has(inst.openEyes)) closedCache.set(inst.openEyes, closedEyesMap(inst.openEyes));
+      const t = closedCache.get(inst.openEyes);
+      if (!t) return;
+      m.material.map = t;
+    } else m.material.map = inst.openEyes;
+    m.material.needsUpdate = true;
+  }
+
   // ---- small portrait pictures for the side panel ----
   let portraitRenderer = null;
   function portrait(template, look, size) {
@@ -786,5 +851,5 @@
     });
   }
 
-  root.MiiModel = Object.assign(api, { loadTemplate, createInstance, applyLook, portrait, disposeObject, srgbColor, rgbToHex, DEFAULT_STYLE, lieDepth });
+  root.MiiModel = Object.assign(api, { loadTemplate, createInstance, applyLook, portrait, disposeObject, srgbColor, rgbToHex, DEFAULT_STYLE, lieDepth, setEyesClosed });
 })(typeof self !== "undefined" ? self : this);

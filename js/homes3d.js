@@ -2129,7 +2129,8 @@
       },
     },
     "bed-futon": {
-      obs: [{ cx: 0, cz: 0, w: 2.2, d: 3.0 }], spot: { lx: 1.95, lz: 0.5, yaw: -PI / 2 }, lie: { lx: 0, lz: 0.1, h: 0.4, yaw: PI },
+      // (the Mii lies on the mattress, on top of a thin quilt: h = the quilt's top)
+      obs: [{ cx: 0, cz: 0, w: 2.2, d: 3.0 }], spot: { lx: 1.95, lz: 0.5, yaw: -PI / 2 }, lie: { lx: 0, lz: 0.1, h: 0.34, yaw: PI },
       build(g) {
         // a low tatami platform with a futon, a quilt and a roll pillow
         block(g, 0xd8d39a, 0, 0.06, 0, 2.2, 0.12, 3.0, 0.03);
@@ -2140,8 +2141,8 @@
           c.strokeStyle = "rgba(255,255,255,0.75)"; c.lineWidth = 2;
           for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { c.beginPath(); c.arc(x * 32 + 16, y * 32 + 16, 11, 0, TAU); c.stroke(); c.beginPath(); c.arc(x * 32 + 16, y * 32 + 16, 5, 0, TAU); c.stroke(); }
         }, [2, 2]);
-        block(g, toon(0xffffff, { map: quilt }), 0, 0.35, 0.38, 1.78, 0.1, 1.75, 0.05);
-        block(g, 0xff9ec7, 0, 0.35, -0.5, 1.78, 0.1, 0.12, 0.04);
+        block(g, toon(0xffffff, { map: quilt }), 0, 0.32, 0.38, 1.78, 0.04, 1.75, 0.015);
+        block(g, 0xff9ec7, 0, 0.32, -0.5, 1.78, 0.04, 0.12, 0.015);
         put(g, G.capsule(), toon(0xf0e3c8), { y: 0.42, z: -0.98, sx: 0.26, sy: 0.6, sz: 0.26, rz: PI / 2 });
         // a paper lantern on the floor by the head
         cylinder(g, 0x6b4423, 0.85, 0.16, -1.25, 0.12, 0.04);

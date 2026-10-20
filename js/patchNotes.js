@@ -11,7 +11,17 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-19", title: "Lots of little fixes",
+      v: null, date: "2026-10-20", title: "Sleepy eyes, favorites and more",
+      notes: [
+        "Miis close their eyes when they're asleep.",
+        "Every Mii has exactly one favorite thing in each furniture category (it gets a ❤️ in the shop once they have it).",
+        "Look around a Mii's home while they're out: the 🔑 button in Residents, \"Look inside\" in its menu, or click its apartment in the Courtyard.",
+        "The cyclists on Café Street are real Miis now.",
+        "Miis no longer float above the futon.",
+      ],
+    },
+    {
+      v: "1.2.1", date: "2026-10-19", title: "Lots of little fixes",
       notes: [
         "A splash screen with a loading bar while Mii Hub starts.",
         "🎮 Play: Paintball and Chess are now together under one Play button at the top.",

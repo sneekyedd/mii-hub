@@ -1431,6 +1431,7 @@
       // zoomed right out, the camera stays inside the ring of nearby buildings
       // (the ones further out start beyond it), so they can't block the view
       cameraMaxDistance: 30,
+      riders: zones.riders, // random Miis on the bikes (the hub adds them)
       bounds: { minX: -17, maxX: 17, minZ: -9.8, maxZ: 10 },
       entrance: { x: 0.6, z: 9.4 },
       water: [{ x: F.x, z: F.z, r: 1.7 }],
@@ -1651,18 +1652,14 @@
       bx(b, 0xff5a5a, 0.4, 0.75, 0, 0.07, 0.6, 0.07, { rz: -0.3 });
       bx(b, 0x333333, 0.5, 1.05, 0, 0.08, 0.06, 0.6);
       bx(b, 0x333333, -0.15, 0.95, 0, 0.3, 0.08, 0.2);
-      // the rider
-      put(b, G.capsule(), toon(0x4a5a8a), { x: -0.1, y: 0.75, z: 0.12, s: 0.18, sy: 0.4, rz: 0.6 });
-      put(b, G.capsule(), toon(0x4a5a8a), { x: -0.1, y: 0.75, z: -0.12, s: 0.18, sy: 0.4, rz: 0.6 });
-      put(b, G.capsule(), toon(shirt), { x: 0.0, y: 1.45, s: 0.36, sy: 0.55, rz: -0.35 });
-      ball(b, 0xffd3ad, 0.2, 2.05, 0, 0.28);
-      ball(b, pick([0x5a3a1a, 0x222222, 0xc98b4a]), 0.15, 2.17, 0, 0.27, { sy: 0.8 });
-      ball(b, shirt, 0.15, 2.25, 0, 0.29, { sy: 0.55 }); // helmet
+      // (the rider is a real random Mii, added by the hub: see world.riders)
     });
     const bikes = [
       { mesh: dynamic(painted(root, bikeGeo(0x5cc84a))), z: 10.7, speed: 3.2, off: 0 },
       { mesh: dynamic(painted(root, bikeGeo(0xff8fb8))), z: 11.1, speed: -2.7, off: 40 },
     ];
+    // where the hub sits a random Mii on each bike (facing the way the bike goes)
+    zones.riders = bikes.map((b) => ({ parent: b.mesh, x: -0.15, y: 0.42, z: 0, yaw: PI / 2 })); // (y: the saddle, minus the seat drop)
     anim.push((t) => bikes.forEach((b, i) => {
       const x = ((((t * b.speed + b.off) % 120) + 180) % 120) - 60;
       b.mesh.position.set(x, Math.abs(Math.sin(t * 6 + i)) * 0.02, b.z);

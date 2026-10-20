@@ -28,7 +28,16 @@ assert.deepStrictEqual(again.tastes, rec.tastes, "tastes must stay the same for 
 const energetic = { energy: 95, social: 60, chatty: 50, humor: 50, kindness: 50 };
 const calm = { energy: 5, social: 40, chatty: 50, humor: 50, kindness: 50 };
 const treadmill = H.item("tv-treadmill"), sofa = H.item("sofa-comfy");
-assert.strictEqual(H.opinion(energetic, null, treadmill), "love");
+assert.strictEqual(H.opinion(energetic, null, treadmill), "like"); // (only a Mii's one favorite gets a "love")
+// every Mii has exactly one favorite in each furniture category
+{
+  const who = { id: "mii-favs" };
+  for (const slot of new Set(H.ITEMS.map((it) => it.slot))) {
+    const loved = H.ITEMS.filter((it) => it.slot === slot && H.opinion(energetic, who, it) === "love");
+    const pool = H.ITEMS.filter((it) => it.slot === slot && !/-none$/.test(it.id) && !it.starter);
+    assert.strictEqual(loved.length, pool.length ? 1 : 0, "one favorite " + slot + ": " + loved.map((x) => x.id));
+  }
+}
 assert.strictEqual(H.opinion(calm, null, treadmill), "dislike");
 assert(["love", "like"].includes(H.opinion(calm, null, sofa)));
 assert.strictEqual(H.opinion(calm, rec, H.item(rec.tastes.favorite)), "love");

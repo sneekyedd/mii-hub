@@ -305,7 +305,7 @@
     }
 
     // The Miis you can see right now (only the resident while visiting a home).
-    active() { return this.visiting ? [this.visiting.walker] : this.walkers; }
+    active() { return this.visiting ? (this.visiting.empty ? [] : [this.visiting.walker]) : this.walkers; }
 
     // ---------- setup ----------
     resize() {
@@ -422,6 +422,7 @@
           sit, lie, run, walk: run ? 1 : 0, phase: t * 8.5, legsOut: sit && spot.legs === "out",
           nod: lie ? 0 : 0, talking: onCall,
         });
+        if (M.setEyesClosed) M.setEyesClosed(m.inst, lie);
         if (lie) {
           // on its back, head on the pillow
           const len = MII_HEIGHT * m.s * 0.5;
@@ -436,6 +437,32 @@
         if (want.has(id)) continue;
         this.scene.remove(m.inst.holder); M.disposeObject(m.inst.holder);
         this.windowMiis.delete(id);
+      }
+    }
+
+    // Random Miis riding past on bikes (world.riders: where to sit them). The app gives
+    // this.riderMii() -> { template, look }, a random generic Mii like "Add random Miis" makes.
+    syncRiders(dt) {
+      const world = this.world;
+      if (!world.ridersMade) {
+        if (!this.riderMii || !this.riderMii()) return; // (the generic Mii model isn't loaded yet)
+        world.ridersMade = [];
+        for (const spot of world.riders) {
+          const m = this.riderMii();
+          if (!m || !m.template) continue;
+          const inst = M.createInstance(m.template, m.look || {});
+          inst.holder.rotation.order = "YXZ";
+          inst.holder.scale.setScalar(1.05);
+          inst.holder.position.set(spot.x, spot.y, spot.z);
+          inst.holder.rotation.set(0, spot.yaw || 0, 0);
+          spot.parent.add(inst.holder);
+          world.ridersMade.push({ inst, t0: Math.random() * 10 });
+        }
+      }
+      for (const r of world.ridersMade) {
+        const t = this.time + r.t0;
+        // sitting on the saddle, legs going round (pedalling), hands on the handlebars
+        r.inst.rig.pose({ t, dt, arms: "type", sit: true, walk: 0.6, phase: t * 7, legsOut: true });
       }
     }
 
@@ -690,11 +717,13 @@
     }
 
     // ---------- visiting a Mii at home ----------
-    visitHome(record, template, look) {
+    // opts.empty: the Mii is out, so you look around its home on your own
+    visitHome(record, template, look, opts) {
+      const empty = !!(opts && opts.empty);
       if (this.visiting) this.leaveHome();
       if (this.dragging) { this.dragging.held = false; this.dragging = null; }
       this.hover = null;
-      if (this.calls.has(record.id)) this.endCall(this.calls.get(record.id), record.id); // you're here: they hang up
+      if (!empty && this.calls.has(record.id)) this.endCall(this.calls.get(record.id), record.id); // you're here: they hang up
       this.mainWorld = this.world;
       this.mainNav = this.nav;
       this.mainCamera = { pos: this.camera.position.clone(), target: this.controls.target.clone() };
@@ -710,7 +739,8 @@
       v.x = start.x; v.z = start.z;
       v.yaw = v.targetYaw = this.viewYaw(v);
       v.timer = rnd(3, 5);
-      this.visiting = { record, walker: v };
+      this.visiting = { record, walker: v, empty };
+      if (empty) { v.inst.holder.visible = false; v.ui.style.display = "none"; this.onChange(); return; }
       this.later(v, 0.7, () => {
         v.arms = "wave";
         v.say(this.onHomeTalk ? this.onHomeTalk(v, "hello") : "Welcome to my home!", 3);
@@ -1276,6 +1306,7 @@
       this.world.update(this.time, this.camera);
       if (this.onTick) this.onTick(dt);
       if (this.world.windowSpot || this.windowMiis.size) this.syncWindowMiis(dt);
+      if (this.world.riders) this.syncRiders(dt);
       this.runDirector(dt);
       this.tickCalls(dt);
       const floaty = this.world.floaty;
@@ -1853,6 +1884,7 @@
       if (w.phone) w.phone.visible = w.arms === "phone" && !w.held;
       const sitting = anchor && anchor.kind === "sit" && w.seatBlend > 0.5;
       const lying = anchor && anchor.kind === "lie" && w.seatBlend > 0.5;
+      if (M.setEyesClosed) M.setEyesClosed(w.inst, w.sleep || lying); // asleep (or dozing): eyes shut
       rig.pose({
         t: this.time + (w.id.length % 7) * 0.37,
         dt,

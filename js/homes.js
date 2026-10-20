@@ -257,16 +257,27 @@
   }
 
   // How much a Mii likes a thing: "love", "like", "okay" or "dislike".
+  // Every Mii has exactly one favorite thing in each furniture category (always the same one:
+  // picked from its id). Its personality decides how much it likes everything else.
+  function favoriteItem(record, slot) {
+    if (!record || !record.id) return null;
+    const pool = ITEMS.filter((it) => it.slot === slot && !/-none$/.test(it.id) && !it.starter);
+    if (!pool.length) return null;
+    return pool[hash(record.id + "|fav|" + slot) % pool.length].id;
+  }
   function opinion(personality, record, thing) {
     if (record && record.tastes) {
       if (thing.id === record.tastes.favorite) return "love";
       if (thing.id === record.tastes.hate) return "dislike";
     }
+    const furniture = thing.slot && ITEMS.indexOf(thing) >= 0;
+    if (furniture && thing.id === favoriteItem(record, thing.slot)) return "love";
     const likes = tagLikes(personality);
     const tags = thing.tags || [];
     if (!tags.length) return "okay";
     const score = tags.reduce((t, k) => t + (likes[k] || 0), 0) / Math.sqrt(tags.length);
-    if (score >= 1.3) return "love";
+    if (score >= 1.3 && !furniture) return "love";
+    if (score >= 1.3) return "like"; // (only the favorite gets a "love")
     if (score >= 0.4) return "like";
     if (score > -0.6) return "okay";
     return "dislike";
@@ -279,7 +290,7 @@
     const grumpy = p.kindness <= 35, shy = p.social <= 35, loud = p.energy >= 70;
     const n = thing.name.toLowerCase();
     if (kind === "food") {
-      if (op === "love") return pick(loud ? ["THIS IS MY FAVOURITE!!!", "NO WAY! " + thing.name.toUpperCase() + "!!"] : ["My favorite! How did you know?!", "Mmm! " + thing.name + "! I love it!"]);
+      if (op === "love") return pick(loud ? ["THIS IS MY FAVORITE!!!", "NO WAY! " + thing.name.toUpperCase() + "!!"] : ["My favorite! How did you know?!", "Mmm! " + thing.name + "! I love it!"]);
       if (op === "like") return pick(["Yum! Thank you!", "Mmm, tasty!", grumpy ? "Not bad. ...Thanks." : "This hits the spot!"]);
       if (op === "okay") return pick(["Thanks, I guess I'll eat it.", "It's food!", "Okay... *munch*"]);
       return pick(grumpy ? ["Blech! Who eats this?!", "No. Just no."] : ["Um... I don't really like " + n + "...", "Blech! ...Sorry!"]);
@@ -321,6 +332,6 @@
   }
 
   root.MiiHomes = {
-    SLOTS, ITEMS, FOODS, item, starterHome, ensureHome, opinion, reaction, MOOD_CHANGE, moodFace, homeLine, hash,
+    SLOTS, ITEMS, FOODS, item, starterHome, ensureHome, opinion, favoriteItem, reaction, MOOD_CHANGE, moodFace, homeLine, hash,
   };
 })(typeof self !== "undefined" ? self : this);

@@ -318,6 +318,19 @@
     }
   }
   $("demoBtn").addEventListener("click", () => { errorMsg.textContent = ""; addRandomMiis(3); });
+  // the cyclists on Café Street are random generic Miis too
+  let riderTpl = null;
+  hub.riderMii = () => {
+    if (!riderTpl) {
+      const p = sampleTemplate();
+      if (p && p.then) p.then((t) => { riderTpl = t; });
+      else if (p) riderTpl = p;
+      return null;
+    }
+    const tpl = riderTpl;
+    const r = randomMiiRecord(new Set());
+    return { template: tpl, look: lookFor(r, tpl) };
+  };
 
   $("chatty").addEventListener("input", (e) => { hub.chattiness = parseFloat(e.target.value); saveSettings(); });
 
@@ -366,16 +379,18 @@
     town.sendTo(rec, to);
   }
 
-  async function visit(rec) {
+  // opts.empty: look around the home while the Mii is out (it stays where it is)
+  async function visit(rec, opts) {
     closeMiiMenu();
+    const empty = !!(opts && opts.empty);
     const go = async () => {
       const template = await templateFor(rec);
-      hub.visitHome(rec, template, lookFor(rec, template));
+      hub.visitHome(rec, template, lookFor(rec, template), { empty });
       openHomePanel(rec);
       updateTabs();
-      progress.event({ type: "visit", id: rec.id });
+      if (!empty) progress.event({ type: "visit", id: rec.id });
     };
-    if (isHome(rec) && !town.isTravelling(rec)) go();
+    if (empty || (isHome(rec) && !town.isTravelling(rec))) go();
     else town.sendTo(rec, "home", { quick: true, then: go });
   }
 
@@ -413,7 +428,7 @@
   // Click an apartment in the Apartments to visit whoever lives there.
   hub.onApartmentClick = (id) => {
     const rec = records.get(id);
-    if (rec) visit(rec);
+    if (rec) visit(rec, { empty: !isHome(rec) || town.isTravelling(rec) }); // (out? you can still look around)
   };
 
   // ---------- roster ----------
@@ -495,6 +510,7 @@
         btn("🚪", "Invite " + nameOf(rec) + " out", () => inviteOut(rec));
       } else {
         btn("🏠", "Send " + nameOf(rec) + " home", () => sendHome(rec));
+        btn("🔑", "Look around " + nameOf(rec) + "'s home (while they're out)", () => visit(rec, { empty: true }));
       }
 
       row.append(img, info, actions);
@@ -900,13 +916,17 @@
     const visitBtn = document.createElement("button");
     visitBtn.textContent = "🏡 Visit home";
     visitBtn.addEventListener("click", () => visit(rec));
+    const peekBtn = document.createElement("button");
+    peekBtn.textContent = "🔑 Look inside";
+    peekBtn.title = "Look around " + nameOf(rec) + "'s home without them";
+    peekBtn.addEventListener("click", () => visit(rec, { empty: true }));
     const away = document.createElement("button");
     away.className = "danger";
     away.textContent = "📦 Move away";
     away.title = "Remove " + nameOf(rec) + " from your world for good";
     away.addEventListener("click", () => moveAway(rec));
     foot.append(homeBtn);
-    if (!atHomeVisit) foot.append(visitBtn);
+    if (!atHomeVisit) foot.append(visitBtn, peekBtn);
     foot.append(away);
 
     menu.append(head, acts, places, games, pers, fr, foot);
@@ -986,7 +1006,9 @@
 
     const tabsEl = document.createElement("div");
     tabsEl.className = "hp-tabs";
-    for (const [id, text] of [["decorate", "🛋️ Decorate"], ["food", "🍙 Give food"], ["more", "⋯ More"]]) {
+    const out = hub.visiting && hub.visiting.empty; // looking around while the Mii is out
+    if (out) head.querySelector(".hp-sub").insertAdjacentHTML("beforeend", " · <i>" + escapeHtml(nameOf(rec)) + " is out</i>");
+    for (const [id, text] of (out ? [["decorate", "🛋️ Decorate"]] : [["decorate", "🛋️ Decorate"], ["food", "🍙 Give food"], ["more", "⋯ More"]])) {
       const b = document.createElement("button");
       b.textContent = text;
       b.setAttribute("aria-pressed", String(panelTab === id));
@@ -1027,10 +1049,13 @@
         const deal = !owned && deals.includes(it.id);
         const b = document.createElement("button");
         b.className = "hp-item" + (placed ? " placed" : "") + (deal ? " deal" : "") + (locked ? " locked" : "");
-        b.innerHTML = "<span class=\"hp-icon\">" + (locked ? "🔒" : it.icon) + "</span><span class=\"hp-name\">" + escapeHtml(it.name) + "</span><span class=\"hp-price\">" +
+        // its one favorite in this category (you find out once it has it)
+        const fav = owned && H.favoriteItem && H.favoriteItem(rec, it.slot) === it.id;
+        b.innerHTML = "<span class=\"hp-icon\">" + (locked ? "🔒" : it.icon) + "</span><span class=\"hp-name\">" + escapeHtml(it.name) + (fav ? " ❤️" : "") + "</span><span class=\"hp-price\">" +
           (placed ? "✓ In use" : owned ? "Owned" : locked ? "Town Lv " + progress.unlockLevelForTier(progress.tierOf(it)) : (deal ? "⭐ " : "") + "🪙 " + price) + "</span>";
         b.disabled = placed || locked || (!owned && (rec.coins || 0) < price);
         if (!owned && !locked && (rec.coins || 0) < price) b.title = nameOf(rec) + " needs " + (price - (rec.coins || 0)) + " more coins";
+        if (fav) b.title = nameOf(rec) + "'s favorite " + it.slot + "!";
         if (deal) b.title = "Today's deal: 30% off!";
         b.addEventListener("click", () => placeItem(rec, it));
         grid.appendChild(b);
@@ -1101,6 +1126,7 @@
   // Feeds a Mii (paid with its own coins). It eats on screen if you can see it.
   function giveFood(rec, f) {
     if ((rec.coins || 0) < f.price) return;
+    if (hub.visiting && hub.visiting.empty) return; // (they're not here to eat it)
     rec.coins -= f.price;
     const p = D.traits(rec);
     const op = H.opinion(p, rec, f);
