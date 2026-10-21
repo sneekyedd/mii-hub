@@ -11,7 +11,13 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-20", title: "Game reviews, wishes you have to ask about, and secrets",
+      v: null, date: "2026-10-21", title: "Chess sound fix",
+      notes: [
+        "Online chess: the move sound no longer plays twice when a turn changes.",
+      ],
+    },
+    {
+      v: "1.2.3", date: "2026-10-20", title: "Game reviews, wishes you have to ask about, and secrets",
       notes: [
         "Chess: after every game (vs a Mii or online), 📊 Review the game shows your accuracy and how good each move was, from Book and Best to Blunder, with the better move for your mistakes.",
         "Wishes: the Wishes list is gone. A 💭 by a Mii's name in Residents (and a ❗ over its head) means it wants something: go and talk to it (its menu) to find out what and help.",
