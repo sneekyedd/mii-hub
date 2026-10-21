@@ -1,7 +1,7 @@
 {
   "name": "mii-hub",
   "productName": "Mii Hub",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Watch your 3D Miis walk around, chat and become friends.",
   "main": "electron/main.js",
   "author": "sneekyedd",

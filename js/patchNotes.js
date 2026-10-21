@@ -11,7 +11,16 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-21", title: "Chess sound fix",
+      v: null, date: "2026-10-21", title: "Crabs, ducks, cats and more secrets",
+      notes: [
+        "Seven new very rare Hidden Events: something might happen at the beach, the park, the office, the courtyard, the college, the stage... and even while you're visiting a Mii's home. You have to be watching!",
+        "Apartments have their curtains closed while their Mii is out.",
+        "The chandelier hangs from the ceiling now instead of a super-long chain.",
+        "In windy weather, leaves (or petals, or snow) sometimes blow past.",
+      ],
+    },
+    {
+      v: "1.2.4", date: "2026-10-21", title: "Chess sound fix",
       notes: [
         "Online chess: the move sound no longer plays twice when a turn changes.",
       ],
