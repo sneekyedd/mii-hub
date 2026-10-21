@@ -71,6 +71,13 @@
   const HIDDEN_EVENTS = [
     { id: "mustang", icon: "🏎️", name: "Fastback", desc: "Got a honk and a rev from a '69 Mustang on Café Street", hint: "Keep an eye on the traffic on Café Street. Something classic might roll by..." },
     { id: "ufo", icon: "🛸", name: "Close Encounter", desc: "Saw the UFO try (and fail) to beam up a Mii on the Moon", hint: "The UFO on the Moon is up to something. Keep watching the sky..." },
+    { id: "crabs", icon: "🦀", name: "Pinch Pinch Shuffle", desc: "Watched the crabs' whole dance party on the Beach", hint: "The crabs on the Beach are practicing something. One day they might put on a show... stay for all of it!" },
+    { id: "boo", icon: "👻", name: "Boo!", desc: "Caught a prankster at the window while visiting a Mii's home", hint: "When you visit a Mii at home, glance at the window now and then. Who's that peeking in?" },
+    { id: "ducks", icon: "🦆", name: "Duck Parade", desc: "Watched a duck family march right across the Park", hint: "The ducks in the Park sometimes go for a very long walk. Follow them all the way!" },
+    { id: "printer", icon: "🖨️", name: "Off and On Again", desc: "Unplugged the haywire printer at the Office", hint: "That printer at the Office isn't as broken as it looks. If it ever acts up, you know what to do..." },
+    { id: "koi", icon: "🐟", name: "Golden Koi", desc: "Made the golden koi leap out of the Courtyard pond", hint: "Something shiny sometimes swims in the Courtyard's koi pond. Give it a tap!" },
+    { id: "plane", icon: "✈️", name: "Air Mail", desc: "Caught a paper airplane in the College lecture hall", hint: "Someone at the College passes notes in class... by air. Catch one!" },
+    { id: "cat", icon: "🐱", name: "Purrformance", desc: "Saw a cat sing on the Concert Stage", hint: "The Concert Stage has a surprise guest star now and then. Stay for the whole show!" },
   ];
   const xpNeeded = (level) => 80 + level * 45; // XP to go from `level` to the next
   const levelCoins = (level) => Math.min(100, 10 * level); // what every Mii gets when the town reaches `level`
