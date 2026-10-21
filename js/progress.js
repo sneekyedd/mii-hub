@@ -168,7 +168,9 @@
     const pairKey = (a, b) => (a < b ? a + "|" + b : b + "|" + a);
     const pair = (a, b) => { const k = pairKey(a, b); return st.pairs[k] || (st.pairs[k] = {}); };
     const points = (a, b) => hub.friendships[pairKey(a, b)] || 0;
-    const unlocked = (key) => UNLOCKS.some((u) => u.key === key && u.level <= st.level);
+    // sandbox mode (Settings): everything is unlocked
+    let sandbox = false;
+    const unlocked = (key) => sandbox || UNLOCKS.some((u) => u.key === key && u.level <= st.level);
 
     // ---------- Mii levels ----------
     function ensure(rec) {
@@ -686,13 +688,34 @@
       changed();
     }
     function checkStickers() {
+      if (st.lock) return; // (sandbox / fast simulation: no stickers)
       for (const page of stickerPages()) for (const s of page.stickers) {
-        if (s.got && !st.stickers[s.id]) {
+        if (s.got && !st.stickers[s.id] && !(st.voided && st.voided[s.id])) {
           st.stickers[s.id] = true;
           emit("sticker", s);
         }
       }
     }
+
+    // ---------- sandbox mode and simulation speed (Settings) ----------
+    // While either is on, no stickers can be earned. Things you see or do meanwhile
+    // (places, weather, foods, furniture, wins, wishes...) are forgotten when it goes
+    // off, so you can still earn those stickers properly later. Milestones that can't
+    // be undone (a couple, a town level...) reached meanwhile never give their sticker.
+    function setStickerLock(on) {
+      if (on && !st.lock) {
+        st.lock = { seen: JSON.parse(JSON.stringify(st.seen)), wins: Object.assign({}, st.wins), granted: st.granted, dailyStreak: st.dailyStreak || 0 };
+        save();
+      } else if (!on && st.lock) {
+        const l = st.lock;
+        st.seen = l.seen; st.wins = l.wins; st.granted = l.granted; st.dailyStreak = l.dailyStreak;
+        st.lock = null;
+        st.voided = st.voided || {};
+        for (const page of stickerPages()) for (const s of page.stickers) if (s.got && !st.stickers[s.id]) st.voided[s.id] = true;
+        changed();
+      }
+    }
+    function setSandbox(on) { sandbox = !!on; }
 
     // ---------- the clock ----------
     let weatherIn = 0;
@@ -764,6 +787,7 @@
       startMakeUp, startConfession, bringTogether, context, partnerOf, claim, rollDaily, weather, weatherText, weatherLine,
       placeMood, stickerPages, shopFoods, shopItems, newFor, deals, priceOf, lockedTier, unlockLevelForTier, tierOf, allFoods,
       xpNeeded, levelCoins, unlocked, hiddenEvent, HIDDEN_EVENTS, forget, pair, MOVES, SONGS, UNLOCKS, FESTIVALS,
+      setStickerLock, setSandbox, stickersLocked: () => !!st.lock, isVoided: (id) => !!(st.voided && st.voided[id]),
     };
   }
 
