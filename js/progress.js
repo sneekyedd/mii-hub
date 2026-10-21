@@ -150,6 +150,7 @@
   function create(opts) {
     const { records, D, H, hub } = opts;
     const T = root.MiiTown;
+    const L = root.MiiLife; // outfits, jobs, vacations, bands (life.js)
     // the town's progress (saved with the settings)
     const st = Object.assign({
       xp: 0, level: 1, granted: 0, stickers: {}, pairs: {}, daily: null,
@@ -177,7 +178,16 @@
       rec.moves = rec.moves || [];
       rec.songs = rec.songs || [];
       rec.foods = rec.foods || {};
+      if (L) { L.ensureWardrobe(rec); L.ensureJob(rec); }
       return rec;
+    }
+    // Miis learn a new song every time they level up (bands play them, see lifeHub.js).
+    function learnSong(rec) {
+      const songs = SONGS.filter((s) => !ensure(rec).songs.includes(s.id));
+      if (!songs.length) return null;
+      const s = pick(songs);
+      rec.songs.push(s.id);
+      return s;
     }
     const happyNeeded = (rec) => 3 + ensure(rec).level;
 
@@ -191,6 +201,8 @@
         addXp(30);
         emit("levelup", rec, giftChoices(rec));
         emit("toast", "⭐ " + nameOf(rec) + " is now level " + rec.level + "!");
+        const song = learnSong(rec);
+        if (song) emit("toast", "🎵 " + nameOf(rec) + " learned a new song: “" + song.title + "”!");
       }
       opts.saveMii(rec);
     }
@@ -198,10 +210,9 @@
     // Three gifts to pick from when a Mii levels up.
     function giftChoices(rec) {
       const out = [];
+      // (songs aren't a present any more: Miis learn one every level by themselves)
       const moves = MOVES.filter((m) => !rec.moves.includes(m.id));
-      const songs = SONGS.filter((s) => !rec.songs.includes(s.id));
       if (moves.length) { const m = pick(moves); out.push({ kind: "move", id: m.id, icon: m.icon, title: "Special move: " + m.name, desc: m.desc }); }
-      if (songs.length) { const s = pick(songs); out.push({ kind: "song", id: s.id, icon: "🎵", title: "New song: " + s.title, desc: "It can sing it (and do karaoke)" }); }
       const p = D.traits(rec);
       const furn = H.ITEMS.filter((it) => !it.starter && it.price > 0 && !(rec.home && rec.home.owned.includes(it.id)));
       if (furn.length) {
@@ -241,19 +252,21 @@
 
     // ---------- wishes ----------
     const placeName = (id) => (T ? T.placeInfo(id).name : id);
-    const others = (rec) => Array.from(records.values()).filter((r) => r !== rec);
+    // (Miis away on vacation don't count: you can't meet them or ask them anything)
+    const others = (rec) => Array.from(records.values()).filter((r) => r !== rec && r.place !== "away");
 
     // Furniture a Mii could still get for a slot: things in the shop today that it
     // doesn't own yet (what it owns includes what's placed). A Mii only wishes for a
     // new thing in a slot when there's actually something new to buy for it.
     const STYLE_SLOTS = ["wallpaper", "floor"];
-    const FURNITURE_SLOTS = H.SLOTS.map((s) => s.id).filter((id) => !STYLE_SLOTS.includes(id));
+    const FURNITURE_SLOTS = H.SLOTS.map((s) => s.id).filter((id) => !STYLE_SLOTS.includes(id)).concat((H.ROOM_SLOTS || []).map((s) => s.id));
     function newFor(rec, slot) {
       const owned = (rec.home && rec.home.owned) || [];
       const placed = (rec.home && rec.home.items) || {};
       return shopItems(slot).filter((it) => !it.starter && it.price > 0 && !owned.includes(it.id) && placed[slot] !== it.id);
     }
-    const wishSlots = (rec, ids) => H.SLOTS.filter((s) => ids.includes(s.id) && newFor(rec, s.id).length > 0);
+    // (the extra rooms it owns have their own kinds of furniture to wish for)
+    const wishSlots = (rec, ids) => (H.slotsFor ? H.slotsFor(rec) : H.SLOTS).filter((s) => ids.includes(s.id) && newFor(rec, s.id).length > 0);
 
     // Each kind of wish: when it can happen, what the Mii says, and what grants it.
     const WISH_TYPES = [
@@ -301,6 +314,11 @@
         return { text: pick(["I want to go to " + p.name + "!", "Take me to " + p.name + "! " + p.icon]), place: p.id, icon: p.icon };
       } },
       { type: "highFive", icon: "✋", w: 0.8, make: () => ({ text: pick(["Give me a high five!", "Say hi to me!", "Boop me! Hehe."]) }) },
+      // it wants to start a band (it'll ask the others itself), then put on a show for you
+      { type: "band", icon: "🎸", w: 0.7, can: canStartBand, make(rec) {
+        const s = SONGS.find((x) => x.id === pick(rec.songs));
+        return { text: pick(["I want to start a band and play “" + s.title + "”! 🎸", "Let's form a band! I know the perfect song: “" + s.title + "”!"]), song: s.id };
+      } },
       { type: "trick", icon: "✨", w: 0.7, make(rec) {
         const kinds = ["dance", "jump", "wave"].concat(ensure(rec).moves);
         const k = pick(kinds);
@@ -383,6 +401,7 @@
         case "perform": daily("perform"); if (rec.wish && rec.wish.type === "trick" && rec.wish.kind === e.kind) grant(rec, { bonus: 1 }); break;
         case "view": st.seen.places[e.place] = true; daily("view", e.place); checkStickers(); break;
         case "hangout": hangout(e); break;
+        case "life": st.seen[e.what] = (st.seen[e.what] || 0) + 1; checkStickers(); break; // outfits, rooms, shifts, trips, solos
       }
       changed();
     }
@@ -397,6 +416,7 @@
         const w = x.wish;
         if (w && w.type === "meet" && w.target === y.id) grant(x, { bonus: 0 });
       }
+      if (e.kind === "bandInvite") bandAnswer(A, B, !!e.success);
       if (e.kind === "makeUp") {
         p.fight = false; p.makeUp = false; p.fights = Math.max(0, (p.fights || 0) - 1);
         for (const [x, y] of [[A, B], [B, A]]) if (x.wish && x.wish.type === "makeUp" && x.wish.target === y.id) grant(x, { bonus: 1 });
@@ -435,11 +455,106 @@
 
     function partnerOf(rec) { return rec.sweetheart && records.has(rec.sweetheart) ? records.get(rec.sweetheart) : null; }
 
+    // ---------- bands ----------
+    // A Mii with a song wants to start a band. You say "go for it", then it asks the
+    // others (on its own, when it hangs out with them). Once BAND_SIZE of them said
+    // yes, it wishes for you to come and watch the show at the concert stage.
+    const BAND_SIZE = L ? L.BAND_SIZE : 4;
+    const bandOf = (id) => Array.from(records.values()).find((r) => r.band && (r.id === id || r.band.members.includes(id))) || null;
+    const canJoin = (rec, leader) => rec !== leader && rec.place !== "away" && !bandOf(rec.id);
+    function canStartBand(rec) {
+      if (!ensure(rec).songs.length || rec.band || Array.from(records.values()).some((r) => r.band)) return false;
+      return others(rec).filter((o) => canJoin(o, rec)).length >= BAND_SIZE;
+    }
+    function startBand(rec) {
+      const w = rec.wish;
+      if (!w || w.type !== "band") return;
+      rec.band = { song: w.song, members: [], asked: [], status: "recruiting", askIn: 8 };
+      rec.wish = null; // (the wish was "can I?": saying yes is the reward)
+      st.granted += 1;
+      daily("wish");
+      addXp(15);
+      info(rec).wishIn = rnd(90, 180);
+      emit("toast", "🎸 " + nameOf(rec) + " is looking for band members!");
+      opts.saveMii(rec);
+      changed();
+    }
+    function bandAnswer(leader, other, yes) {
+      const b = leader && leader.band;
+      if (!b || b.status !== "recruiting" || b.asked.includes(other.id)) return;
+      b.asked.push(other.id);
+      if (yes && canJoin(other, leader)) {
+        b.members.push(other.id);
+        emit("toast", "🎸 " + nameOf(other) + " joined " + nameOf(leader) + "'s band! (" + b.members.length + "/" + BAND_SIZE + ")");
+      }
+      if (b.members.length >= BAND_SIZE) {
+        b.status = "ready";
+        emit("toast", "🎤 " + nameOf(leader) + "'s band is ready to play!");
+        if (!leader.wish) leader.wish = showWish(leader);
+        if (leader.wish && leader.wish.type === "show") emit("event", { type: "newWish", rec: leader, wish: leader.wish });
+      }
+      opts.saveMii(leader);
+      changed();
+    }
+    function showWish(rec) {
+      const s = SONGS.find((x) => x.id === rec.band.song);
+      return { type: "show", icon: "🎤", at: Date.now(), left: 1500, song: rec.band.song,
+        text: pick(["Our band is ready! Come watch our show at the concert stage! 🎸", "We practiced “" + (s ? s.title : "our song") + "” all week! Will you come to our show?"]) };
+    }
+    // Asks the next Mii (now and then), even if they don't bump into each other.
+    function recruit(rec, dt) {
+      const b = rec.band;
+      b.askIn = (b.askIn === undefined ? 20 : b.askIn) - dt;
+      if (b.askIn > 0) return;
+      b.askIn = rnd(25, 45);
+      let cands = others(rec).filter((o) => canJoin(o, rec) && !b.asked.includes(o.id));
+      if (!cands.length) {
+        // everyone said no? ask them again later (they might change their minds)
+        b.asked = b.members.slice();
+        b.askIn = rnd(60, 120);
+        return;
+      }
+      const o = D.weighted(cands.map((c) => [c, 1 + Math.min(16, points(rec.id, c.id)) / 4]));
+      if (opts.offscreen && !opts.offscreen(rec.id, o.id, "bandInvite")) b.askIn = 5;
+    }
+    // The show is over (lifeHub.js played it): rewards for everyone.
+    function finishShow(leader) {
+      const b = leader.band;
+      if (!b) return;
+      const members = b.members.map((id) => records.get(id)).filter(Boolean);
+      for (const m of members) {
+        m.coins = (m.coins || 0) + 15;
+        ensure(m);
+        if (!m.songs.includes(b.song)) m.songs.push(b.song);
+        addHappy(m, 1);
+      }
+      st.seen.shows = (st.seen.shows || 0) + 1;
+      leader.band = null;
+      if (leader.wish && leader.wish.type === "show") grant(leader, { bonus: 3 });
+      else { leader.coins = (leader.coins || 0) + 20; addXp(40); }
+      emit("toast", "🎸 What a show! Everyone in the band got 🪙 15");
+      opts.saveMii(leader);
+      checkStickers();
+      changed();
+    }
+
     // What the dialogue needs to know about two Miis (see dialogue.js).
     function context(a, b) {
       const p = st.pairs[pairKey(a.id, b.id)] || {};
       const recA = records.get(a.id), recB = records.get(b.id);
+      // the leader of a band asks the Miis it hasn't asked yet
+      let bandAsk = null;
+      const lb = recA && recA.band;
+      if (lb && lb.status === "recruiting" && recB && canJoin(recB, recA) && !lb.asked.includes(recB.id)) {
+        const s = SONGS.find((x) => x.id === lb.song);
+        bandAsk = { song: s ? s.title : "our song", accept: Math.random() < (L ? L.joinChance(points(a.id, b.id), D.traits(recB)) : 0.5) };
+      }
+      // its favorite furniture that it doesn't have yet (it might mention it: a hint for you)
+      const wants = recA && H.unownedFavorites ? H.unownedFavorites(recA) : [];
+      const fw = wants.length ? wants[H.hash(recA.id + Math.floor(Date.now() / 600000)) % wants.length] : null;
       return {
+        bandAsk,
+        favWant: fw ? { id: fw.id, name: fw.name, icon: fw.icon } : null,
         fight: !!p.fight, makeUp: !!p.makeUp, rival: !!p.rival && unlocked("rivals"),
         couple: !!(recA && recB && recA.sweetheart === recB.id),
         confess: p.confess && p.confess.from === a.id ? p.confess : null,
@@ -466,6 +581,8 @@
       if (t === "meet") acts.push({ id: "together", text: "🤝 Introduce" });
       if (t === "makeUp") acts.push({ id: "makeUp", text: "🩹 Help them make up" });
       if (t === "crush") { acts.push({ id: "confess", text: "💌 Go for it!" }); acts.push({ id: "notYet", text: "Not yet" }); }
+      if (t === "band") { acts.push({ id: "band", text: "🎸 Go for it!" }); acts.push({ id: "notYet", text: "Not now" }); }
+      if (t === "show") acts.push({ id: "show", text: "🎤 Go watch the show" });
       return acts;
     }
 
@@ -563,7 +680,7 @@
     // Furniture for sale today (owned things can always be used).
     function shopItems(slot) {
       const r = seeded(daySeed(today() + slot));
-      const ok = H.ITEMS.filter((it) => it.slot === slot && (it.starter || tierOf(it) <= maxTier()));
+      const ok = (H.itemsFor ? H.itemsFor(slot) : H.ITEMS).filter((it) => it.slot === slot && (it.starter || tierOf(it) <= maxTier()));
       return ok.filter((it) => it.starter || r() < 0.8);
     }
     function deals() {
@@ -630,7 +747,7 @@
     function stickerPages() {
       const t = st;
       const foods = allFoods();
-      const furn = H.ITEMS.filter((it) => !it.starter);
+      const furn = H.ITEMS.concat(H.ROOM_ITEMS || []).filter((it) => !it.starter && !/-none$/.test(it.id));
       const places = T ? T.available().filter((p) => p.id !== "home") : [];
       const couples = Object.values(t.pairs).filter((p) => p.couple).length;
       const maxMiiLevel = Math.max(1, ...Array.from(records.values()).map((r) => r.level || 1));
@@ -666,6 +783,16 @@
           { id: "t-mii10", icon: "🌟", name: "Superstar", desc: "A Mii reached level 10", got: maxMiiLevel >= 10 },
           { id: "t-daily", icon: "📅", name: "Busy Day", desc: "Finished all daily goals", got: (t.dailyStreak || 0) >= 1 },
           { id: "t-daily7", icon: "🗓️", name: "Every Day!", desc: "Finished all daily goals 7 times", got: (t.dailyStreak || 0) >= 7 },
+        ] },
+        { name: "Life", icon: "🌟", stickers: [
+          { id: "l-outfit", icon: "👕", name: "Fashionista", desc: "Bought a Mii an outfit", got: (t.seen.outfits || 0) >= 1 },
+          { id: "l-closet", icon: "🚪", name: "Walk-in Closet", desc: "A Mii's wardrobe grew to its biggest size", got: L ? Array.from(records.values()).some((r) => L.wardrobeLevel(r) >= L.WARDROBE_STEPS.length - 1) : false },
+          { id: "l-room", icon: "🏠", name: "Room to Grow", desc: "Bought a Mii an extra room", got: (t.seen.rooms || 0) >= 1 },
+          { id: "l-shift", icon: "💼", name: "Hard Worker", desc: "A Mii finished a work shift", got: (t.seen.shifts || 0) >= 1 },
+          { id: "l-shift50", icon: "🏅", name: "Employee of the Month", desc: "Miis finished 50 work shifts", got: (t.seen.shifts || 0) >= 50 },
+          { id: "l-trip", icon: "✈️", name: "Bon Voyage", desc: "A Mii came back from vacation", got: (t.seen.trips || 0) >= 1 },
+          { id: "l-solo", icon: "🎤", name: "Open Mic", desc: "Watched a Mii play on the concert stage", got: (t.seen.solos || 0) >= 1 },
+          { id: "l-show", icon: "🎸", name: "Rock On!", desc: "Watched a band's show", got: (t.seen.shows || 0) >= 1 },
         ] },
         // rare things that only happen while you're watching: the page is "???" until you've seen one
         (() => {
@@ -704,6 +831,15 @@
       for (const rec of records.values()) {
         ensure(rec);
         const r = info(rec);
+        if (rec.place === "away") { if (rec.wish) { rec.wish = null; changed(); } continue; } // no wishes on vacation
+        if (rec.band && rec.band.status === "recruiting") recruit(rec, dt);
+        // the band is ready: it wants you at its show (doesn't wait its turn)
+        if (rec.band && rec.band.status === "ready" && !rec.wish) {
+          r.wishIn = Math.min(r.wishIn, 30);
+          r.wishIn -= dt;
+          if (r.wishIn <= 0) { rec.wish = showWish(rec); r.wishIn = rnd(80, 180); opts.saveMii(rec); emit("event", { type: "newWish", rec, wish: rec.wish }); changed(); }
+          continue;
+        }
         if (rec.wish) {
           // (a furniture wish that can't come true any more, e.g. it got the last one as a gift, goes away quietly)
           if ((rec.wish.type === "furniture" || rec.wish.type === "style") && rec.wish.slot && !newFor(rec, rec.wish.slot).length) {
@@ -752,6 +888,7 @@
 
     function forget(id) {
       rt.delete(id);
+      for (const r of records.values()) if (r.band) { r.band.members = r.band.members.filter((x) => x !== id); r.band.asked = r.band.asked.filter((x) => x !== id); if (r.band.status === "ready" && r.band.members.length < BAND_SIZE) r.band.status = "recruiting"; }
       for (const k of Object.keys(st.pairs)) if (k.split("|").includes(id)) delete st.pairs[k];
       for (const r of records.values()) if (r.sweetheart === id) r.sweetheart = null;
     }
@@ -764,6 +901,7 @@
       startMakeUp, startConfession, bringTogether, context, partnerOf, claim, rollDaily, weather, weatherText, weatherLine,
       placeMood, stickerPages, shopFoods, shopItems, newFor, deals, priceOf, lockedTier, unlockLevelForTier, tierOf, allFoods,
       xpNeeded, levelCoins, unlocked, hiddenEvent, HIDDEN_EVENTS, forget, pair, MOVES, SONGS, UNLOCKS, FESTIVALS,
+      learnSong, startBand, bandAnswer, finishShow, bandOf, canStartBand, showWish,
     };
   }
 

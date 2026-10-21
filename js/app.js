@@ -74,8 +74,20 @@
     const look = record.kind === "demo" ? Object.assign({}, record.look || {}) : {};
     look.name = record.name || template.info.name;
     look.favoriteColorName = M.colorName(look.shirt || template.source.shirt, "top");
+    // clothes (life.js): its uniform while it's at work, otherwise the outfit it's wearing
+    const fit = outfitOf(record);
+    if (fit) { look.shirt = fit.shirt; look.pants = fit.pants; look.extras = fit.extras; }
     return look;
   }
+  const LF = window.MiiLife;
+  let lifeTown = null; // (the town, once it's made: lookFor is used before that)
+  function outfitOf(record) {
+    if (!LF) return null;
+    const job = lifeTown && lifeTown.workingAs(record);
+    if (job) return LF.job(job).uniform;
+    return record.wardrobe && record.wardrobe.wearing ? LF.outfit(record.wardrobe.wearing) : null;
+  }
+  const outfitKey = (record) => { const f = outfitOf(record); return f ? "|" + f.shirt + f.pants + (f.extras || []).join(",") : ""; };
 
   const nameOf = (rec) => rec.name || (infos.get(rec.id) || {}).name || "Mii";
   const walkerOf = (id) => hub.walkers.find((w) => w.id === id) || (hub.visiting && hub.visiting.record.id === id ? hub.visiting.walker : null);
@@ -96,6 +108,8 @@
     // where it is right now, and where it likes to be
     if (!record.place) record.place = record.atHome ? "home" : viewedPlace();
     delete record.atHome;
+    // (closed the game while it was on its way back from a vacation)
+    if (record.place === "away" && !record.vacation) record.place = "apartments";
     if (!record.favPlace) record.favPlace = T.guessFavorite(D.traits(record));
     records.set(record.id, record);
     const template = await templateFor(record);
@@ -357,9 +371,14 @@
     // light = just the numbers and "where is everyone" changed
     changed: (light) => { if (light) refreshLight(); else refreshAll(true); },
     placeMood: (place) => (progress ? progress.placeMood(place) : 1),
+    restyle: (rec) => restyle(rec),
+    onShift: (rec, job, pay) => shiftDone(rec, job, pay),
+    arrived: (rec, from) => { if (from === "away") cameHome(rec); },
   });
+  lifeTown = town;
   let progress = null; // wishes, levels, goals... (made below)
-  hub.onTick = (dt) => { town.tick(dt); if (progress) progress.tick(dt); };
+  let life = null, lifeHub = null; // vacations, and shows / jobs in 3D (made below)
+  hub.onTick = (dt) => { town.tick(dt); if (progress) progress.tick(dt); if (life) life.tick(dt); if (lifeHub) lifeHub.tick(dt); };
   hub.onSceneChange = (id) => town.populate(id);
 
   function sendHome(rec, then, quick) {
@@ -385,7 +404,7 @@
     const empty = !!(opts && opts.empty);
     const go = async () => {
       const template = await templateFor(rec);
-      hub.visitHome(rec, template, lookFor(rec, template), { empty });
+      hub.visitHome(rec, template, lookFor(rec, template), { empty, room: opts && opts.room });
       openHomePanel(rec);
       updateTabs();
       if (!empty) progress.event({ type: "visit", id: rec.id });
@@ -438,7 +457,7 @@
   function portraitFor(rec) {
     const tpl = templates.get(rec.id) || (rec.kind !== "glb" ? templates.get("sample") : null);
     const cached = portraits.get(rec.id);
-    const key = JSON.stringify(rec.look || {}) + (rec.fileName || "");
+    const key = JSON.stringify(rec.look || {}) + (rec.fileName || "") + outfitKey(rec);
     if (cached && cached.key === key) return cached.url;
     // the template might still be loading: draw the picture once it's ready
     if (!cached || cached.key !== key) {
@@ -460,8 +479,10 @@
   function renderRoster() {
     const list = $("roster");
     list.innerHTML = "";
-    const all = sortedRecords();
+    // (Miis away on vacation aren't around: they're listed at the bottom)
+    const all = sortedRecords().filter((r) => r.place !== "away");
     $("count").textContent = all.length;
+    awayNote(list);
     if (!all.length) {
       list.innerHTML = '<li class="empty">No Miis yet. Add some above!</li>';
       return;
@@ -960,7 +981,7 @@
     }
     menu.append(head);
     if (wishSec) menu.append(wishSec);
-    menu.append(acts, places, games, pers, fr, foot);
+    menu.append(acts, lifeSection(rec, w), places, games, pers, fr, foot);
     menu.hidden = false;
 
     // place it next to where you clicked, but keep it inside the hub area
@@ -1038,6 +1059,7 @@
     const tabsEl = document.createElement("div");
     tabsEl.className = "hp-tabs";
     const out = hub.visiting && hub.visiting.empty; // looking around while the Mii is out
+    const roomTabs = roomSwitcher(rec);
     if (out) head.querySelector(".hp-sub").insertAdjacentHTML("beforeend", " · <i>" + escapeHtml(nameOf(rec)) + " is out</i>");
     for (const [id, text] of (out ? [["decorate", "🛋️ Decorate"]] : [["decorate", "🛋️ Decorate"], ["food", "🍙 Give food"], ["more", "⋯ More"]])) {
       const b = document.createElement("button");
@@ -1046,14 +1068,19 @@
       b.addEventListener("click", () => { panelTab = id; renderHomePanel(); });
       tabsEl.appendChild(b);
     }
-    panel.append(head, tabsEl);
+    panel.append(head);
+    if (roomTabs) panel.append(roomTabs);
+    panel.append(tabsEl);
 
     const body = document.createElement("div");
     body.className = "hp-body";
     if (panelTab === "decorate") {
       const slots = document.createElement("div");
       slots.className = "hp-slots";
-      for (const s of H.SLOTS) {
+      // (each room has its own kinds of furniture)
+      const roomSlots = H.slotsOfRoom ? H.slotsOfRoom(currentRoom()) : H.SLOTS;
+      if (!roomSlots.some((s) => s.id === panelSlot)) panelSlot = roomSlots[0].id;
+      for (const s of roomSlots) {
         const b = document.createElement("button");
         b.textContent = s.icon;
         b.title = s.name;
@@ -1064,14 +1091,14 @@
       }
       const slotName = document.createElement("div");
       slotName.className = "hp-slotname";
-      slotName.textContent = H.SLOTS.find((s) => s.id === panelSlot).name;
+      slotName.textContent = roomSlots.find((s) => s.id === panelSlot).name;
       const grid = document.createElement("div");
       grid.className = "hp-grid";
       // today's stock (it changes every day), plus everything the Mii already owns,
       // plus a peek at fancier things that a higher town level unlocks
       const forSale = progress.shopItems(panelSlot);
       const deals = progress.deals();
-      const list = H.ITEMS.filter((i) => i.slot === panelSlot && (forSale.includes(i) || rec.home.owned.includes(i.id) || progress.lockedTier(i)));
+      const list = (H.itemsFor ? H.itemsFor(panelSlot) : H.ITEMS).filter((i) => i.slot === panelSlot && (forSale.includes(i) || rec.home.owned.includes(i.id) || progress.lockedTier(i)));
       for (const it of list) {
         const owned = rec.home.owned.includes(it.id);
         const placed = rec.home.items[it.slot] === it.id;
@@ -1385,6 +1412,7 @@
   function withWalker(rec, fn) {
     let w = walkerOf(rec.id);
     if (w) { fn(w); return; }
+    if (rec.place === "away") { toast(nameOf(rec) + " is on vacation! ✈️"); return; }
     if (town.isTravelling(rec)) { toast(nameOf(rec) + " is on the way somewhere. Try again in a moment!"); return; }
     if (rec.place === "home") visit(rec);
     else goToScene(rec.place);
@@ -1402,8 +1430,10 @@
       case "food": openFoodPicker(rec); break;
       case "visit":
         if (w.slot) { panelTab = "decorate"; panelSlot = w.slot; }
-        visit(rec);
+        visit(rec, w.slot && H.roomOf ? { room: H.roomOf(w.slot) } : undefined);
         break;
+      case "band": progress.startBand(rec); break;
+      case "show": if (lifeHub) lifeHub.startBand(rec); break;
       case "game":
         withWalker(rec, (ww) => openGame(ww, w.game));
         break;
@@ -1807,7 +1837,254 @@
     });
   }
 
+  // =====================================================================
+  // Life: clothes, rooms, jobs, vacations and bands (life.js, lifeHub.js)
+  // =====================================================================
+  if (LF) {
+    life = LF.create({
+      records, H, D,
+      // (not while you're visiting it, it's at work, it's in a band or on its way somewhere)
+      canLeave: (rec) => !(hub.visiting && hub.visiting.record.id === rec.id) && !town.info(rec).shift && !progress.bandOf(rec.id) && !town.isTravelling(rec),
+      leave: (rec) => town.go(rec, "away"),
+      comeBack: (rec, gifts) => { homeGifts.set(rec.id, gifts); progress.event({ type: "life", what: "trips" }); town.go(rec, "apartments"); },
+      saveMii: (rec) => saveSoon(rec),
+      feed: (text) => hub.addFeed(text),
+    });
+  }
+  if (window.MiiLifeHub) {
+    lifeHub = window.MiiLifeHub.create({
+      hub, town, progress, records, nameOf, toast, goToScene,
+      soundOn: () => !window.MiiMusic || MiiMusic.isOn(),
+    });
+  }
+  const homeGifts = new Map(); // id -> what a Mii brought back from its vacation
+
+  // A Mii changed clothes (bought an outfit, or went to / left work): new look on screen.
+  function restyle(rec) {
+    const w = walkerOf(rec.id);
+    if (w && !w.leaving) {
+      w.look = lookFor(rec, w.template);
+      w.buildModel();
+      w.showEmote("✨", 1.5);
+    }
+    portraitFor(rec);
+    if (hub.visiting && hub.visiting.record.id === rec.id && !w) hub.refreshHome();
+  }
+
+  // A shift is over: it got paid.
+  function shiftDone(rec, job, pay) {
+    hub.addFeed(nameOf(rec) + " finished a shift as " + (/^[aeiou]/i.test(job.name) ? "an " : "a ") + job.name.toLowerCase() + ". +" + pay + " 🪙 " + job.icon);
+    const w = walkerOf(rec.id);
+    if (w) { w.say(D.pick(["Shift's over! Payday!", "Phew, what a day!", "Time to relax!"]), 2.4); w.showEmote("🪙", 2.4); }
+    progress.event({ type: "life", what: "shifts" });
+    renderCoins();
+  }
+
+  // Back from a vacation: a little welcome, and what it brought home.
+  function cameHome(rec) {
+    const g = homeGifts.get(rec.id);
+    homeGifts.delete(rec.id);
+    if (lifeHub) lifeHub.homecoming(rec, g);
+    refreshAll(true);
+    if (!g) return;
+    hub.addFeed(nameOf(rec) + " is back from " + g.dest.name + "! " + g.dest.icon);
+    const items = g.souvenirs.map((id) => H.item(id)).filter(Boolean);
+    ask("🧳 " + nameOf(rec) + " is back from " + g.dest.name + "! " + g.dest.icon,
+      nameOf(rec) + " had a great time, and brought back 🪙 " + g.coins + " coins" + (items.length ? " and souvenirs for their home:" : "!"),
+      items.map((it) => ({ label: it.icon + " " + escapeHtml(it.name), value: true, kind: "plain" })).concat([{ label: "<b>Welcome home!</b>", value: true, kind: "primary" }]));
+    renderCoins();
+  }
+
+  // Miis away on vacation, at the bottom of the Residents list.
+  function awayNote(list) {
+    const away = sortedRecords().filter((r) => r.place === "away");
+    if (!away.length || !LF) return;
+    const li = document.createElement("li");
+    li.className = "away-note";
+    li.textContent = "✈️ On vacation: " + away.map((r) => nameOf(r) + " (" + LF.destination(r.vacation ? r.vacation.dest : "").name + ", " + LF.backIn(r) + ")").join(", ");
+    setTimeout(() => list.appendChild(li), 0); // (after the Miis who are here)
+  }
+
+  // The "Life" part of the Mii menu: clothes, rooms, its job and its band.
+  function lifeSection(rec, w) {
+    const sec = document.createElement("div");
+    sec.className = "mm-section mm-life";
+    if (!LF) return sec;
+    sec.innerHTML = "<h3>Life</h3>";
+    const row = document.createElement("div");
+    row.className = "mm-actions";
+    const btn = (icon, text, title, fn) => {
+      const b = document.createElement("button");
+      b.innerHTML = "<span>" + icon + "</span>" + text;
+      b.title = title;
+      b.addEventListener("click", () => { closeMiiMenu(); fn(); });
+      row.appendChild(b);
+    };
+    btn("👕", "Buy clothes", "Buy " + nameOf(rec) + " an outfit (paid with its coins)", () => openClothesShop(rec));
+    btn("🚪", "Buy rooms", "Buy " + nameOf(rec) + " an extra room for its home", () => openRoomShop(rec));
+    sec.appendChild(row);
+    // its job (you can change it)
+    const jobRow = document.createElement("label");
+    jobRow.className = "mm-fav";
+    jobRow.textContent = "💼 Job ";
+    const sel = document.createElement("select");
+    for (const j of LF.JOBS) {
+      const o = document.createElement("option");
+      o.value = j.id;
+      o.textContent = j.icon + " " + j.name + " (" + T.placeInfo(j.place).name + ")";
+      sel.appendChild(o);
+    }
+    sel.value = LF.ensureJob(rec);
+    sel.addEventListener("change", () => { rec.job = sel.value; saveSoon(rec); });
+    jobRow.appendChild(sel);
+    sec.appendChild(jobRow);
+    const notes = [];
+    const working = town.workingAs(rec);
+    if (working) notes.push("At work right now: " + LF.job(working).name + " " + LF.job(working).icon);
+    if (rec.shifts) notes.push(rec.shifts + " shift" + (rec.shifts === 1 ? "" : "s") + " worked");
+    const band = progress.bandOf(rec.id);
+    if (band) {
+      const song = (progress.SONGS.find((s) => s.id === band.band.song) || {}).title;
+      notes.push(band === rec ? "🎸 Its band (“" + song + "”): " + (band.band.status === "ready" ? "ready to play!" : band.band.members.length + "/" + LF.BAND_SIZE + " members")
+        : "🎸 In " + nameOf(band) + "'s band");
+    }
+    if ((rec.songs || []).length) notes.push("🎵 Knows " + rec.songs.length + " song" + (rec.songs.length === 1 ? "" : "s"));
+    if (notes.length) {
+      const p = document.createElement("div");
+      p.className = "mm-life-notes";
+      p.textContent = notes.join(" · ");
+      sec.appendChild(p);
+    }
+    return sec;
+  }
+
+  // ---------- the clothes shop ----------
+  function openClothesShop(rec) {
+    const back = document.createElement("div");
+    back.className = "choice-modal";
+    const card = document.createElement("div");
+    card.className = "choice-card big";
+    const close = () => back.remove();
+    function draw() {
+      const wr = LF.ensureWardrobe(rec);
+      const lv = LF.wardrobeLevel(rec);
+      const next = LF.WARDROBE_STEPS[lv + 1];
+      card.innerHTML = "<h3>👕 Clothes for " + escapeHtml(nameOf(rec)) + "</h3><p>Paid with " + escapeHtml(nameOf(rec)) + "'s coins: <b>🪙 " + (rec.coins || 0) + "</b>. " +
+        "Wardrobe size " + (lv + 1) + "/" + LF.WARDROBE_STEPS.length + (next ? " (it grows at " + next + " outfits)" : " (the biggest!)") + "</p>";
+      const grid = document.createElement("div");
+      grid.className = "hp-grid wide";
+      const p = D.traits(rec);
+      for (const f of LF.OUTFITS) {
+        const owned = wr.owned.includes(f.id), wearing = wr.wearing === f.id;
+        const b = document.createElement("button");
+        b.className = "hp-item" + (wearing ? " placed" : "");
+        b.innerHTML = '<span class="hp-icon">' + f.icon + '</span><span class="hp-name">' + escapeHtml(f.name) + '</span><span class="hp-price">' +
+          (wearing ? "✓ Wearing" : owned ? "Wear it" : "🪙 " + f.price) + "</span>";
+        b.style.borderBottom = "4px solid " + f.shirt;
+        b.disabled = !owned && (rec.coins || 0) < f.price;
+        if (b.disabled) b.title = nameOf(rec) + " needs " + (f.price - (rec.coins || 0)) + " more coins";
+        b.addEventListener("click", () => {
+          if (wearing) { wr.wearing = null; }
+          else if (owned) wr.wearing = f.id;
+          else {
+            if ((rec.coins || 0) < f.price) return;
+            rec.coins -= f.price;
+            wr.owned.push(f.id);
+            wr.wearing = f.id;
+            progress.event({ type: "life", what: "outfits" });
+            const op = H.opinion(p, rec, { id: f.id, tags: f.tags });
+            const ww = walkerOf(rec.id);
+            if (ww) { ww.say(H.reaction("item", op, f, p), 3); ww.showEmote(EMOTE[op], 3); }
+            if (op !== "dislike") progress.addHappy(rec, op === "love" || op === "like" ? 1 : 0);
+            if (LF.wardrobeLevel(rec) > lv) toast("🚪 " + nameOf(rec) + "'s wardrobe got bigger!");
+          }
+          save(rec);
+          restyle(rec);
+          if (hub.visiting && hub.visiting.record.id === rec.id) hub.refreshHome(); // (the wardrobe)
+          renderCoins();
+          draw();
+        });
+        grid.appendChild(b);
+      }
+      const ok = document.createElement("button");
+      ok.className = "choice-btn plain";
+      ok.textContent = "Close";
+      ok.addEventListener("click", close);
+      card.append(grid, ok);
+    }
+    draw();
+    back.appendChild(card);
+    back.addEventListener("pointerdown", (e) => { if (e.target === back) close(); });
+    $("stage").appendChild(back);
+  }
+
+  // ---------- extra rooms ----------
+  const currentRoom = () => (hub.visiting && hub.visiting.room) || "main";
+  function openRoomShop(rec) {
+    const back = document.createElement("div");
+    back.className = "choice-modal";
+    const card = document.createElement("div");
+    card.className = "choice-card big";
+    const close = () => back.remove();
+    function draw() {
+      H.ensureHome(rec);
+      card.innerHTML = "<h3>🚪 Rooms for " + escapeHtml(nameOf(rec)) + "</h3><p>Every room has its own kinds of furniture. Paid with " + escapeHtml(nameOf(rec)) + "'s coins: <b>🪙 " + (rec.coins || 0) + "</b></p>";
+      const grid = document.createElement("div");
+      grid.className = "hp-grid wide";
+      for (const r of H.ROOMS) {
+        const owned = rec.home.rooms.includes(r.id);
+        const b = document.createElement("button");
+        b.className = "hp-item" + (owned ? " placed" : "");
+        b.innerHTML = '<span class="hp-icon">' + r.icon + '</span><span class="hp-name">' + escapeHtml(r.name) + '</span><span class="hp-price">' + (owned ? "Visit" : "🪙 " + r.price) + "</span>";
+        b.title = H.slotsOfRoom(r.id).map((s) => s.icon + " " + s.name).join(", ");
+        b.disabled = !owned && (rec.coins || 0) < r.price;
+        b.addEventListener("click", () => {
+          if (!owned) {
+            if ((rec.coins || 0) < r.price) return;
+            rec.coins -= r.price;
+            H.addRoom(rec, r.id);
+            progress.event({ type: "life", what: "rooms" });
+            toast(r.icon + " " + nameOf(rec) + " has a new " + r.name.toLowerCase() + "!");
+            save(rec);
+            renderCoins();
+          }
+          close();
+          panelTab = "decorate";
+          if (hub.visiting && hub.visiting.record.id === rec.id) { hub.setHomeRoom(r.id); renderHomePanel(); }
+          else visit(rec, { room: r.id, empty: !isHome(rec) || town.isTravelling(rec) });
+        });
+        grid.appendChild(b);
+      }
+      const ok = document.createElement("button");
+      ok.className = "choice-btn plain";
+      ok.textContent = "Close";
+      ok.addEventListener("click", close);
+      card.append(grid, ok);
+    }
+    draw();
+    back.appendChild(card);
+    back.addEventListener("pointerdown", (e) => { if (e.target === back) close(); });
+    $("stage").appendChild(back);
+  }
+
+  // The room buttons in the home panel (only once the Mii has more than one room).
+  function roomSwitcher(rec) {
+    const rooms = (rec.home && rec.home.rooms) || [];
+    if (!rooms.length || !hub.visiting) return null;
+    const el = document.createElement("div");
+    el.className = "hp-tabs hp-rooms";
+    for (const [id, text] of [["main", "🛏️ Main room"]].concat(rooms.map((r) => [r, H.room(r).icon + " " + H.room(r).name]))) {
+      const b = document.createElement("button");
+      b.textContent = text;
+      b.setAttribute("aria-pressed", String(currentRoom() === id));
+      b.addEventListener("click", () => { hub.setHomeRoom(id); panelTab = "decorate"; renderHomePanel(); });
+      el.appendChild(b);
+    }
+    return el;
+  }
+
   window.hub = hub; // handy for poking around in the browser console
-  window.miiApp = { records, openPaintball, visit, sendHome, sendTo, inviteOut, moveAway, forgetMii, loadFiles, leaveHome, town, get prog() { return progress; } }; // for tests
+  window.miiApp = { records, openPaintball, visit, sendHome, sendTo, inviteOut, moveAway, forgetMii, loadFiles, leaveHome, town, get prog() { return progress; },
+    life, lifeHub, openClothesShop, openRoomShop, restyle, goToScene, openMiiMenu, renderHomePanel }; // for tests
   splash.done();
 })();

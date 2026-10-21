@@ -3441,6 +3441,9 @@
       lines: ["What a nice view!", "I can see the park from here.", "Is it going to rain?", "*sigh* So peaceful."],
     });
 
+    // things other files add to the room (the wardrobe: see rooms3d.js)
+    if (root.MiiRooms3D && root.MiiRooms3D.decorateMain) root.MiiRooms3D.decorateMain({ group: rootG, record, obstacles, spots, items, ctx });
+
     // hide any wall that's between the camera and the room (like a dollhouse)
     const walls = [
       { group: backWall.userData.outer, axis: "z", at: -RZ, outside: -1 },

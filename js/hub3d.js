@@ -617,7 +617,8 @@
       w.onLeft = done;
       const T = window.MiiTown;
       const pl = T ? T.placeInfo(to) : { name: to, icon: "" };
-      const lines = to === "home"
+      const lines = to === "away" ? ["Vacation time! ✈️", "See you in a few days, everyone!", "Bon voyage to me!", "I'll bring back souvenirs!"]
+        : to === "home"
         ? ["Time to go home!", "See you later!", "Home sweet home, here I come!", "Bye for now!"]
         : ["Off to " + pl.name + "!", "I'm going to " + pl.name + ". Bye!", "See you, everyone!", pl.icon + " Here I go!"];
       w.say(D.pick(lines), 2.2);
@@ -731,7 +732,7 @@
       this.clearWindowMiis();
       this.miiGroup.visible = false;
       for (const w of this.walkers) w.ui.style.display = "none";
-      this.useWorld(window.World3D.build("home", { record, floor: this.floorOf(record.id) }));
+      this.useWorld(this.homeWorld(record, opts && opts.room));
       this.homeGroup = new THREE.Group();
       this.scene.add(this.homeGroup);
       const v = new Walker(this, record, template, look, this.homeGroup);
@@ -739,7 +740,7 @@
       v.x = start.x; v.z = start.z;
       v.yaw = v.targetYaw = this.viewYaw(v);
       v.timer = rnd(3, 5);
-      this.visiting = { record, walker: v, empty };
+      this.visiting = { record, walker: v, empty, room: (opts && opts.room) || "main" };
       if (empty) { v.inst.holder.visible = false; v.ui.style.display = "none"; this.onChange(); return; }
       this.later(v, 0.7, () => {
         v.arms = "wave";
@@ -776,6 +777,18 @@
       this.onChange();
     }
 
+    // The inside of a Mii's home: its main room, or one of the extra rooms it bought (rooms3d.js).
+    homeWorld(record, room) {
+      const extra = room && room !== "main" && window.MiiRooms3D;
+      return window.World3D.build(extra ? "room" : "home", { record, room, floor: this.floorOf(record.id) });
+    }
+    // Switches to another room of the home you're visiting.
+    setHomeRoom(room) {
+      if (!this.visiting || this.visiting.room === room) return;
+      this.visiting.room = room;
+      this.refreshHome();
+    }
+
     // Rebuilds the room after you change the furniture.
     refreshHome() {
       if (!this.visiting) return;
@@ -783,7 +796,7 @@
       const cam = { pos: this.camera.position.clone(), target: this.controls.target.clone() };
       this.scene.remove(this.world.group);
       window.World3D.dispose(this.world);
-      this.useWorld(window.World3D.build("home", { record: this.visiting.record, floor: this.floorOf(this.visiting.record.id) }));
+      this.useWorld(this.homeWorld(this.visiting.record, this.visiting.room));
       this.camera.position.copy(cam.pos);
       this.controls.target.copy(cam.target);
       this.controls.update();
@@ -914,7 +927,7 @@
     }
 
     isBusy(w) {
-      return this.calls.has(w.id) || w.held || w.leaving || w.state === "interact" || w.state === "approach" || w.state === "waiting" || w.state === "perform" || w.state === "playing";
+      return this.calls.has(w.id) || w.held || w.leaving || w.inShow || w.state === "interact" || w.state === "approach" || w.state === "waiting" || w.state === "perform" || w.state === "playing";
     }
 
     // You started a mini-game with this Mii: it stops and faces you while you play.
@@ -1177,7 +1190,7 @@
       const after = before + (D.FRIENDSHIP_GAIN[type] || 1);
       this.friendships[key] = after;
       const fight = call.plan.fight, success = call.plan.success;
-      const feed = (fight ? "{A} and {B} had a fight! 💢" : D.FEED_TEXT[type]).replace("{A}", A.look.name).replace("{B}", B.look.name).replace(/\.$/, "") + " on the phone. 📱";
+      const feed = (fight ? "{A} and {B} had a fight! 💢" : call.plan.feed || D.FEED_TEXT[type]).replace("{A}", A.look.name).replace("{B}", B.look.name).replace(/\.$/, "") + " on the phone. 📱";
       this.addFeed(feed);
       const oldLevel = D.levelFor(before), newLevel = D.levelFor(after);
       if (newLevel !== oldLevel) {
@@ -1211,7 +1224,7 @@
       const after = points + (D.FRIENDSHIP_GAIN[type] || 1);
       this.friendships[key] = after;
       const T = window.MiiTown;
-      let feed = D.FEED_TEXT[type].replace("{A}", A.look.name).replace("{B}", B.look.name).replace(/\.$/, "");
+      let feed = (plan.feed || D.FEED_TEXT[type]).replace("{A}", A.look.name).replace("{B}", B.look.name).replace(/\.$/, "");
       feed += phone ? " on the phone. 📱" : " at " + (T ? T.placeInfo(where).name + ". " + T.placeInfo(where).icon : where + ".");
       this.addFeed(feed);
       const oldLevel = D.levelFor(points), newLevel = D.levelFor(after);
@@ -1254,7 +1267,7 @@
       const after = before + (D.FRIENDSHIP_GAIN[type] || 1);
       this.friendships[key] = after;
       const fight = A.plan.fight, success = A.plan.success;
-      let feed = (fight ? "{A} and {B} had a fight! 💢" : D.FEED_TEXT[type]).replace("{A}", A.look.name).replace("{B}", B.look.name);
+      let feed = (fight ? "{A} and {B} had a fight! 💢" : A.plan.feed || D.FEED_TEXT[type]).replace("{A}", A.look.name).replace("{B}", B.look.name);
       if (remote === "phone") feed = feed.replace(/\.$/, "") + " on the phone. 📱";
       this.addFeed(feed);
       const oldLevel = D.levelFor(before), newLevel = D.levelFor(after);
