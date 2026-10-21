@@ -275,6 +275,8 @@
       this.onLeftHome = null;
       this.calls = new Map();     // id -> the phone call that Mii is on (both ends share one call)
       this.callHold = null;       // record -> false if the Mii can't stay on the phone (it set off somewhere)
+      this.miiInfo = null;        // id -> { record, template, look } (set by the app; for rare-event guests)
+      this.guests = [];           // Miis a rare event brought in for a moment (see addGuest)
 
       this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
       this.renderer.outputEncoding = THREE.sRGBEncoding;
@@ -365,6 +367,7 @@
     setScene(id) {
       if (this.visiting) this.leaveHome();
       if (this.world && this.world.id === id) return;
+      this.stopRare();
       for (const w of this.walkers.slice()) if (w.leaving) this.finishLeaving(w);
       // (phone calls carry on: they belong to both Miis, not to the place on screen)
       for (const w of this.walkers) { if (!this.calls.has(w.id)) this.endInteraction(w); w.remove(); }
@@ -471,6 +474,16 @@
       const i = this.residents.findIndex((r) => r.id === id);
       return i < 0 ? 1 : Math.floor(i / 4);
     }
+    // For the outside of a flat: who's home in the flats right below it (and beside them),
+    // floor by floor from the ground up: [{ here, next }] (true = home, false = out, null = empty flat).
+    homesBelow(id) {
+      const i = this.residents.findIndex((r) => r.id === id);
+      if (i < 0) return null;
+      const col = i % 4, out = [];
+      const at = (k) => (this.residents[k] ? !!this.residents[k].home : null);
+      for (let f = 0; f < Math.floor(i / 4); f++) out.push({ here: at(f * 4 + col), next: at(f * 4 + (col ^ 1)) });
+      return out;
+    }
 
     batteryOf(id) { return this.batteries.has(id) ? this.batteries.get(id) : 1; }
     setBattery(id, v) { this.batteries.set(id, Math.max(0, Math.min(1, v))); }
@@ -504,6 +517,7 @@
     growApartments(announce) {
       const before = this.world.capacity;
       const cam = { pos: this.camera.position.clone(), target: this.controls.target.clone() };
+      this.stopRare();
       this.scene.remove(this.world.group);
       window.World3D.dispose(this.world);
       this.useWorld(window.World3D.build("apartments", { residents: this.residents.length }));
@@ -724,6 +738,7 @@
       if (this.dragging) { this.dragging.held = false; this.dragging = null; }
       this.hover = null;
       if (!empty && this.calls.has(record.id)) this.endCall(this.calls.get(record.id), record.id); // you're here: they hang up
+      this.stopRare(); // (whatever rare thing was going on outside is over)
       this.mainWorld = this.world;
       this.mainNav = this.nav;
       this.mainCamera = { pos: this.camera.position.clone(), target: this.controls.target.clone() };
@@ -731,7 +746,7 @@
       this.clearWindowMiis();
       this.miiGroup.visible = false;
       for (const w of this.walkers) w.ui.style.display = "none";
-      this.useWorld(window.World3D.build("home", { record, floor: this.floorOf(record.id) }));
+      this.useWorld(window.World3D.build("home", { record, floor: this.floorOf(record.id), empty, homes: this.homesBelow(record.id) }));
       this.homeGroup = new THREE.Group();
       this.scene.add(this.homeGroup);
       const v = new Walker(this, record, template, look, this.homeGroup);
@@ -752,6 +767,7 @@
 
     leaveHome() {
       if (!this.visiting) return;
+      this.stopRare();
       const v = this.visiting.walker;
       v.remove();
       this.scene.remove(this.homeGroup);
@@ -781,9 +797,11 @@
       if (!this.visiting) return;
       const v = this.visiting.walker;
       const cam = { pos: this.camera.position.clone(), target: this.controls.target.clone() };
+      this.stopRare();
       this.scene.remove(this.world.group);
       window.World3D.dispose(this.world);
-      this.useWorld(window.World3D.build("home", { record: this.visiting.record, floor: this.floorOf(this.visiting.record.id) }));
+      const id = this.visiting.record.id;
+      this.useWorld(window.World3D.build("home", { record: this.visiting.record, floor: this.floorOf(id), empty: this.visiting.empty, homes: this.homesBelow(id) }));
       this.camera.position.copy(cam.pos);
       this.controls.target.copy(cam.target);
       this.controls.update();
@@ -1308,11 +1326,8 @@
       if (this.world.windowSpot || this.windowMiis.size) this.syncWindowMiis(dt);
       if (this.world.riders) this.syncRiders(dt);
       // rare events (world.rare): they only run while you're looking at the place
-      if (this.world.rare && !this.visiting) this.world.rare.update(dt, this.time, this.rareCtx || (this.rareCtx = {
-        miis: () => this.walkers.filter((w) => !w.held && !w.anchored && !w.leaving && w.vanish <= 0 && !this.calls.has(w.id)),
-        say: (w, text, secs) => w.say(text, secs || 2.5),
-        event: (id) => { if (this.onRareEvent) this.onRareEvent(id); },
-      }));
+      // (in a home: only while the Mii is in)
+      if (this.world.rare && (!this.visiting || !this.visiting.empty)) this.world.rare.update(dt, this.time, this.rareContext());
       this.runDirector(dt);
       this.tickCalls(dt);
       const floaty = this.world.floaty;
@@ -1378,6 +1393,82 @@
 
       this.separate(this.active(), dt);
       for (const w of this.active()) this.applyPose(w, dt);
+      if (this.guests.length) this.updateGuests(dt, gravity);
+    }
+
+    // ---------- rare events (see world.rare in the places) ----------
+    // What a place's rare event can use.
+    rareContext() {
+      return this.rareCtx || (this.rareCtx = {
+        miis: () => this.walkers.filter((w) => !w.held && !w.anchored && !w.leaving && w.vanish <= 0 && !this.calls.has(w.id)),
+        // everyone here, also the ones sitting down or busy
+        all: () => (this.visiting ? [] : this.walkers).filter((w) => !w.held && !w.leaving && w.vanish <= 0 && !this.calls.has(w.id)),
+        say: (w, text, secs) => w.say(text, secs || 2.5),
+        event: (id) => { if (this.onRareEvent) this.onRareEvent(id); },
+        // a move from the Mii's menu (quiet: without its usual line); kind can also be
+        // anything else: the Mii then just stands still for a moment (w.timer seconds)
+        perform: (w, kind, quiet) => {
+          const cb = this.onPerform;
+          this.onPerform = null; // (not a trick you asked for: no daily goal or wish for it)
+          this.perform(w, kind);
+          this.onPerform = cb;
+          if (quiet && w.bubble) { w.bubble = null; w.uiBubble.classList.remove("show"); }
+        },
+        // the dance moves a Mii knows: dancing, jumping, and the special moves it learned
+        moves: (w) => ["dance", "jump"].concat((w.record.moves || []).filter((k) => k !== "sing")),
+        // at home: the Mii whose home it is
+        host: () => (this.visiting && !this.visiting.empty ? this.visiting.walker : null),
+        // someone else who could drop by (not the host): a resident's id, or null
+        visitor: () => {
+          const host = this.visiting ? this.visiting.record.id : null;
+          const ok = this.residents.filter((r) => r.id !== host && this.miiInfo && this.miiInfo(r.id));
+          const out = ok.filter((r) => !r.home);
+          const list = out.length ? out : ok;
+          return list.length ? list[Math.floor(Math.random() * list.length)].id : null;
+        },
+        guest: (id) => this.addGuest(id),
+        dropGuest: (g) => this.removeGuest(g),
+        // how two Miis get on: { points, level, fight, rival, couple }
+        relation: (a, b) => {
+          const pts = this.points(a, b);
+          return Object.assign({ points: pts, level: D.levelFor ? D.levelFor(pts).name : "" }, this.relation ? this.relation(a, b) : {});
+        },
+      });
+    }
+
+    // Ends whatever rare event is going on here (you're leaving the place).
+    stopRare() {
+      if (this.world && this.world.rare && this.world.rare.stop) this.world.rare.stop(this.rareContext());
+      for (const g of this.guests.slice()) this.removeGuest(g);
+    }
+
+    // Brings in another Mii for a rare event (it isn't one of the walkers: the event moves it).
+    addGuest(id) {
+      const info = this.miiInfo && this.miiInfo(id);
+      if (!info || !info.template) return null;
+      const g = new Walker(this, info.record, info.template, info.look || {}, this.visiting ? this.homeGroup : this.miiGroup);
+      g.state = "guest";
+      g.appear = 1;
+      this.guests.push(g);
+      return g;
+    }
+    removeGuest(g) {
+      const i = this.guests.indexOf(g);
+      if (i < 0) return;
+      this.guests.splice(i, 1);
+      g.remove();
+    }
+    updateGuests(dt, gravity) {
+      for (const g of this.guests) {
+        if (g.bubble) { g.bubble.time += dt; if (g.bubble.time > g.bubble.dur) { g.bubble = null; g.uiBubble.classList.remove("show"); } }
+        if (g.emote) { g.emote.time += dt; if (g.emote.time > g.emote.dur) g.clearEmote(); }
+        if (g.liftVel !== 0 || g.lift > 0) {
+          g.liftVel -= gravity * dt;
+          g.lift += g.liftVel * dt;
+          if (g.lift <= 0 && g.liftVel <= 0) { g.lift = 0; g.liftVel = 0; }
+        }
+        this.applyPose(g, dt);
+      }
     }
 
     // Keeps Miis from walking through each other.
@@ -1919,7 +2010,7 @@
       const v = new THREE.Vector3();
       const placed = [];
       // front-most Miis first, so bubbles behind them move up out of the way
-      const sorted = this.active().slice().sort((a, b) => b.z - a.z);
+      const sorted = this.active().concat(this.guests).sort((a, b) => b.z - a.z);
       for (const w of sorted) {
         const s = w.inst.holder.scale.y;
         const lying = w.lastAnchor && w.lastAnchor.kind === "lie" && w.seatBlend > 0.5;

@@ -427,6 +427,7 @@
 
   // Click an apartment in the Apartments to visit whoever lives there.
   hub.onRareEvent = (id) => progress.hiddenEvent(id); // a rare event was seen: its sticker
+  hub.miiInfo = (id) => { const r = records.get(id), t = r && loaded.get(id); return t ? { record: r, template: t, look: lookFor(r, t) } : null; }; // (for rare-event guests)
   hub.onApartmentClick = (id) => {
     const rec = records.get(id);
     if (rec) visit(rec, { empty: !isHome(rec) || town.isTravelling(rec) }); // (out? you can still look around)
