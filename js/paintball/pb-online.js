@@ -17,7 +17,7 @@
 (function (root) {
   "use strict";
 
-  const VERSION = 5;          // must match the server's VERSION
+  const VERSION = 6;          // must match the server's VERSION
   const DEFAULT_PORT = 8787;
   // Where everyone meets to find lobbies (the Mii Hub Paintball server, see server/README.md).
   // It's built into the app from a secret when it's built (pb-config.js), so it's not in the code.
@@ -246,7 +246,7 @@
         for (const e of entries) if (e) e.spawn = st.spawned.get(e.id) || null;
         await ctx.startOnline({
           youColor: colorOf(st.net.id),
-          net: st.net, roster: entries.filter(Boolean), roomName: st.room.name,
+          net: st.net, roster: entries.filter(Boolean), roomName: st.room.name, map: (st.phase && st.phase.map) || st.room.map,
           initial: { phase: st.phase, round: st.roundMsg, over: st.over, inter: st.inter, votes: st.votes },
           onLeave: () => leaveLobby(),
         });

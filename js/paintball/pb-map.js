@@ -1,5 +1,6 @@
 /*
- * pb-map.js - "Shipment"-style container yard for the Paintball 1v1 mini-game.
+ * pb-map.js - the Paintball maps: "Shipment" (the container yard) dressed up as
+ * each hub place, and each place's own floor plan (pb-layouts.js, drawn by pb-scenery.js).
  *
  * Real scale: 1 unit = 1 m. Ground is y = 0. Playable area x -15.9..15.9, z -17..17.
  * Classic script, uses global THREE (r147). Everything is procedural (CanvasTexture),
@@ -8,7 +9,8 @@
  * Tuned for renderer.outputEncoding = THREE.sRGBEncoding, no tone mapping,
  * shadowMap enabled (PCFSoft). Camera far should be >= 140 (sky dome radius 95).
  *
- *   window.PBMap.build(opts) -> { group, boxes, cyls, bounds, spawns, background, fog, update, dispose }
+ *   window.PBMap.build({ map }) -> { group, boxes, cyls, bounds, spawns, background, fog, update, dispose, mapId, name }
+ *   (map = an id from PBLayouts.MAPS; the default is Shipment in the park)
  */
 (function () {
   'use strict';
@@ -64,7 +66,9 @@
   function clipRect(ctx, x, y, w, h) { ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); }
 
   var RUST = [[92, 44, 20], [118, 60, 28], [140, 78, 36], [70, 36, 20]];
+  var WEAR = 1; // how weathered the containers look (set per place)
   function rustStreaks(ctx, x, y, w, h, n, rnd, y0) {
+    n = Math.round(n * WEAR);
     for (var i = 0; i < n; i++) {
       var sx = x + rnd() * w, sy = y + (y0 || 0) + rnd() * h * 0.15, len = 8 + rnd() * h * 0.7, ww = 0.8 + rnd() * 2.6;
       var c = RUST[(rnd() * RUST.length) | 0], g = ctx.createLinearGradient(0, sy, 0, sy + len);
@@ -73,6 +77,7 @@
     }
   }
   function rustPatches(ctx, x, y, w, h, n, rnd, bottomBias, size) {
+    n = Math.round(n * WEAR);
     size = size || 5;
     for (var i = 0; i < n; i++) {
       var cx = x + rnd() * w, cy = bottomBias ? y + h * (1 - Math.pow(rnd(), 2.2) * bottomBias) : y + rnd() * h;
@@ -86,6 +91,7 @@
     }
   }
   function scratches(ctx, x, y, w, h, n, rnd) {
+    n = Math.round(n * WEAR);
     for (var i = 0; i < n; i++) {
       var sx = x + rnd() * w, sy = y + rnd() * h, a = (rnd() - 0.5) * 1.2, l = 3 + rnd() * 22;
       ctx.strokeStyle = rnd() < 0.5 ? 'rgba(175,170,158,0.30)' : 'rgba(60,40,28,0.35)';
@@ -94,6 +100,7 @@
     }
   }
   function dusty(ctx, x, y, w, h, amt) { // desaturate + kicked-up dust from the ground
+    amt *= WEAR;
     ctx.save();
     ctx.globalCompositeOperation = 'saturation'; ctx.fillStyle = 'rgba(128,128,128,' + (0.22 * amt) + ')'; ctx.fillRect(x, y, w, h);
     ctx.globalCompositeOperation = 'source-over';
@@ -103,6 +110,7 @@
     ctx.restore();
   }
   function grime(ctx, x, y, w, h, frac, alpha) {
+    alpha *= WEAR;
     var g = ctx.createLinearGradient(0, y + h * (1 - frac), 0, y + h);
     g.addColorStop(0, 'rgba(48,38,28,0)'); g.addColorStop(1, 'rgba(48,38,28,' + alpha + ')');
     ctx.fillStyle = g; ctx.fillRect(x, y + h * (1 - frac), w, h * frac);
@@ -149,25 +157,128 @@
     return 0;
   }
 
-  // ---------------------------------------------------------------- palette
-  var PAINTS = [
-    { base: [112, 48, 38] },              // oxide red
-    { base: [44, 62, 86] },               // navy
-    { base: [50, 82, 72] },               // teal green
-    { base: [148, 88, 46] },              // dull orange
-    { base: [98, 100, 98] },              // gray
-    { base: [156, 148, 130], dark: true } // dirty cream
-  ];
-  var VARIANTS = [
-    { p: 0, brand: 'KORVAX', code: 'KRVU', logo: 0 },
-    { p: 1, brand: 'MERIDIAN', code: 'MRDU', logo: 1 },
-    { p: 2, brand: 'HALDEN LINE', code: 'HLDU', logo: 2 },
-    { p: 3, brand: 'TRANSOKEA', code: 'TOKU', logo: 1 },
-    { p: 4, brand: 'NORDHAVN', code: 'NDHU', logo: 0 },
-    { p: 5, brand: 'SEAWOLF', code: 'SWLU', logo: 2 },
-    { p: 0, brand: 'OKAMI', code: 'OKMU', logo: 2 },
-    { p: 1, brand: 'CAPRICORN', code: 'CPCU', logo: 0 }
-  ];
+  // ---------------------------------------------------------------- places
+  // How Shipment (and each place's own map) looks in each hub place: container
+  // paint and names, what's written on crates and barrels, the light and the air.
+  // logo: 0 diamond, 1 waves, 2 star, 3 leaf, 4 cup, 5 heart, 6 sun, 7 planet, 8 shell, 9 chart
+  function V(p, brand, code, logo) { return { p: p, brand: brand, code: code, logo: logo }; }
+  var THEMES = {
+    park: {
+      paints: [{ base: [96, 176, 84] }, { base: [72, 156, 214] }, { base: [238, 192, 60] }, { base: [230, 108, 92] }, { base: [156, 118, 204] }, { base: [238, 230, 204], dark: true }],
+      variants: [V(0, 'MII PARK', 'MPKU', 3), V(1, 'DUCK POND', 'DPDU', 1), V(2, 'SUNNY DAYS', 'SUNU', 6), V(3, 'PICNIC CO', 'PICU', 5),
+        V(4, 'BLOSSOM', 'BLSU', 3), V(5, 'ACORN', 'ACNU', 3), V(0, 'MEADOW', 'MDWU', 6), V(1, 'LEAFY', 'LFYU', 3)],
+      wear: 0.22, crate: ['APPLES', 'PICNIC', 'FRESH FRUIT', 'MII PARK ORCHARD'],
+      drums: [[[64, 150, 84], 'COMPOST'], [[226, 120, 50], 'BIRD SEED']], wood: 'logs',
+      ground: '#7fd65a', fog: ['#cdeeff', 0.0035], env: ['#8fd0ff', '#cdeeff', '#6cc84a'],
+      light: { sky: '#d6f0ff', gnd: '#8fd16f', hemi: 1.05, amb: 0.4, key: '#fff4e0', keyI: 1.55, fill: 0.45 }, dust: '#fff6c8'
+    },
+    cafe: {
+      paints: [{ base: [130, 86, 58] }, { base: [214, 90, 120] }, { base: [96, 178, 150] }, { base: [242, 200, 90] }, { base: [62, 86, 140] }, { base: [240, 228, 206], dark: true }],
+      variants: [V(0, 'BEANS & CO', 'BNSU', 4), V(1, 'BOUTIQUE', 'BTQU', 5), V(2, 'MII CAFÉ', 'CAFU', 4), V(3, 'BAKERY', 'BKRU', 2),
+        V(4, 'TOY BOX', 'TOYU', 2), V(5, 'CROISSANT', 'CRSU', 5), V(1, 'SWEETS', 'SWTU', 5), V(2, 'TEA TIME', 'TEAU', 4)],
+      wear: 0.25, crate: ['COFFEE', 'BEANS', 'FLOUR 25 KG', 'CAFE STREET BAKERY'],
+      drums: [[[150, 96, 60], 'COCOA'], [[214, 90, 120], 'JAM']], wood: 'planter',
+      ground: '#d8d0c4', fog: ['#d9e8f0', 0.0035], env: ['#8fd0ff', '#d9e8f0', '#b8b0a4'],
+      light: { sky: '#d6f0ff', gnd: '#d9c8a8', hemi: 1.0, amb: 0.4, key: '#fff4e0', keyI: 1.5, fill: 0.45 }, dust: null
+    },
+    beach: {
+      paints: [{ base: [40, 180, 190] }, { base: [240, 110, 90] }, { base: [250, 204, 70] }, { base: [56, 120, 204] }, { base: [240, 132, 172] }, { base: [242, 238, 226], dark: true }],
+      variants: [V(0, 'MII BEACH', 'MBCU', 8), V(1, 'CORAL REEF', 'CRLU', 8), V(2, 'SUN & SAND', 'SUNU', 6), V(3, 'SURF SHOP', 'SRFU', 1),
+        V(4, 'ICE CREAM', 'ICEU', 5), V(5, 'SEASHELL', 'SHLU', 8), V(0, 'LIFEGUARD', 'LGDU', 1), V(3, 'TIKI BAR', 'TIKU', 6)],
+      wear: 0.35, crate: ['ICE CREAM', 'SURF WAX', 'BEACH BALLS', 'MII BEACH SNACK BAR'],
+      drums: [[[40, 160, 200], 'SUN CREAM'], [[250, 180, 60], 'LEMONADE']], wood: 'driftwood',
+      ground: '#f5dfa4', fog: ['#cdeeff', 0.0035], env: ['#8fd0ff', '#cdeeff', '#f0d79a'],
+      light: { sky: '#d6f0ff', gnd: '#f5dfa4', hemi: 1.05, amb: 0.42, key: '#fff4e0', keyI: 1.55, fill: 0.45 }, dust: '#fff2d0'
+    },
+    moon: {
+      paints: [{ base: [236, 236, 242], dark: true }, { base: [150, 156, 172] }, { base: [240, 138, 52] }, { base: [150, 120, 210] }, { base: [70, 186, 220] }, { base: [214, 72, 80] }],
+      variants: [V(0, 'MII SPACE', 'MSPU', 7), V(1, 'LUNAR', 'LNRU', 2), V(2, 'ROCKET', 'RKTU', 2), V(3, 'MOON BASE', 'MBSU', 7),
+        V(4, 'ORBIT', 'ORBU', 7), V(5, 'STARDUST', 'STDU', 2), V(0, 'ASTRO', 'ASTU', 7), V(2, 'COSMO', 'CSMU', 2)],
+      wear: 0.12, crate: ['SPACE FOOD', 'OXYGEN', 'MOON ROCKS', 'MII SPACE AGENCY'],
+      drums: [[[236, 236, 242], 'FUEL'], [[240, 138, 52], 'OXYGEN']], wood: 'girder',
+      ground: '#b9b0d6', fog: ['#3a2470', 0.0025], env: ['#3a2470', '#6a5aa8', '#b9b0d6'],
+      light: { sky: '#c9c2ff', gnd: '#5a4f8a', hemi: 1.0, amb: 0.42, key: '#fff6e8', keyI: 1.5, fill: 0.5 }, dust: null
+    },
+    office: {
+      paints: [{ base: [52, 104, 176] }, { base: [124, 132, 146] }, { base: [42, 152, 152] }, { base: [240, 140, 62] }, { base: [238, 238, 238], dark: true }, { base: [108, 180, 90] }],
+      variants: [V(0, 'MII CORP', 'MCRU', 9), V(1, 'PAPER CO', 'PPRU', 0), V(2, 'IT SUPPORT', 'ITSU', 9), V(3, 'COFFEE', 'COFU', 4),
+        V(4, 'MEMO', 'MEMU', 0), V(5, 'SYNERGY', 'SYNU', 9), V(0, 'SERVER', 'SRVU', 0), V(2, 'DATA', 'DATU', 9)],
+      wear: 0.1, crate: ['PAPER', 'PRINTER INK', 'A4 500 SHEETS', 'MII CORP SUPPLIES'],
+      drums: [[[52, 104, 176], 'WATER'], [[240, 140, 62], 'TONER']], wood: 'tray',
+      ground: '#a3b1c8', fog: ['#d8efff', 0.003], env: ['#e9edf5', '#d8efff', '#9aa8c0'],
+      light: { sky: '#ffffff', gnd: '#d9c7a8', hemi: 1.05, amb: 0.5, key: '#fff6e8', keyI: 1.1, fill: 0.5 }, dust: '#ffffff'
+    }
+  };
+  var THEME = THEMES.park, PAINTS = THEME.paints, VARIANTS = THEME.variants;
+
+  // The floor of the arena in each place. G = canvas size, GS = meters it covers,
+  // gp(x, z) -> canvas point, gk = pixels per meter.
+  function paintGround(gx, G, GS, gp, gk, rnd) {
+    var set = THEME === THEMES.park ? 'park' : THEME === THEMES.cafe ? 'cafe' : THEME === THEMES.beach ? 'beach' : THEME === THEMES.moon ? 'moon' : 'office';
+    var i, x, y, p;
+    gx.fillStyle = THEME.ground; gx.fillRect(0, 0, G, G);
+    if (set === 'park') {
+      // mowed stripes, grass blades, flowers, and worn dirt where everyone runs
+      for (i = -GS / 2; i < GS / 2; i += 2.5) { var a = gp(i, -GS / 2); gx.fillStyle = 'rgba(255,255,255,' + ((i / 2.5) % 2 ? 0.0 : 0.07) + ')'; gx.fillRect(a[0], 0, 2.5 * gk, G); }
+      blotch(gx, 0, 0, G, G, 10, 10, rnd, 0.18, 'overlay', 90);
+      for (i = 0; i < 9000; i++) { gx.strokeStyle = rnd() < 0.5 ? 'rgba(70,150,45,0.5)' : 'rgba(170,235,120,0.55)'; gx.lineWidth = 1.2; x = rnd() * G; y = rnd() * G; gx.beginPath(); gx.moveTo(x, y); gx.lineTo(x - 1, y - 4); gx.stroke(); }
+      [[0, 14, 3.5], [0, -14, 3.5], [0, 0, 4.5], [-9, 6, 2.5], [9, -6, 2.5], [9, 9, 2], [-9, -9, 2]].forEach(function (d) {
+        p = gp(d[0], d[1]); var g = gx.createRadialGradient(p[0], p[1], 0, p[0], p[1], d[2] * gk);
+        g.addColorStop(0, 'rgba(201,160,110,0.55)'); g.addColorStop(0.6, 'rgba(201,160,110,0.3)'); g.addColorStop(1, 'rgba(201,160,110,0)');
+        gx.fillStyle = g; gx.fillRect(p[0] - d[2] * gk, p[1] - d[2] * gk, d[2] * 2 * gk, d[2] * 2 * gk);
+      });
+      var fl = ['#ff9ec7', '#ffe25a', '#ffffff', '#b48cff'];
+      for (i = 0; i < 700; i++) { gx.fillStyle = fl[i % 4]; x = rnd() * G; y = rnd() * G; gx.beginPath(); gx.arc(x, y, 1.6 + rnd() * 1.2, 0, 7); gx.fill(); }
+    } else if (set === 'cafe') {
+      // cobblestones, with a ring pattern around the middle
+      var cs = 0.42 * gk;
+      for (y = 0; y < G; y += cs) for (x = ((y / cs) % 2) * cs / 2 - cs; x < G; x += cs) {
+        var v = 200 + rnd() * 30;
+        gx.fillStyle = 'rgb(' + (v | 0) + ',' + ((v - 8) | 0) + ',' + ((v - 20) | 0) + ')';
+        gx.beginPath(); gx.roundRect ? gx.roundRect(x + 1.5, y + 1.5, cs - 3, cs - 3, 3) : gx.rect(x + 1.5, y + 1.5, cs - 3, cs - 3); gx.fill();
+      }
+      p = gp(0, 0);
+      for (i = 0; i < 3; i++) { gx.strokeStyle = 'rgba(170,140,110,0.6)'; gx.lineWidth = 0.35 * gk; gx.beginPath(); gx.arc(p[0], p[1], (3.2 + i * 1.6) * gk, 0, 7); gx.stroke(); }
+      for (i = -1; i <= 1; i += 2) { var b0 = gp(-GS / 2, i * 15.8); gx.fillStyle = 'rgba(160,150,140,0.5)'; gx.fillRect(0, b0[1] - 0.3 * gk, G, 0.6 * gk); }
+      blotch(gx, 0, 0, G, G, 12, 12, rnd, 0.12, 'overlay', 80);
+    } else if (set === 'beach') {
+      blotch(gx, 0, 0, G, G, 8, 8, rnd, 0.25, 'overlay', 70);
+      for (i = 0; i < 160; i++) { // ripples in the sand
+        x = rnd() * G; y = rnd() * G; gx.strokeStyle = 'rgba(200,170,110,0.35)'; gx.lineWidth = 1.5;
+        gx.beginPath(); gx.moveTo(x, y); gx.quadraticCurveTo(x + 20, y - 6, x + 40, y); gx.stroke();
+      }
+      for (i = 0; i < 6000; i++) { gx.fillStyle = rnd() < 0.5 ? 'rgba(220,190,130,0.5)' : 'rgba(255,248,225,0.6)'; gx.fillRect(rnd() * G, rnd() * G, 1.5, 1.5); }
+      var sh = ['#ffffff', '#ffc4d8', '#ffe0b0'];
+      for (i = 0; i < 70; i++) { gx.fillStyle = sh[i % 3]; x = rnd() * G; y = rnd() * G; gx.beginPath(); gx.arc(x, y, 3, PI, 0); gx.fill(); }
+      for (i = 0; i < 60; i++) { // footprints
+        x = rnd() * G; y = rnd() * G; var ang = rnd() * 7;
+        for (var st = 0; st < 6; st++) { gx.fillStyle = 'rgba(190,160,100,0.35)'; gx.beginPath(); gx.ellipse(x + Math.cos(ang) * st * 14 + (st % 2) * 5, y + Math.sin(ang) * st * 14, 3, 5, ang + PI / 2, 0, 7); gx.fill(); }
+      }
+      var tw = [['#ff9ec7', '#ffffff'], ['#7fd0ff', '#ffffff'], ['#ffe25a', '#ff8a3a']];
+      [[-7, 13.5], [7, -13.5], [12.5, 6], [-12.5, -6]].forEach(function (t, k) { // beach towels
+        p = gp(t[0], t[1]); gx.save(); gx.translate(p[0], p[1]); gx.rotate(k * 0.7);
+        for (var s2 = 0; s2 < 6; s2++) { gx.fillStyle = tw[k % 3][s2 % 2]; gx.fillRect(-0.9 * gk + s2 * 0.3 * gk, -0.5 * gk, 0.3 * gk, 1.0 * gk); }
+        gx.restore();
+      });
+    } else if (set === 'moon') {
+      for (i = 0; i < 1800; i++) { gx.fillStyle = rnd() < 0.5 ? 'rgba(150,138,190,0.28)' : 'rgba(225,220,245,0.3)'; gx.beginPath(); gx.arc(rnd() * G, rnd() * G, 1 + rnd() * 5, 0, 7); gx.fill(); }
+      for (i = 0; i < 26; i++) { // little craters
+        x = rnd() * G; y = rnd() * G; var r = (0.5 + rnd() * 1.6) * gk;
+        gx.fillStyle = 'rgba(140,128,180,0.5)'; gx.beginPath(); gx.arc(x, y, r, 0, 7); gx.fill();
+        gx.strokeStyle = 'rgba(230,226,248,0.6)'; gx.lineWidth = r * 0.2; gx.beginPath(); gx.arc(x, y, r * 1.05, PI * 0.9, PI * 1.9); gx.stroke();
+      }
+      for (i = 0; i < 40; i++) { x = rnd() * G; y = rnd() * G; gx.fillStyle = 'rgba(120,110,160,0.25)'; for (var s3 = 0; s3 < 7; s3++) gx.fillRect(x + s3 * 9, y + (s3 % 2) * 4, 6, 3); } // boot prints
+    } else {
+      // carpet tiles (two blue-grays) with a light walkway down the middle
+      var ts = 0.6 * gk;
+      for (y = 0; y < G; y += ts) for (x = 0; x < G; x += ts) {
+        gx.fillStyle = ((x / ts + y / ts) | 0) % 2 ? '#9aa8c0' : '#a6b4cb'; gx.fillRect(x, y, ts, ts);
+        gx.strokeStyle = 'rgba(80,90,110,0.18)'; gx.lineWidth = 1; gx.strokeRect(x, y, ts, ts);
+      }
+      blotch(gx, 0, 0, G, G, 16, 16, rnd, 0.1, 'overlay', 60);
+      var w0 = gp(-1.0, 0); gx.fillStyle = 'rgba(220,226,236,0.5)'; gx.fillRect(w0[0], 0, 2.0 * gk, G);
+    }
+  }
 
   // ---------------------------------------------------------------- textures
   // Atlas A (1024): 8 container side cells 512x256 (col = i%2, row = i>>1)
@@ -184,6 +295,29 @@
         ctx.quadraticCurveTo(cx + r * 0.3, cy + i * r * 0.35 + r * 0.2, cx + r * 0.6, cy + i * r * 0.35);
         ctx.lineWidth = r * 0.1; ctx.stroke();
       }
+    } else if (kind === 3) { // leaf
+      ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.55, r, 0.6, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = r * 0.08; ctx.beginPath(); ctx.moveTo(cx - r * 0.5, cy + r * 0.7); ctx.lineTo(cx + r * 0.45, cy - r * 0.65); ctx.stroke();
+    } else if (kind === 4) { // cup
+      ctx.fillRect(cx - r * 0.6, cy - r * 0.4, r * 1.0, r * 1.0);
+      ctx.lineWidth = r * 0.16; ctx.beginPath(); ctx.arc(cx + r * 0.45, cy + r * 0.1, r * 0.3, -1.4, 1.4); ctx.stroke();
+      for (var w = -1; w <= 1; w++) { ctx.lineWidth = r * 0.09; ctx.beginPath(); ctx.moveTo(cx - r * 0.1 + w * r * 0.25, cy - r * 0.55); ctx.quadraticCurveTo(cx + w * r * 0.25 + r * 0.1, cy - r * 0.8, cx - r * 0.1 + w * r * 0.25, cy - r * 1.0); ctx.stroke(); }
+    } else if (kind === 5) { // heart
+      ctx.beginPath(); ctx.moveTo(cx, cy + r * 0.8);
+      ctx.bezierCurveTo(cx - r * 1.3, cy - r * 0.1, cx - r * 0.6, cy - r * 1.1, cx, cy - r * 0.35);
+      ctx.bezierCurveTo(cx + r * 0.6, cy - r * 1.1, cx + r * 1.3, cy - r * 0.1, cx, cy + r * 0.8); ctx.fill();
+    } else if (kind === 6) { // sun
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.5, 0, 7); ctx.fill();
+      for (var k6 = 0; k6 < 8; k6++) { var a6 = k6 * PI / 4; ctx.beginPath(); ctx.moveTo(cx + Math.cos(a6) * r * 0.65, cy + Math.sin(a6) * r * 0.65); ctx.lineTo(cx + Math.cos(a6) * r, cy + Math.sin(a6) * r); ctx.stroke(); }
+    } else if (kind === 7) { // ringed planet
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.55, 0, 7); ctx.fill();
+      ctx.lineWidth = r * 0.12; ctx.beginPath(); ctx.ellipse(cx, cy, r * 1.0, r * 0.32, -0.35, 0, 7); ctx.stroke();
+    } else if (kind === 8) { // shell
+      ctx.beginPath(); ctx.moveTo(cx, cy + r * 0.8); ctx.arc(cx, cy + r * 0.1, r * 0.9, PI * 1.05, PI * 1.95); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = r * 0.07;
+      for (var k8 = -2; k8 <= 2; k8++) { ctx.beginPath(); ctx.moveTo(cx, cy + r * 0.8); ctx.lineTo(cx + k8 * r * 0.35, cy - r * 0.6); ctx.stroke(); }
+    } else if (kind === 9) { // bar chart
+      [0.4, 0.75, 0.55, 1.0].forEach(function (hh, k9) { ctx.fillRect(cx - r + k9 * r * 0.52, cy + r - hh * r * 1.8, r * 0.38, hh * r * 1.8); });
     } else { // star
       ctx.beginPath();
       for (var k = 0; k < 10; k++) {
@@ -390,7 +524,7 @@
     ctx.save(); ctx.translate(128, 128); ctx.rotate(-0.78); ctx.fillStyle = rgb(cA, 0.85); ctx.fillRect(-170, -12, 340, 24);
     ctx.strokeStyle = 'rgba(25,15,8,0.6)'; ctx.strokeRect(-170, -12, 340, 24); ctx.restore();
     frame(0, 0, 256, 256, cA, 22); nails(0, 0, 256, 256, 40);
-    stencil(ctx, 'FRAGILE', 128, 70, 26, 'rgba(30,24,20,0.6)', cA, rnd, 160, 60);
+    stencil(ctx, THEME.crate[0], 128, 70, 26, 'rgba(30,24,20,0.6)', cA, rnd, 160, 60);
     ctx.fillStyle = 'rgba(30,24,20,0.55)';
     [96, 140].forEach(function (ax) { ctx.beginPath(); ctx.moveTo(ax, 170); ctx.lineTo(ax + 12, 186); ctx.lineTo(ax + 5, 186); ctx.lineTo(ax + 5, 205); ctx.lineTo(ax - 5, 205); ctx.lineTo(ax - 5, 186); ctx.lineTo(ax - 12, 186); ctx.closePath(); ctx.fill(); });
     // crate B: plywood, darker stencils
@@ -399,9 +533,9 @@
     blotch(ctx, 256, 0, 256, 256, 8, 8, rnd, 0.35, 'overlay', 100);
     for (var g = 0; g < 50; g++) { ctx.strokeStyle = 'rgba(70,45,20,' + (0.05 + rnd() * 0.1) + ')'; ctx.lineWidth = 1 + rnd() * 2; ctx.beginPath(); var yy = rnd() * 256; ctx.moveTo(256, yy); ctx.bezierCurveTo(330, yy + (rnd() - 0.5) * 20, 430, yy + (rnd() - 0.5) * 20, 512, yy); ctx.stroke(); }
     frame(256, 0, 256, 256, [118, 90, 56], 24); nails(256, 0, 256, 256, 30);
-    stencil(ctx, 'KX-2214', 384, 92, 30, 'rgba(25,22,20,0.7)', cB, rnd, 180, 50);
-    stencil(ctx, 'GROSS 1180 KG', 384, 130, 16, 'rgba(25,22,20,0.6)', cB, rnd, 180, 20);
-    stencil(ctx, 'PORT OF VALDRAN', 384, 160, 14, 'rgba(25,22,20,0.55)', cB, rnd, 180, 20);
+    stencil(ctx, THEME.crate[1], 384, 92, 30, 'rgba(25,22,20,0.7)', cB, rnd, 180, 50);
+    stencil(ctx, THEME.crate[2], 384, 130, 16, 'rgba(25,22,20,0.6)', cB, rnd, 180, 20);
+    stencil(ctx, THEME.crate[3], 384, 160, 14, 'rgba(25,22,20,0.55)', cB, rnd, 180, 20);
     ctx.fillStyle = 'rgba(150,40,30,0.55)'; ctx.fillRect(330, 190, 108, 18);
     // pallet planks
     planks(0, 256, 256, 128, 4, true, [140, 116, 80], 30);
@@ -463,36 +597,16 @@
     return c;
   }
 
-  function buildSky(rnd, horizon) {
-    var c = mkCanvas(1024, 256), ctx = c.getContext('2d', CTX_OPTS);
-    var g = ctx.createLinearGradient(0, 0, 0, 256);
-    g.addColorStop(0, '#2b333e'); g.addColorStop(0.25, '#424b56'); g.addColorStop(0.42, '#69707a');
-    g.addColorStop(0.5, horizon); g.addColorStop(1, horizon);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, 1024, 256);
-    // warm dusk glow low in the west (u ~ 0.5 -> -x direction for SphereGeometry)
-    var wg = ctx.createRadialGradient(512, 128, 10, 512, 128, 300);
-    wg.addColorStop(0, 'rgba(196,150,108,0.55)'); wg.addColorStop(0.4, 'rgba(160,128,104,0.25)'); wg.addColorStop(1, 'rgba(160,128,104,0)');
-    ctx.save(); ctx.scale(1, 0.45); ctx.translate(0, 128 / 0.45 - 128); ctx.fillStyle = wg; ctx.fillRect(0, 0, 1024, 600); ctx.restore();
-    // overcast cloud banks: horizontally stretched noise, upper half only
-    clipRect(ctx, 0, 0, 1024, 132);
-    blotch(ctx, 0, 0, 1024, 132, 12, 10, rnd, 0.35, 'overlay', 120);
-    blotch(ctx, 0, 0, 1024, 132, 48, 24, rnd, 0.25, 'overlay', 110);
-    blotch(ctx, 0, 0, 1024, 132, 160, 50, rnd, 0.12, 'overlay', 100);
-    ctx.restore();
-    var hg = ctx.createLinearGradient(0, 100, 0, 132); hg.addColorStop(0, 'rgba(0,0,0,0)'); hg.addColorStop(1, horizon);
-    ctx.fillStyle = hg; ctx.fillRect(0, 100, 1024, 32);
-    return c;
-  }
-
-  function buildEnvCube(horizon) {
+  function buildEnvCube() {
     var faces = [];
     for (var f = 0; f < 6; f++) {
       var c = mkCanvas(32, 32), ctx = c.getContext('2d', CTX_OPTS);
-      if (f === 2) { ctx.fillStyle = '#4a5562'; ctx.fillRect(0, 0, 32, 32); }
-      else if (f === 3) { ctx.fillStyle = '#3c3933'; ctx.fillRect(0, 0, 32, 32); }
+      var E = THEME.env; // [sky, horizon, ground]
+      if (f === 2) { ctx.fillStyle = E[0]; ctx.fillRect(0, 0, 32, 32); }
+      else if (f === 3) { ctx.fillStyle = E[2]; ctx.fillRect(0, 0, 32, 32); }
       else {
         var g = ctx.createLinearGradient(0, 0, 0, 32);
-        g.addColorStop(0, '#4f5a66'); g.addColorStop(0.5, horizon); g.addColorStop(0.55, '#4a463e'); g.addColorStop(1, '#3a3631');
+        g.addColorStop(0, E[0]); g.addColorStop(0.5, E[1]); g.addColorStop(0.55, E[2]); g.addColorStop(1, E[2]);
         ctx.fillStyle = g; ctx.fillRect(0, 0, 32, 32);
       }
       faces.push(c);
@@ -565,10 +679,15 @@
   // ---------------------------------------------------------------- build
   function build(opts) {
     opts = opts || {};
+    var LY = window.PBLayouts;
+    var MAP = (LY && (LY.mapById(opts.map) || LY.mapById(LY.DEFAULT_MAP))) || { id: 'shipment_park', name: 'Shipment Park', setting: 'park', layout: 'shipment' };
+    THEME = THEMES[MAP.setting] || THEMES.park; PAINTS = THEME.paints; VARIANTS = THEME.variants; WEAR = THEME.wear;
+    var ship = MAP.layout === 'shipment', SC = window.PBScenery && window.PBScenery.available() ? window.PBScenery : null;
     var rnd = makeRng(opts.seed || 1337);
     var _t0 = performance.now(), PROF = opts.profile ? function (l) { console.log('[pbmap] ' + l + ' ' + (performance.now() - _t0).toFixed(0) + 'ms'); } : function () {};
     var disposables = [];
-    var group = new THREE.Group(); group.name = 'PBMap-Shipment';
+    var group = new THREE.Group(); group.name = 'PBMap-' + MAP.id;
+    var scen = new THREE.Group(); scen.name = 'scenery'; group.add(scen); // hub-style (toon) parts
     var boxes = [], cyls = [];
     var gid = 0; // collision group id (for self-test of overlaps)
 
@@ -580,11 +699,14 @@
       if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
       disposables.push(t); return t;
     }
-    var atlasA = buildAtlasA(rnd); PROF('atlasA'); var atlasB = buildAtlasB(rnd); PROF('atlasB');
-    var tA = tex(atlasA.map, true), tAn = tex(atlasA.normal, false), tB = tex(atlasB.map, true), tBn = tex(atlasB.normal, false);
-    var tW = tex(buildWood(rnd), true), tG = tex(buildGrime(rnd), true, true);
-    PROF('wood+grime'); var FOG_HEX = '#767b7e';
-    var envCube = buildEnvCube(FOG_HEX); disposables.push(envCube);
+    var envCube = buildEnvCube(); disposables.push(envCube);
+    var tA, tAn, tB, tBn, tW, tG;
+    if (ship) {
+      var atlasA = buildAtlasA(rnd); PROF('atlasA'); var atlasB = buildAtlasB(rnd); PROF('atlasB');
+      tA = tex(atlasA.map, true); tAn = tex(atlasA.normal, false); tB = tex(atlasB.map, true); tBn = tex(atlasB.normal, false);
+      tW = tex(buildWood(rnd), true); tG = tex(buildGrime(rnd), true, true);
+      PROF('wood+grime');
+    }
 
     var UV_SIDE = [], UV_DOOR = [], UV_FRONT = [], i;
     for (i = 0; i < 8; i++) { UV_SIDE.push(rectPx((i % 2) * 512 + 1, (i >> 1) * 256 + 1, 510, 254, 1024)); UV_DOOR.push(rectPx((i % 4) * 256 + 1, (i >> 2) * 256 + 1, 254, 254, 1024)); }
@@ -597,12 +719,15 @@
     var gA = new Geo(), gB = new Geo(), gW = new Geo(), gM = new Geo(), gL = new Geo();
     var footprints = []; // for ground AO {x,z,hw,hd,rot,s}
     var glowPts = []; // {x,y,z,size,col}
+    var drumPos = [], hanging = [], flickIdx = -1, WALKTHROUGH = [], spawns, ceiling = 0;
+    var rect; // how far the arena and its walls reach (the place's scenery starts beyond)
 
     function coll(x, z, hw, hd, rot, y0, y1, m, g) {
       boxes.push({ x: x, z: z, hw: hw, hd: hd, rot: rot, y0: y0, y1: y1, mat: m, _g: g == null ? gid : g });
     }
     function toWorld(f, lx, lz) { var c = Math.cos(f.rot), s = Math.sin(f.rot); return [f.x + lx * c + lz * s, f.z - lx * s + lz * c]; }
 
+    if (ship) {
     // ---- containers ------------------------------------------------
     // c: {x,z,y,rot,v,h,open,lane,rods,trim,cargo,noColl,bg}
     function container(c) {
@@ -723,7 +848,6 @@
     }
 
     // ---- layout: center blocks -----------------------------------
-    var WALKTHROUGH = [];
     var centerVar = [[0, 1], [3, 2], [4, 6], [7, 5]];
     [[-3.8, -4.35], [3.8, -4.35], [-3.8, 4.35], [3.8, 4.35]].forEach(function (b, bi) {
       var sx = b[0] < 0 ? -1 : 1, sz = b[1] < 0 ? -1 : 1;
@@ -755,48 +879,29 @@
         var v = ((varSeed * 7 + k * 3 + ((rnd() * 8) | 0)) % 8);
         var off = k === 2 ? (0.15 + rnd() * 0.3) : 0, Mrot = rot + (k === 2 ? (rnd() - 0.5) * 0.05 : 0);
         var o = (opt && opt.outward) || [0, 0], jit = (opt && opt.jx && k === 2) ? (rnd() - 0.5) * 0.6 : 0;
-        container({ x: x + o[0] * off + jit, z: z + o[1] * off, y: k * CHC, h: CHC, rot: Mrot, v: v, noColl: true, trim: true, rods: !!(opt && opt.rods && k < 2) });
+        container({ x: x + o[0] * off + jit, z: z + o[1] * off, y: k * CHC, h: CHC, rot: Mrot, v: v, noColl: true, trim: true, rods: !!(opt && opt.rods) });
         top = (k + 1) * CHC;
       }
       gid++;
       coll(x, z, colHW, colHD, rot, 0, top, 'metal');
       return top;
     }
-    var heightsEW = [2, 3, 2, 2, 3, 2, 2, 3, 2, 2, 2, 3, 2, 3], k;
+    var heightsEW = [1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 1, 2, 1, 2], k;
     for (k = 0; k < 14; k++) {
       var zc = -17 + 1.214 + 2.428 * k;
       // east wall: doors facing inward (-x)
       stack(15.9 + HL, zc, -PI / 2, heightsEW[k], k, 1.214, HL, { rods: true, outward: [1, 0] });
       stack(-15.9 - HL, zc, PI / 2, heightsEW[13 - k], k + 5, 1.214, HL, { rods: true, outward: [-1, 0] });
     }
-    var heightsNS = [3, 2, 2, 3, 2, 2, 3];
+    var heightsNS = [2, 1, 1, 2, 1, 1, 2];
     for (k = 0; k < 7; k++) {
       var xc = -21.21 + HL + CL * k;
       stack(xc, -17 - HW, PI / 2, heightsNS[k], k + 2, HW, HL, { jx: true });
       stack(xc, 17 + HW, -PI / 2, heightsNS[6 - k], k + 9, HW, HL, { jx: true });
     }
 
-    // ---- background yard: container blocks beyond the walls --------
-    function yardBlock(cx, cz, nx, nz, rot, hmin, hmax) {
-      var c = Math.cos(rot), s = Math.sin(rot);
-      for (var a = 0; a < nx; a++) for (var b = 0; b < nz; b++) {
-        if (rnd() < 0.12) continue;
-        var lx = (b - (nz - 1) / 2) * 2.5, lz = (a - (nx - 1) / 2) * 6.4;
-        var x = cx + lx * c + lz * s, z = cz - lx * s + lz * c;
-        var n = hmin + Math.floor(rnd() * (hmax - hmin + 1));
-        for (var h = 0; h < n; h++) container({ x: x, z: z, y: h * CH, rot: rot + (rnd() < 0.5 ? PI : 0), v: (rnd() * 8) | 0, noColl: true, trim: false });
-      }
-    }
-    yardBlock(-12, -30, 3, 6, PI / 2, 2, 4);
-    yardBlock(10, -31, 3, 5, PI / 2, 1, 4);
-    yardBlock(-31, -12, 3, 5, 0, 2, 5);
-    yardBlock(-30, 12, 3, 4, 0, 1, 4);
-    yardBlock(31, -8, 3, 5, 0, 2, 4);
-    yardBlock(30, 16, 2, 4, 0, 2, 5);
-    yardBlock(-10, 31, 3, 5, PI / 2, 2, 4);
-    yardBlock(14, 32, 3, 4, PI / 2, 1, 3);
-    yardBlock(-40, 36, 4, 4, 0.3, 2, 5);
-    yardBlock(42, -36, 4, 4, -0.2, 2, 5);
+    rect = { x: 15.9 + CL + 0.4, z: 17 + CW + 0.4 };
+    if (THEME === THEMES.office && SC) { SC.officeWalls(scen, { minX: -rect.x, maxX: rect.x, minZ: -rect.z, maxZ: rect.z }, 1, function (x, z, hw, hd, y0, y1, m) { gid++; coll(x, z, hw, hd, 0, y0, y1, m); }, 6.2); rect = { x: rect.x + 1, z: rect.z + 1 }; ceiling = 6.2; }
 
     // ---- crates ----------------------------------------------------
     function D(d) { return -d * PI / 180; } // plan degrees (clockwise on the plan) -> yaw
@@ -820,132 +925,30 @@
       footprints.push({ x: p[0], z: p[1], hw: 0.6, hd: 0.5, rot: p[2], s: 0.6 });
     });
 
-    // ---- girders lying on the ground (≤ 0.36 m) ---------------------
-    function girder(x0, z0, x1, z1, col) {
-      var dx = x1 - x0, dz = z1 - z0, L = Math.hypot(dx, dz), rot = Math.atan2(dx, dz); // local +z along girder
-      var cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, M = mat(cx, 0, cz, rot), wd = 0.7, ht = 0.34, s = 0.07;
-      [-1, 1].forEach(function (a) {
-        gM.box(M, a * (wd / 2 - s / 2), s / 2, 0, s, s, L, NOBOT, col);
-        gM.box(M, a * (wd / 2 - s / 2), ht - s / 2, 0, s, s, L, NOBOT, col);
-      });
-      var n = Math.floor(L / 0.6);
-      for (var j = 0; j <= n; j++) {
-        var zz = -L / 2 + j * (L / n);
-        [-1, 1].forEach(function (a) { gM.box(M, a * (wd / 2 - s / 2), ht / 2, zz, 0.04, ht - 2 * s, 0.04, ALL, col); });
-        gM.box(M, 0, ht - s / 2, zz, wd - 2 * s, 0.04, 0.04, ALL, col);
-        gM.box(M, 0, s / 2, zz, wd - 2 * s, 0.04, 0.04, ALL, col);
-        if (j < n) [-1, 1].forEach(function (a) { // diagonal braces on the sides
-          var Md = M.clone().multiply(new THREE.Matrix4().makeTranslation(a * (wd / 2 - s / 2), ht / 2, zz + L / n / 2).multiply(new THREE.Matrix4().makeRotationX((j % 2 ? 1 : -1) * Math.atan2(ht - 2 * s, L / n))));
-          gM.box(Md, 0, 0, 0, 0.035, 0.035, Math.hypot(ht - 2 * s, L / n), ALL, col);
-        });
-      }
-      gid++; coll(cx, cz, wd / 2, L / 2, rot, 0, ht, 'metal');
-      footprints.push({ x: cx, z: cz, hw: wd / 2, hd: L / 2, rot: rot, s: 0.5 });
+    // ---- the long low things lying on the ground (0.7 x 0.34) ----------
+    function girder(x0, z0, x1, z1) {
+      var dx = x1 - x0, dz = z1 - z0, L = Math.hypot(dx, dz), rot = Math.atan2(dx, dz), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+      if (SC) SC.lowBar(scen, MAP.setting, x0, z0, x1, z1);
+      gid++; coll(cx, cz, 0.35, L / 2, rot, 0, 0.34, THEME.wood === 'girder' || THEME.wood === 'tray' ? 'metal' : 'wood');
+      footprints.push({ x: cx, z: cz, hw: 0.35, hd: L / 2, rot: rot, s: 0.5 });
     }
-    girder(-15.0, 4.0, -12.0, 8.0, linCol([150, 112, 40]));
-    girder(10.7, 8.5, 9.9, 16.5, linCol([160, 120, 42]));
+    girder(-15.0, 4.0, -12.0, 8.0);
+    girder(10.7, 8.5, 9.9, 16.5);
     // loose pipe
     (function () {
       var x0 = -15.3, z0 = -15.5, x1 = -13.0, z1 = -16.42, L = Math.hypot(x1 - x0, z1 - z0), rot = Math.atan2(x1 - x0, z1 - z0), r = 0.16;
       var g = new THREE.CylinderGeometry(r, r, L, 12, 1, false); g.rotateX(PI / 2);
       var M = mat((x0 + x1) / 2, r, (z0 + z1) / 2, rot);
-      gM.add(g, M, linCol([88, 84, 78]), [1, L / 2]); g.dispose();
+      gM.add(g, M, linCol({ logs: [140, 98, 60], planter: [140, 98, 60], driftwood: [200, 176, 142] }[THEME.wood] || [150, 156, 168]), [1, L / 2]); g.dispose();
       gid++; coll((x0 + x1) / 2, (z0 + z1) / 2, r, L / 2, rot, 0, 2 * r, 'metal');
     })();
 
-    // ---- floodlight poles in the corners ----------------------------
-    var poleGeo = new THREE.CylinderGeometry(0.09, 0.13, 1, 8, 1, true);
-    var lampWarm = [255, 226, 180];
-    function floodPole(x, z, h) {
-      var steel = linCol([92, 94, 96]);
-      gM.add(poleGeo, new THREE.Matrix4().makeTranslation(x, h / 2, z).scale(new THREE.Vector3(1, h, 1)), steel, [1, h / 2]);
-      gM.box(mat(x, 0, z, 0), 0, 0.15, 0, 0.42, 0.3, 0.42, NOBOT, linCol([110, 108, 102]));
-      var aim = Math.atan2(-x, -z), M = mat(x, h, z, aim);
-      gM.box(M, 0, 0.1, 0, 1.6, 0.08, 0.08, ALL, steel);
-      gM.box(M, 0, 0.75, 0, 1.6, 0.08, 0.08, ALL, steel);
-      [-0.55, 0, 0.55].forEach(function (lx) {
-        [0.35, 0.95].forEach(function (ly) {
-          var Mh = M.clone().multiply(new THREE.Matrix4().makeTranslation(lx, ly, 0.18).multiply(new THREE.Matrix4().makeRotationX(0.55)));
-          gM.box(Mh, 0, 0, 0, 0.42, 0.34, 0.2, ALL, linCol([60, 62, 64]));
-          gL.box(Mh, 0, 0, 0.101, 0.36, 0.28, 0.001, { pz: 'auto' }, null);
-          var wp = new THREE.Vector3(0, 0, 0.16).applyMatrix4(Mh);
-          glowPts.push({ x: wp.x, y: wp.y, z: wp.z, s: 1.0 });
-        });
-      });
-      gid++; cyls.push({ x: x, z: z, r: 0.14, y0: 0, y1: h, mat: 'metal', _g: gid });
-    }
-    floodPole(-15.68, -16.78, 11); floodPole(15.68, -16.78, 11); floodPole(-15.68, 16.78, 11); floodPole(15.68, 16.78, 11);
-    // tall light towers outside the yard
-    function lightTower(x, z, h) {
-      var steel = linCol([84, 86, 88]);
-      gM.add(poleGeo, new THREE.Matrix4().makeTranslation(x, h / 2, z).scale(new THREE.Vector3(2.6, h, 2.6)), steel, [1, h / 2]);
-      var M = mat(x, h, z, Math.atan2(-x, -z));
-      gM.box(M, 0, 0, 0, 3.4, 0.15, 0.15, ALL, steel); gM.box(M, 0, 1.2, 0, 3.4, 0.15, 0.15, ALL, steel);
-      for (var a = 0; a < 4; a++) for (var b = 0; b < 2; b++) {
-        var Mh = M.clone().multiply(new THREE.Matrix4().makeTranslation(-1.3 + a * 0.87, 0.3 + b * 0.75, 0.25).multiply(new THREE.Matrix4().makeRotationX(0.4)));
-        gM.box(Mh, 0, 0, 0, 0.6, 0.5, 0.25, ALL, linCol([50, 52, 54]));
-        gL.box(Mh, 0, 0, 0.126, 0.52, 0.42, 0.001, { pz: 'auto' }, null);
-        var wp = new THREE.Vector3(0, 0, 0.3).applyMatrix4(Mh); glowPts.push({ x: wp.x, y: wp.y, z: wp.z, s: 2.6 });
-      }
-    }
-    lightTower(-26, -25, 24); lightTower(27, -23, 24); lightTower(-25, 27, 24); lightTower(26, 26, 24);
-
-    // ---- wall-mounted caged lamps (hanging from goosenecks) ----------
-    var hanging = [], flickIdx = -1;
-    function wallLamp(x, z, nx, nz) { // nx,nz: inward normal
-      var y = 5.3, rot = Math.atan2(nx, nz), M = mat(x, y, z, rot), steel = linCol([60, 60, 60]);
-      gM.box(M, 0, 0.35, 0.02, 0.12, 0.25, 0.06, ALL, steel); // bracket plate
-      gM.box(M, 0, 0.42, 0.45, 0.05, 0.05, 0.9, ALL, steel);  // arm
-      gM.box(M, 0, 0.22, 0.88, 0.02, 0.4, 0.02, ALL, steel);  // drop
-      var cone = new THREE.CylinderGeometry(0.06, 0.26, 0.18, 12, 1, true);
-      gM.add(cone, M.clone().multiply(new THREE.Matrix4().makeTranslation(0, -0.05, 0.88)), linCol([70, 80, 72]), [1, 1]); cone.dispose();
-      var bulb = new THREE.SphereGeometry(0.075, 8, 6);
-      gL.add(bulb, M.clone().multiply(new THREE.Matrix4().makeTranslation(0, -0.12, 0.88)), null); bulb.dispose();
-      var wp = new THREE.Vector3(0, -0.15, 0.88).applyMatrix4(M);
-      if (hanging.length === 2) flickIdx = glowPts.length;
-      glowPts.push({ x: wp.x, y: wp.y, z: wp.z, s: 1.3 });
-      hanging.push(wp);
-    }
-    wallLamp(-8, -17.0, 0, 1); wallLamp(8, -17.0, 0, 1); wallLamp(-8, 17.0, 0, -1); wallLamp(8, 17.0, 0, -1);
-    wallLamp(15.9, -6.5, -1, 0); wallLamp(15.9, 6.5, -1, 0); wallLamp(-15.9, -6.5, 1, 0); wallLamp(-15.9, 6.5, 1, 0);
-
-    // ---- STS cranes (far background silhouettes) --------------------
-    function stsCrane(x, z, rot, col) {
-      var M = mat(x, 0, z, rot), W = 18, D = 16, Hh = 36, s = 1.1, c2 = linCol([200, 196, 188]);
-      [-1, 1].forEach(function (a) {
-        [-1, 1].forEach(function (b) { gM.box(M, a * W / 2, Hh / 2, b * D / 2, s, Hh, s, NOBOT, col); });
-        gM.box(M, a * W / 2, 1.2, 0, s * 0.9, 2.4, D + 4, NOBOT, c2); // sill beam / bogies
-        gM.box(M, a * W / 2, 14, 0, s * 0.8, s * 0.8, D, ALL, col);
-        gM.box(M, a * W / 2, Hh, 0, s, s * 1.3, D + 2, ALL, col);
-        // apex A-frame
-        var Ma = M.clone().multiply(new THREE.Matrix4().makeTranslation(a * W / 2, Hh + 7, -2).multiply(new THREE.Matrix4().makeRotationX(0.35)));
-        gM.box(Ma, 0, 0, 0, s * 0.8, 15, s * 0.8, ALL, col);
-      });
-      [-1, 1].forEach(function (b) { gM.box(M, 0, Hh, b * D / 2, W, s * 1.2, s, ALL, col); gM.box(M, 0, 14, b * D / 2, W, s * 0.8, s * 0.8, ALL, col); });
-      // boom (long girder over the "quay")
-      gM.box(M, 0, Hh + 2.2, -18, W - 4, 2.0, 70, ALL, col);
-      gM.box(M, 0, Hh + 1.2, -18, 2.2, 0.3, 70, ALL, c2);
-      // machinery house + stays
-      gM.box(M, 0, Hh + 4, 14, 6, 3.5, 5, ALL, c2);
-      [-1, 1].forEach(function (a) {
-        [[-48, 0.18], [-28, 0.3], [6, -0.45]].forEach(function (st) {
-          var dz = st[0] - (-2), dy = (Hh + 2.2) - (Hh + 14), L = Math.hypot(dz, dy);
-          var Ms = M.clone().multiply(new THREE.Matrix4().makeTranslation(a * (W / 2 - 1.5), Hh + 14 + dy / 2, -2 + dz / 2).multiply(new THREE.Matrix4().makeRotationX(-Math.atan2(dy, dz))));
-          gM.box(Ms, 0, 0, 0, 0.3, 0.3, L, ALL, col);
-        });
-      });
-      glowPts.push({ x: x, y: Hh + 1, z: z, s: 2.0 });
-    }
-    stsCrane(-22, -64, 0, linCol([150, 52, 40]));
-    stsCrane(14, -66, 0.05, linCol([150, 52, 40]));
-    stsCrane(60, 10, -PI / 2, linCol([92, 120, 150]));
-    // RTG gantry straddling a west yard block
-    (function () {
-      var M = mat(-31, 0, -12, 0), col = linCol([186, 150, 46]);
-      [-1, 1].forEach(function (a) { [-1, 1].forEach(function (b) { gM.box(M, a * 5.2, 9, b * 3.5, 0.6, 18, 0.6, NOBOT, col); }); gM.box(M, a * 5.2, 17.7, 0, 0.8, 0.8, 7.6, ALL, col); gM.box(M, a * 5.2, 0.5, 0, 0.8, 1.0, 8.4, ALL, linCol([40, 40, 40])); });
-      [-1, 1].forEach(function (b) { gM.box(M, 0, 17.7, b * 3.5, 11.2, 1.0, 0.8, ALL, col); });
-      gM.box(M, 1.5, 18.6, 0, 3.2, 1.6, 3.2, ALL, linCol([200, 196, 188]));
-    })();
+    var poleGeo = null;
+    // ---- lamps in the corners (what you bump into is the pole) ----------
+    [[-15.68, -16.78], [15.68, -16.78], [-15.68, 16.78], [15.68, 16.78]].forEach(function (c) {
+      if (SC) SC.cornerLamp(scen, MAP.setting, c[0], c[1], 7);
+      gid++; cyls.push({ x: c[0], z: c[1], r: 0.14, y0: 0, y1: 7, mat: 'metal', _g: gid });
+    });
 
     PROF('layout');
     // ---- drums (instanced) -----------------------------------------
@@ -964,7 +967,7 @@
       else { var ox = b.hw - Math.abs(lx), oz = b.hd - Math.abs(lz); if (ox < oz) { px = (lx < 0 ? -1 : 1) * (ox + r); pz = 0; } else { px = 0; pz = (lz < 0 ? -1 : 1) * (oz + r); } }
       return [px * c + pz * s, -px * s + pz * c];
     }
-    var drumPos = DRUMS.map(function (d) { return [d[0], d[1]]; });
+    drumPos = DRUMS.map(function (d) { return [d[0], d[1]]; });
     function nudgeDrums() {
       drumPos.forEach(function (d) {
         for (var it = 0; it < 8; it++) {
@@ -997,8 +1000,8 @@
     })();
     var drumBlue = [], drumRed = [];
     drumPos.forEach(function (p, idx) { (((idx * 7) % 5) < 2 ? drumRed : drumBlue).push(p); });
-    var dmBlue = new THREE.MeshStandardMaterial({ map: tex(buildDrumTex(rnd, [34, 64, 120], 'HYDRO-46'), true), roughness: 0.55, metalness: 0.35, envMap: envCube, envMapIntensity: 0.4 });
-    var dmRed = new THREE.MeshStandardMaterial({ map: tex(buildDrumTex(rnd, [130, 34, 28], 'FLAMMABLE'), true), roughness: 0.55, metalness: 0.35, envMap: envCube, envMapIntensity: 0.4 });
+    var dmBlue = new THREE.MeshStandardMaterial({ map: tex(buildDrumTex(rnd, THEME.drums[0][0], THEME.drums[0][1]), true), roughness: 0.55, metalness: 0.25, envMap: envCube, envMapIntensity: 0.4 });
+    var dmRed = new THREE.MeshStandardMaterial({ map: tex(buildDrumTex(rnd, THEME.drums[1][0], THEME.drums[1][1]), true), roughness: 0.55, metalness: 0.25, envMap: envCube, envMapIntensity: 0.4 });
     disposables.push(dmBlue, dmRed);
     [[drumBlue, dmBlue], [drumRed, dmRed]].forEach(function (pair) {
       var im = new THREE.InstancedMesh(drumGeo, pair[1], pair[0].length), m4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), e = new THREE.Euler();
@@ -1014,149 +1017,64 @@
     });
 
     PROF('drums');
+    function sp(x, z) { return { x: x, z: z, yaw: Math.atan2(x, z) }; }
+    spawns = {
+      a: [sp(-9.4, 15.9), sp(4.4, 15.9), sp(13.7, 13.9), sp(-0.3, 10.1)],
+      b: [sp(-9.4, -15.9), sp(5.8, -15.3), sp(13.7, -15.0), sp(-0.3, -10.1)]
+    };
+    } else {
+      // ---- the place's own map: pieces from pb-layouts.js, drawn by pb-scenery.js
+      var L = LY.build(MAP.layout);
+      L.boxes.forEach(function (b) { gid++; boxes.push(Object.assign({ _g: gid }, b)); });
+      L.cyls.forEach(function (c) { gid++; cyls.push(Object.assign({ _g: gid }, c)); });
+      L.pieces.forEach(function (q) {
+        if (q.y) return;
+        if (q.t === 'box') footprints.push({ x: q.x, z: q.z, hw: q.w / 2, hd: q.d / 2, rot: q.rot || 0, s: 0.6 });
+        else footprints.push({ x: q.x, z: q.z, r: q.r, s: 0.6 });
+      });
+      if (SC) {
+        SC.pieces(scen, L.pieces, MAP.setting);
+        SC.perimeter(scen, MAP.setting, function (x, z, hw, hd, y0, y1, m) { gid++; coll(x, z, hw, hd, 0, y0, y1, m); }, BOUNDS);
+      }
+      spawns = { a: L.spawns.a.map(function (q) { return Object.assign({}, q); }), b: L.spawns.b.map(function (q) { return Object.assign({}, q); }) };
+      ceiling = L.ceiling;
+      rect = { x: 17.2, z: 18.2 };
+    }
+    PROF('pieces');
     // ---- ground ----------------------------------------------------
     var G = 1024, GS = 40, gk = G / GS;
     function gp(x, z) { return [(x + GS / 2) * gk, (z + GS / 2) * gk]; }
     var gc = mkCanvas(G, G), gx = gc.getContext('2d', CTX_OPTS), rc = mkCanvas(512, 512), rx = rc.getContext('2d', CTX_OPTS);
-    gx.fillStyle = '#4f4c46'; gx.fillRect(0, 0, G, G);
-    blotch(gx, 0, 0, G, G, 5, 5, rnd, 0.45, 'overlay', 100);
-    blotch(gx, 0, 0, G, G, 18, 18, rnd, 0.35, 'overlay', 110);
-    blotch(gx, 0, 0, G, G, 70, 70, rnd, 0.25, 'overlay', 110);
-    // concrete slab joints (5 m) with cracks
-    gx.strokeStyle = 'rgba(28,26,24,0.35)'; gx.lineWidth = 1.6;
-    for (var sj = -20; sj <= 20; sj += 5) { var a1 = gp(sj, -20), a2 = gp(sj, 20); gx.beginPath(); gx.moveTo(a1[0], a1[1]); gx.lineTo(a2[0], a2[1]); gx.stroke(); a1 = gp(-20, sj); a2 = gp(20, sj); gx.beginPath(); gx.moveTo(a1[0], a1[1]); gx.lineTo(a2[0], a2[1]); gx.stroke(); }
-    for (var cr = 0; cr < 40; cr++) {
-      var cx0 = rnd() * G, cy0 = rnd() * G, ang = rnd() * PI * 2; gx.strokeStyle = 'rgba(25,22,20,' + (0.25 + rnd() * 0.3) + ')'; gx.lineWidth = 0.8 + rnd();
-      gx.beginPath(); gx.moveTo(cx0, cy0); for (var cs = 0; cs < 8; cs++) { ang += (rnd() - 0.5) * 1.2; cx0 += Math.cos(ang) * 8; cy0 += Math.sin(ang) * 8; gx.lineTo(cx0, cy0); } gx.stroke();
-    }
-    // dirt / dust drifts (brown), stronger near walls
-    for (var dr = 0; dr < 70; dr++) {
-      var ex = (rnd() - 0.5) * 36, ez = (rnd() - 0.5) * 38;
-      if (rnd() < 0.5) { if (rnd() < 0.5) ex = (rnd() < 0.5 ? -1 : 1) * (13 + rnd() * 3); else ez = (rnd() < 0.5 ? -1 : 1) * (14 + rnd() * 3); }
-      var pp = gp(ex, ez), rr = (1 + rnd() * 3) * gk, gg = gx.createRadialGradient(pp[0], pp[1], 0, pp[0], pp[1], rr);
-      var dc = rnd() < 0.6 ? '112,96,72' : '70,62,52';
-      gg.addColorStop(0, 'rgba(' + dc + ',0.35)'); gg.addColorStop(1, 'rgba(' + dc + ',0)');
-      gx.fillStyle = gg; gx.fillRect(pp[0] - rr, pp[1] - rr, rr * 2, rr * 2);
-    }
-    // tire tracks (pairs, catmull-rom paths)
-    function crPath(pts, n) {
-      var out = [];
-      for (var s2 = 0; s2 < pts.length - 1; s2++) {
-        var p0 = pts[Math.max(0, s2 - 1)], p1 = pts[s2], p2 = pts[s2 + 1], p3 = pts[Math.min(pts.length - 1, s2 + 2)];
-        for (var t = 0; t < n; t++) {
-          var u = t / n, u2 = u * u, u3 = u2 * u;
-          out.push([0, 1].map(function (k3) { return 0.5 * (2 * p1[k3] + (-p0[k3] + p2[k3]) * u + (2 * p0[k3] - 5 * p1[k3] + 4 * p2[k3] - p3[k3]) * u2 + (-p0[k3] + 3 * p1[k3] - 3 * p2[k3] + p3[k3]) * u3); }));
-        }
-      }
-      out.push(pts[pts.length - 1]); return out;
-    }
-    function strokePoly(ctx, poly, offs, k4) {
-      ctx.beginPath();
-      for (var j = 0; j < poly.length; j++) {
-        var a = poly[Math.max(0, j - 1)], b = poly[Math.min(poly.length - 1, j + 1)], tx = b[0] - a[0], tz = b[1] - a[1], tl = Math.hypot(tx, tz) || 1;
-        var x = poly[j][0] + (-tz / tl) * offs, z = poly[j][1] + (tx / tl) * offs, pp2 = [(x + GS / 2) * k4, (z + GS / 2) * k4];
-        if (j) ctx.lineTo(pp2[0], pp2[1]); else ctx.moveTo(pp2[0], pp2[1]);
-      }
-      ctx.stroke();
-    }
-    var TRACKS = [
-      [[-18, -11], [-9, -4.5], [0, 0.5], [7, 8.5], [12, 18]],
-      [[18, -8], [9, -2], [0, 3.5], [-7, 9], [-13, 19]],
-      [[-1.5, -19], [-0.4, -9], [0.6, 0], [0.2, 9], [1.4, 19]],
-      [[-18, 3], [-11, 8.5], [-6, 13], [-3, 19]],
-      [[18, 11], [12, 5.5], [8, -3], [6, -10], [4, -19]],
-      [[-11, -19], [-8, -10], [-12, -3], [-17, 1]]
-    ];
-    TRACKS.forEach(function (tr, ti) {
-      var poly = crPath(tr, 16), gauge = 1.85 + (ti % 3) * 0.12;
-      [-1, 1].forEach(function (sd) {
-        for (var pass = 0; pass < 3; pass++) {
-          var o = sd * gauge / 2 + (rnd() - 0.5) * 0.25;
-          gx.lineCap = 'round'; gx.lineJoin = 'round';
-          gx.strokeStyle = 'rgba(30,27,24,' + (0.14 + rnd() * 0.1) + ')'; gx.lineWidth = (0.28 + rnd() * 0.12) * gk; gx.setLineDash([]);
-          strokePoly(gx, poly, o, gk);
-          gx.strokeStyle = 'rgba(18,16,14,0.18)'; gx.lineWidth = 0.22 * gk; gx.setLineDash([2, 3]);
-          strokePoly(gx, poly, o, gk);
-        }
-        rx.lineCap = 'round'; rx.strokeStyle = 'rgba(190,190,190,0.5)'; rx.lineWidth = 0.35 * 512 / GS; rx.setLineDash([]);
-        strokePoly(rx, poly, sd * gauge / 2, 512 / GS);
-      });
-    });
-    gx.setLineDash([]);
-    // oil stains
-    function stain(x, z, r, a) {
-      var p = gp(x, z);
-      for (var j = 0; j < 6; j++) {
-        var ox = p[0] + (rnd() - 0.5) * r * gk, oz = p[1] + (rnd() - 0.5) * r * gk, rr2 = (0.3 + rnd() * 0.7) * r * gk;
-        var g3 = gx.createRadialGradient(ox, oz, 0, ox, oz, rr2);
-        g3.addColorStop(0, 'rgba(16,14,12,' + a + ')'); g3.addColorStop(0.7, 'rgba(22,19,16,' + a * 0.6 + ')'); g3.addColorStop(1, 'rgba(22,19,16,0)');
-        gx.fillStyle = g3; gx.fillRect(ox - rr2, oz - rr2, rr2 * 2, rr2 * 2);
-        var rp = [ox / G * 512, oz / G * 512]; rx.fillStyle = 'rgba(150,150,150,' + a * 0.6 + ')'; rx.beginPath(); rx.arc(rp[0], rp[1], rr2 / 2, 0, 7); rx.fill();
-      }
-    }
-    for (var os = 0; os < 34; os++) stain((rnd() - 0.5) * 30, (rnd() - 0.5) * 32, 0.6 + rnd() * 1.2, 0.35 + rnd() * 0.3);
-    drumPos.forEach(function (p) { if (rnd() < 0.5) stain(p[0] + (rnd() - 0.5), p[1] + (rnd() - 0.5), 0.6, 0.4); });
-    // puddles
-    var PUDDLES = [[-7.6, -10.2, 1.6], [9.2, -5.6, 1.3], [0.2, 0.3, 1.1], [-8.4, 6.0, 1.5], [6.2, 10.3, 1.4], [-13.2, -5.2, 1.0], [13.4, -4.9, 0.9], [-5.4, 15.4, 1.0], [0.4, -9.6, 0.8], [12.6, 4.4, 0.9]];
-    var rim = mkCanvas(G, G), rimx = rim.getContext('2d', CTX_OPTS), pblobs = [];
-    PUDDLES.forEach(function (pd) {
-      var blobs = [];
-      for (var j = 0; j < 7; j++) blobs.push([pd[0] + (rnd() - 0.5) * pd[2] * 1.4, pd[1] + (rnd() - 0.5) * pd[2] * 0.9, pd[2] * (0.35 + rnd() * 0.45), pd[2] * (0.2 + rnd() * 0.3), rnd() * PI]);
-      // wet darkened rim
-      rimx.fillStyle = 'rgba(30,30,30,0.35)';
-      blobs.forEach(function (b) { var p = gp(b[0], b[1]); rimx.beginPath(); rimx.ellipse(p[0], p[1], (b[2] + 0.3) * gk, (b[3] + 0.3) * gk, b[4], 0, 7); rimx.fill(); });
-      pblobs.push(blobs);
-    });
-    gx.save(); gx.filter = 'blur(' + (0.25 * gk) + 'px)'; gx.drawImage(rim, 0, 0); gx.restore();
-    PUDDLES.forEach(function (pd, pi) {
-      var blobs = pblobs[pi];
-      gx.fillStyle = 'rgba(46,54,62,0.92)';
-      blobs.forEach(function (b) { var p = gp(b[0], b[1]); gx.beginPath(); gx.ellipse(p[0], p[1], b[2] * gk, b[3] * gk, b[4], 0, 7); gx.fill(); });
-      // sky sheen
-      var p0 = gp(pd[0], pd[1]), sg = gx.createRadialGradient(p0[0], p0[1], 0, p0[0], p0[1], pd[2] * gk);
-      sg.addColorStop(0, 'rgba(110,120,128,0.35)'); sg.addColorStop(1, 'rgba(110,120,128,0)');
-      gx.save(); gx.globalCompositeOperation = 'source-atop'; gx.fillStyle = sg; gx.fillRect(p0[0] - pd[2] * gk, p0[1] - pd[2] * gk, pd[2] * 2 * gk, pd[2] * 2 * gk); gx.restore();
-      rx.fillStyle = 'rgb(18,18,18)';
-      blobs.forEach(function (b) { var p = [(b[0] + GS / 2) * 512 / GS, (b[1] + GS / 2) * 512 / GS]; rx.beginPath(); rx.ellipse(p[0], p[1], b[2] * 512 / GS, b[3] * 512 / GS, b[4], 0, 7); rx.fill(); });
-    });
-    // gravel + debris
-    for (var gv = 0; gv < 9000; gv++) { var l = rnd() < 0.5; gx.fillStyle = l ? 'rgba(170,160,145,' + (0.2 + rnd() * 0.3) + ')' : 'rgba(25,22,20,' + (0.2 + rnd() * 0.3) + ')'; gx.fillRect(rnd() * G, rnd() * G, 1 + rnd() * 1.5, 1 + rnd() * 1.5); }
-    for (var db = 0; db < 60; db++) { gx.save(); gx.translate(rnd() * G, rnd() * G); gx.rotate(rnd() * 3); gx.fillStyle = rnd() < 0.5 ? 'rgba(180,172,150,0.5)' : 'rgba(110,80,50,0.5)'; gx.fillRect(0, 0, 3 + rnd() * 6, 2 + rnd() * 4); gx.restore(); }
+    paintGround(gx, G, GS, gp, gk, rnd);
     // contact AO under everything that sits on the ground (drawn sharp into a layer, blurred once)
     var ao = mkCanvas(G, G), aox = ao.getContext('2d', CTX_OPTS);
     footprints.forEach(function (f) {
       if (Math.abs(f.x) > GS / 2 + 4 || Math.abs(f.z) > GS / 2 + 4) return;
-      var p = gp(f.x, f.z); aox.fillStyle = 'rgba(12,10,8,' + (0.55 * f.s) + ')';
+      var p = gp(f.x, f.z); aox.fillStyle = 'rgba(12,10,8,' + (0.4 * f.s) + ')';
       aox.save(); aox.translate(p[0], p[1]);
       if (f.r) { aox.beginPath(); aox.arc(0, 0, (f.r + 0.12) * gk, 0, 7); aox.fill(); }
       else { aox.rotate(-f.rot); aox.fillRect(-(f.hw + 0.12) * gk, -(f.hd + 0.12) * gk, (f.hw + 0.12) * 2 * gk, (f.hd + 0.12) * 2 * gk); }
       aox.restore();
     });
     gx.save(); gx.filter = 'blur(' + (0.35 * gk) + 'px)'; gx.drawImage(ao, 0, 0); gx.restore();
-    // warm light pools from the floodlights & wall lamps
-    gx.save(); gx.globalCompositeOperation = 'lighter';
-    [[-12.5, -13.5, 7], [12.5, -13.5, 7], [-12.5, 13.5, 7], [12.5, 13.5, 7]].concat(hanging.map(function (h) { return [h.x, h.z, 3.5]; })).forEach(function (lp) {
-      var p = gp(lp[0], lp[1]), r = lp[2] * gk, g4 = gx.createRadialGradient(p[0], p[1], 0, p[0], p[1], r);
-      g4.addColorStop(0, 'rgba(70,52,30,0.22)'); g4.addColorStop(1, 'rgba(70,52,30,0)'); gx.fillStyle = g4; gx.fillRect(p[0] - r, p[1] - r, r * 2, r * 2);
-    });
-    gx.restore();
-    grain(gx, 0, 0, G, G, 18, rnd, 5);
+    grain(gx, 0, 0, G, G, 8, rnd, 3);
     // roughness: base mostly rough
     rx.save(); rx.globalCompositeOperation = 'destination-over'; rx.fillStyle = 'rgb(240,240,240)'; rx.fillRect(0, 0, 512, 512); rx.restore();
     PROF('ground'); var tGround = tex(gc, true), tRough = tex(rc, false);
-    var groundMat = new THREE.MeshStandardMaterial({ map: tGround, roughnessMap: tRough, roughness: 1, metalness: 0, envMap: envCube, envMapIntensity: 0.9 });
+    var groundMat = new THREE.MeshStandardMaterial({ color: 0xe2e2e2, map: tGround, roughnessMap: tRough, roughness: 1, metalness: 0, envMap: envCube, envMapIntensity: 0.6 });
     var groundGeo = new THREE.PlaneGeometry(GS, GS); groundGeo.rotateX(-PI / 2);
     var ground = new THREE.Mesh(groundGeo, groundMat); ground.receiveShadow = true; ground.name = 'ground';
     group.add(ground); disposables.push(groundMat, groundGeo);
-    // outer ground (tiled)
-    var oc = mkCanvas(256, 256), ocx = oc.getContext('2d', CTX_OPTS);
-    ocx.fillStyle = '#55524c'; ocx.fillRect(0, 0, 256, 256); blotch(ocx, 0, 0, 256, 256, 4, 4, rnd, 0.4, 'overlay', 100); grain(ocx, 0, 0, 256, 256, 20, rnd, 4);
-    ocx.strokeStyle = 'rgba(30,28,26,0.3)'; ocx.strokeRect(0, 0, 256, 256);
-    var tOut = tex(oc, true, true); tOut.repeat.set(40, 40);
-    var outMat = new THREE.MeshLambertMaterial({ map: tOut }), outGeo = new THREE.PlaneGeometry(200, 200); outGeo.rotateX(-PI / 2);
-    var outer = new THREE.Mesh(outGeo, outMat); outer.position.y = -0.02; outer.receiveShadow = true; group.add(outer); disposables.push(outMat, outGeo);
+    if (THEME === THEMES.office) { // the office floor outside the arena (the city is far below)
+      var oc = mkCanvas(256, 256), ocx = oc.getContext('2d', CTX_OPTS);
+      paintGround(ocx, 256, 8, function (x, z) { return [(x + 4) * 32, (z + 4) * 32]; }, 32, rnd);
+      var tOut = tex(oc, true, true); tOut.repeat.set(rect.x / 4 + 1, rect.z / 4 + 1);
+      var outMat = new THREE.MeshLambertMaterial({ map: tOut }), outGeo = new THREE.PlaneGeometry(rect.x * 2 + 2, rect.z * 2 + 2); outGeo.rotateX(-PI / 2);
+      var outer = new THREE.Mesh(outGeo, outMat); outer.position.y = -0.02; outer.receiveShadow = true; group.add(outer); disposables.push(outMat, outGeo);
+    }
 
     // ---- static meshes ------------------------------------------------
+    if (ship) {
     function addMesh(geo, material, cast, name) {
       var g = geo.build(), m = new THREE.Mesh(g, material); m.castShadow = cast; m.receiveShadow = true; m.name = name;
       group.add(m); disposables.push(g, material); return m;
@@ -1171,13 +1089,18 @@
     addMesh(gW, matW, true, 'wood');
     addMesh(gM, matM, true, 'steel');
     addMesh(gL, matL, false, 'lamps');
-    rodGeo.dispose(); poleGeo.dispose();
+    rodGeo.dispose();
+    }
 
     PROF('meshes');
-    // ---- sky dome ----------------------------------------------------
-    var skyTex = tex(buildSky(rnd, FOG_HEX), true);
-    var skyGeo = new THREE.SphereGeometry(95, 32, 16), skyMat = new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false, depthWrite: false });
-    var sky = new THREE.Mesh(skyGeo, skyMat); sky.renderOrder = -10; sky.name = 'sky'; group.add(sky); disposables.push(skyGeo, skyMat);
+    // ---- the place all around (and its sky) ---------------------------
+    var back = SC ? SC.backdrop(scen, MAP.setting, rect) : null;
+    if (SC && window.World3D.kit.mergeStatic) { // one draw per material
+      var before = new Set(scen.children);
+      window.World3D.kit.mergeStatic(scen);
+      scen.children.forEach(function (o) { if (!before.has(o) && o.geometry) disposables.push(o.geometry); });
+    }
+    PROF('scenery');
 
     // ---- glows (one Points draw) ---------------------------------------
     var glc = mkCanvas(64, 64), glx = glc.getContext('2d', CTX_OPTS), gr = glx.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -1193,37 +1116,33 @@
     var glows = new THREE.Points(glowGeo, glowMat); glows.renderOrder = 5; glows.name = 'glows'; group.add(glows); disposables.push(glowGeo, glowMat);
 
     // ---- dust motes ----------------------------------------------------
-    var NDUST = 450, dpos = new Float32Array(NDUST * 3), dseed = [];
+    var NDUST = THEME.dust ? 220 : 0, dpos = new Float32Array(NDUST * 3), dseed = [];
     for (i = 0; i < NDUST; i++) { dpos[i * 3] = (rnd() - 0.5) * 31; dpos[i * 3 + 1] = rnd() * 6; dpos[i * 3 + 2] = (rnd() - 0.5) * 33; dseed.push(rnd() * 100); }
     var dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute('position', new THREE.BufferAttribute(dpos, 3));
     var dc2 = mkCanvas(16, 16), dcx = dc2.getContext('2d', CTX_OPTS), dg = dcx.createRadialGradient(8, 8, 0, 8, 8, 8); dg.addColorStop(0, 'rgba(255,255,255,1)'); dg.addColorStop(1, 'rgba(255,255,255,0)'); dcx.fillStyle = dg; dcx.fillRect(0, 0, 16, 16);
-    var dustMat = new THREE.PointsMaterial({ size: 0.035, map: tex(dc2, true), color: hexLin('#d9cdb8'), transparent: true, opacity: 0.45, depthWrite: false, sizeAttenuation: true });
+    var dustMat = new THREE.PointsMaterial({ size: 0.035, map: tex(dc2, true), color: hexLin(THEME.dust || '#ffffff'), transparent: true, opacity: 0.5, depthWrite: false, sizeAttenuation: true });
     var dust = new THREE.Points(dustGeo, dustMat); dust.name = 'dust'; dust.frustumCulled = false; group.add(dust); disposables.push(dustGeo, dustMat);
 
     // ---- lights ----------------------------------------------------------
-    var hemi = new THREE.HemisphereLight(hexLin('#c3cedb'), hexLin('#6a6052'), 1.15); group.add(hemi);
-    var amb = new THREE.AmbientLight(hexLin('#7a8190'), 0.55); group.add(amb);
-    var key = new THREE.DirectionalLight(hexLin('#ffe2bb'), 1.7);
+    var LT = THEME.light;
+    var hemi = new THREE.HemisphereLight(hexLin(LT.sky), hexLin(LT.gnd), LT.hemi * 0.52); group.add(hemi);
+    var amb = new THREE.AmbientLight(hexLin('#ffffff'), LT.amb * 0.45); group.add(amb);
+    var key = new THREE.DirectionalLight(hexLin(LT.key), LT.keyI * 0.66);
     key.position.set(17, 26, -11); key.target.position.set(0, 0, 0);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
     var sc = key.shadow.camera; sc.left = -27; sc.right = 27; sc.top = 27; sc.bottom = -27; sc.near = 2; sc.far = 80;
     key.shadow.bias = -0.0006; key.shadow.normalBias = 0.03;
     group.add(key); group.add(key.target);
-    var fill = new THREE.DirectionalLight(hexLin('#b3c4da'), 0.7); fill.position.set(-14, 18, 16); fill.target.position.set(0, 0, 0);
+    var fill = new THREE.DirectionalLight(hexLin('#ffffff'), LT.fill * 0.65); fill.position.set(-14, 18, 16); fill.target.position.set(0, 0, 0);
     group.add(fill); group.add(fill.target);
 
     PROF('sky+glow+lights');
     // ---- spawns ----------------------------------------------------------
-    function sp(x, z) { return { x: x, z: z, yaw: Math.atan2(x, z) }; }
-    var spawns = {
-      a: [sp(-9.4, 15.9), sp(4.4, 15.9), sp(13.7, 13.9), sp(-0.3, 10.1)],
-      b: [sp(-9.4, -15.9), sp(5.8, -15.3), sp(13.7, -15.0), sp(-0.3, -10.1)]
-    };
 
     // ---- fog / background ------------------------------------------------
-    var fog = new THREE.FogExp2(hexLin(FOG_HEX), 0.0095);
-    var background = new THREE.Color(FOG_HEX);
+    var fog = new THREE.FogExp2(hexLin(THEME.fog[0]), THEME.fog[1]);
+    var background = new THREE.Color(THEME.fog[0]);
 
     // strip private keys
     boxes.forEach(function (b) { Object.defineProperty(b, '_g', { value: b._g, enumerable: false }); });
@@ -1241,7 +1160,8 @@
         if (p[j * 3] > 15.5) p[j * 3] = -15.5;
         if (p[j * 3 + 1] < 0.05) p[j * 3 + 1] = 5.5; if (p[j * 3 + 1] > 6) p[j * 3 + 1] = 0.2;
       }
-      dustGeo.attributes.position.needsUpdate = true;
+      if (NDUST) dustGeo.attributes.position.needsUpdate = true;
+      if (back) back.update(t);
       if (flickIdx >= 0) {
         var f = (Math.sin(t * 23) > 0.6 && Math.sin(t * 3.1) > 0.2) ? 0.25 : 1;
         flick.setXYZ(flickIdx, f, 0.92 * f, 0.8 * f); flick.needsUpdate = true;
@@ -1249,6 +1169,7 @@
     }
     function dispose() {
       disposables.forEach(function (d) { if (d && d.dispose) d.dispose(); });
+      if (SC) SC.disposeOwned();
       if (key.shadow && key.shadow.map) key.shadow.map.dispose();
       disposables.length = 0;
     }
@@ -1258,7 +1179,7 @@
       bounds: { minX: BOUNDS.minX, maxX: BOUNDS.maxX, minZ: BOUNDS.minZ, maxZ: BOUNDS.maxZ },
       spawns: spawns, background: background, fog: fog,
       update: update, dispose: dispose,
-      walkthroughs: WALKTHROUGH
+      walkthroughs: WALKTHROUGH, mapId: MAP.id, name: MAP.name, setting: MAP.setting, ceiling: ceiling
     };
   }
 
