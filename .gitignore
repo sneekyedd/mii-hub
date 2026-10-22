@@ -4,3 +4,6 @@ dist/
 
 # made by the build from a secret (the online Paintball server address)
 js/paintball/pb-config.js
+
+# accounts and cloud saves on the server (never committed)
+server/data/

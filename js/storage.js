@@ -45,11 +45,15 @@
     });
   }
 
+  // tells account.js something changed, so the world gets saved online
+  const changed = () => { if (Storage.onChange) try { Storage.onChange(); } catch (e) { /* ignore */ } };
+
   const Storage = {
+    onChange: null,
     getAllMiis: async () => (await run("readonly", (s) => s.getAll())) || [],
-    putMii: (record) => run("readwrite", (s) => s.put(record)),
-    deleteMii: (id) => run("readwrite", (s) => s.delete(id)),
-    clearMiis: () => run("readwrite", (s) => s.clear()),
+    putMii: (record) => (changed(), run("readwrite", (s) => s.put(record))),
+    deleteMii: (id) => (changed(), run("readwrite", (s) => s.delete(id))),
+    clearMiis: () => (changed(), run("readwrite", (s) => s.clear())),
 
     loadSettings() {
       try {
@@ -60,6 +64,7 @@
     },
     saveSettings(settings) {
       try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
+      changed();
     },
   };
 

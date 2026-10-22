@@ -113,6 +113,19 @@ Set these before starting (e.g. on Windows: `set PORT=9000` then `node paintball
 | --- | --- | --- |
 | `PORT` | `8787` | which port the server listens on |
 | `MAX_PLAYERS` | `8` | most players in one room (2–16) |
+| `DATA_DIR` | `server/data` | where accounts and cloud saves are kept |
+| `MAX_ACCOUNTS` | `5000` | most accounts the server will create |
+
+## Accounts and cloud saves
+
+The server also keeps Mii Hub accounts: players sign in with a username and password and their
+worlds (Miis, homes, progress) follow them to any device. Everything is saved as plain files in
+the `data` folder next to `paintball-server.js` (or `DATA_DIR`). Passwords are only kept as
+salted scrypt hashes. **Back that folder up now and then**: it *is* everyone's saves. It's
+never put in Git.
+
+On Render's free plan the disk is wiped whenever the server restarts, so accounts would
+disappear. Run it at home (Option A), or give Render a persistent disk and point `DATA_DIR` at it.
 
 ## Keeping it running
 

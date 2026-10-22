@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mii Hub</title>
   <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/account.css" />
 </head>
 <body>
   <!-- the splash screen while Mii Hub starts up -->
@@ -24,12 +25,14 @@
       // creep forward while the big files load, so it never looks stuck
       var creep = setInterval(function () { if (shown < 40) set(shown + 0.6); }, 120);
       set(4, "Loading the island…");
-      var finished = false;
-      // (never get stuck on the splash: if something goes wrong, show the page anyway)
-      setTimeout(function () { if (!finished) window.MiiSplash.done(); }, 90000);
-      window.addEventListener("error", function () { setTimeout(function () { if (!finished) window.MiiSplash.done(); }, 1500); });
+      var finished = false, held = false;
+      // (never get stuck on the splash: if something goes wrong, show the page anyway.
+      // Not while the sign-in page is up, though: account.js holds it until you're in.)
+      setTimeout(function failsafe() { if (finished) return; if (held) return setTimeout(failsafe, 90000); window.MiiSplash.done(); }, 90000);
+      window.addEventListener("error", function () { setTimeout(function () { if (!finished && !held) window.MiiSplash.done(); }, 1500); });
       return {
         set: set,
+        hold: function (on) { held = !!on; },
         done: function () {
           if (finished) return;
           finished = true;
@@ -40,6 +43,24 @@
       };
     })();
   </script>
+  <!-- sign in / create an account (account.js shows it over the splash the first time) -->
+  <div id="login" hidden>
+    <form class="lg-card" id="loginForm" autocomplete="on">
+      <div class="sp-logo"><span class="sp-bubble">🙂</span><span class="sp-bubble b2">😄</span><span class="sp-bubble b3">😊</span></div>
+      <h1 class="lg-title">Mii Hub</h1>
+      <div class="lg-tabs" role="tablist">
+        <button type="button" role="tab" id="lgTabIn" class="on" aria-selected="true">Sign in</button>
+        <button type="button" role="tab" id="lgTabUp" aria-selected="false">Create account</button>
+      </div>
+      <label class="lg-field"><span>Username</span><input id="lgUser" name="username" autocomplete="username" maxlength="20" spellcheck="false" autocapitalize="off" required /></label>
+      <label class="lg-field"><span>Password</span><input id="lgPass" name="password" type="password" autocomplete="current-password" maxlength="200" required /></label>
+      <label class="lg-field" id="lgPass2Row" hidden><span>Password again</span><input id="lgPass2" type="password" autocomplete="new-password" maxlength="200" /></label>
+      <p class="lg-note" id="lgNote"></p>
+      <p class="lg-msg" id="lgMsg" role="alert"></p>
+      <button class="btn primary lg-go" id="lgGo" type="submit">Sign in</button>
+      <button class="lg-offline" id="lgOffline" type="button">Play offline (no account)</button>
+    </form>
+  </div>
   <header class="topbar">
     <h1>Mii Hub</h1>
     <nav class="scene-tabs" id="sceneTabs" aria-label="Choose a place"></nav>
@@ -86,6 +107,26 @@
         <ul class="feed" id="feed"></ul>
       </div>
 
+      <!-- your account, worlds, saving and backups (account.js) -->
+      <div class="panel" id="accountPanel" hidden>
+        <h2>Account</h2>
+        <p class="hint ac-status" id="acStatus"></p>
+        <div id="acWorldsBox" hidden>
+          <label class="ac-world"><span>World</span><select id="acWorldSel" aria-label="Your worlds"></select></label>
+          <div class="ac-btns">
+            <button class="btn" id="acNew">➕ New</button>
+            <button class="btn" id="acRename">✏️ Rename</button>
+            <button class="btn" id="acDelete">🗑️ Delete</button>
+          </div>
+        </div>
+        <div class="ac-btns">
+          <button class="btn primary" id="acSaveNow">💾 Save now</button>
+          <button class="btn" id="acBackups">🕘 Backups</button>
+        </div>
+        <ul class="ac-backups" id="acBackupList" hidden></ul>
+        <button class="link-btn ac-signout" id="acSignOut">Sign out</button>
+      </div>
+
       <!-- only shown in the installed desktop app -->
       <div class="panel" id="desktopPanel" hidden>
         <h2>Mii Hub <span id="appVersion"></span></h2>
@@ -122,6 +163,7 @@
   <script src="js/chessOnline.js"></script>
   <script src="js/chessAnalysis.js"></script>
   <script src="js/storage.js"></script>
+  <script src="js/account.js"></script>
   <script src="js/weather3d.js"></script>
   <script src="js/hub3d.js"></script>
   <script src="js/town.js"></script>

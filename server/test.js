@@ -4,6 +4,9 @@ process.env.RESPAWN_MS = "300";
 process.env.ROUND_FREEZE_MS = "50";
 process.env.ROUND_END_MS = "60";
 process.env.INTERMISSION_MS = "1500";
+// accounts are saved in a throwaway folder
+const fs = require("fs"), os = require("os"), path = require("path"), crypto = require("crypto");
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "mii-hub-accounts-"));
 const assert = require("assert");
 const WebSocket = require("ws");
 const S = require("./paintball-server.js");
@@ -242,11 +245,108 @@ async function player(port, name, mii) {
   assert.strictEqual(S.chess.rooms.size, 0, "empty chess lobby removed");
   for (const c of [w1, x1]) c.ws.close();
 
+  // ---- accounts and cloud saves ----
+  let q = 0;
+  const ask = (c, m) => new Promise((resolve) => {
+    const id = ++q, n0 = c.msgs.length;
+    c.send(Object.assign({ q: id }, m));
+    const look = setInterval(() => {
+      const r = c.msgs.slice(n0).find((x) => x.t === "acRes" && x.q === id);
+      if (r) { clearInterval(look); resolve(r); }
+    }, 10);
+  });
+  const d1 = await client(port);
+  let r = await ask(d1, { t: "acWorlds" });
+  assert(!r.ok && r.code === "token", "worlds need signing in");
+  r = await ask(d1, { t: "acSignup", user: "a", pass: "secret123" });
+  assert(!r.ok && r.code === "user", "username too short");
+  r = await ask(d1, { t: "acSignup", user: "Ann", pass: "123" });
+  assert(!r.ok && r.code === "pass", "password too short");
+  r = await ask(d1, { t: "acSignup", user: "Ann", pass: "secret123", world: "Ann's island" });
+  assert(r.ok && r.user === "Ann" && /^[0-9a-f]{64}$/.test(r.token) && r.worlds.length === 1 && r.worlds[0].name === "Ann's island" && r.current === r.worlds[0].id, "signed up with a first world");
+  const token = r.token, wA = r.current;
+  r = await ask(await client(port), { t: "acSignup", user: "ANN", pass: "whatever1" });
+  assert(!r.ok && r.code === "taken", "usernames are case-insensitive and unique");
+  // the password and token are never stored as they are
+  const accFile = fs.readFileSync(path.join(process.env.DATA_DIR, "users", "ann", "account.json"), "utf8");
+  assert(!accFile.includes("secret123") && !accFile.includes(token), "only hashes on disk");
+  assert(/^[0-9a-f]{32}$/.test(JSON.parse(accFile).salt), "a salt of its own");
+
+  // wrong password, then the right one on another device
+  const d2 = await client(port);
+  r = await ask(d2, { t: "acLogin", user: "ann", pass: "nope-nope" });
+  assert(!r.ok && r.code === "login" && r.msg === "Wrong username or password.", "wrong password");
+  r = await ask(d2, { t: "acLogin", user: "nobody", pass: "secret123" });
+  assert(!r.ok && r.code === "login", "no such account looks the same");
+  r = await ask(d2, { t: "acLogin", user: "ann", pass: "secret123" });
+  assert(r.ok && r.user === "Ann" && r.token !== token && r.current === wA, "signed in on a 2nd device");
+  // the 1st device stays signed in with its token
+  const d3 = await client(port);
+  r = await ask(d3, { t: "acToken", user: "Ann", token: "f".repeat(64) });
+  assert(!r.ok && r.code === "token", "made-up token refused");
+  r = await ask(d3, { t: "acToken", user: "Ann", token });
+  assert(r.ok && r.token == null && r.current === wA, "token sign-in");
+
+  // worlds: create, rename, switch, delete
+  r = await ask(d3, { t: "acCreate", name: "Beach <b>town</b>" });
+  assert(r.ok && r.worlds.length === 2 && r.worlds[1].name === "Beach btown/b", "world created (name cleaned)");
+  const wB = r.id;
+  r = await ask(d3, { t: "acRename", id: wB, name: "Beach town" });
+  assert(r.ok && r.worlds.find((w) => w.id === wB).name === "Beach town", "renamed");
+  r = await ask(d3, { t: "acCurrent", id: wB });
+  assert(r.ok && r.current === wB, "switched");
+  r = await ask(d3, { t: "acGet", id: wB });
+  assert(r.ok && r.data === null && r.rev === 0, "a new world is empty");
+
+  // a big save: a 2.5 MB Mii model in pieces + a 3 MB world
+  const glb = crypto.randomBytes(2.5 * 1024 * 1024), hash = crypto.createHash("sha256").update(glb).digest("hex");
+  r = await ask(d3, { t: "acSave", id: wA, base: 0, data: { miis: [{ id: "m1", blob: hash }] } });
+  assert(!r.ok && r.code === "blob", "can't save a world before its models");
+  r = await ask(d3, { t: "acBlobHave", hashes: [hash, "nope"] });
+  assert(r.ok && r.need.length === 1 && r.need[0] === hash, "server asks for the model");
+  const CH = S.accounts.BLOB_CHUNK, n = Math.ceil(glb.length / CH);
+  r = await ask(d3, { t: "acBlobPut", hash, i: 1, n, b64: glb.subarray(CH, 2 * CH).toString("base64") });
+  assert(!r.ok && r.code === "order", "pieces must come in order");
+  for (let i = 0; i < n; i++) r = await ask(d3, { t: "acBlobPut", hash, i, n, b64: glb.subarray(i * CH, (i + 1) * CH).toString("base64") });
+  assert(r.ok && r.done, "model stored");
+  const big = { v: 1, miis: [{ id: "m1", kind: "glb", name: "Joe", blob: hash }, { id: "m2", kind: "demo", name: "Pat" }], settings: { scene: "park" }, progress: "x".repeat(3 * 1024 * 1024), locker: null };
+  r = await ask(d3, { t: "acSave", id: wA, base: 0, data: big });
+  assert(r.ok && r.rev === 1, "big world saved");
+  r = await ask(d2, { t: "acSave", id: wA, base: 0, data: { miis: [] } });
+  assert(!r.ok && r.code === "conflict" && r.rev === 1, "an old copy can't overwrite a newer save");
+  r = await ask(d2, { t: "acGet", id: wA });
+  assert(r.ok && r.rev === 1 && r.data.miis[0].blob === hash && r.data.progress.length === 3 * 1024 * 1024, "the other device loads the same world");
+  const parts = [];
+  for (let i = 0; i < n; i++) { const g = await ask(d2, { t: "acBlobGet", hash, i }); assert(g.ok && g.n === n); parts.push(Buffer.from(g.b64, "base64")); }
+  assert(Buffer.concat(parts).equals(glb), "model downloaded in pieces, byte for byte");
+  r = await ask(d2, { t: "acSave", id: wA, base: 0, data: { miis: [] }, force: true });
+  assert(r.ok && r.rev === 2, "keep this device's copy (force)");
+  r = await ask(d3, { t: "acDelete", id: wB });
+  assert(r.ok && r.worlds.length === 1 && r.current === wA, "deleted (current moves to another world)");
+  r = await ask(d3, { t: "acDelete", id: wA });
+  assert(!r.ok && r.code === "last", "can't delete the last world");
+
+  // signing out forgets that device's token; guessing passwords is slowed down
+  r = await ask(d3, { t: "acLogout" });
+  r = await ask(await client(port), { t: "acToken", user: "ann", token });
+  assert(!r.ok && r.code === "token", "token forgotten after signing out");
+  const d4 = await client(port);
+  for (let i = 0; i < 6; i++) await ask(d4, { t: "acLogin", user: "ann", pass: "guess" + i });
+  r = await ask(d4, { t: "acLogin", user: "ann", pass: "secret123" });
+  assert(!r.ok && r.code === "slow", "too many tries");
+  const d5 = await client(port);
+  r = await ask(d5, { t: "acLogin", user: "ann", pass: "guess-again" });
+  r = await ask(d5, { t: "acLogin", user: "ann", pass: "secret123" });
+  assert(!r.ok && r.code === "slow", "the account is protected from guessing on new connections too");
+  assert(!fs.readdirSync(process.env.DATA_DIR, { recursive: true }).some((f) => f.endsWith(".tmp")), "no half-written files");
+  for (const c of [d1, d2, d3, d4, d5]) c.ws.close();
+  fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true });
+
   for (const c of [a, f, g, h]) c.ws.close();
   await wait(80);
   assert.strictEqual(S.rooms.size, 0, "empty lobbies removed");
   await S.stop();
   assert(!S.running(), "stopped");
-  console.log("All Paintball server tests passed.");
+  console.log("All Paintball, chess and account server tests passed.");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

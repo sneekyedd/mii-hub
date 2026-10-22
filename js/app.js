@@ -30,6 +30,8 @@
   splash.set(45, "Building the town…");
   // ---------- the hub ----------
   const hub = new window.MiiHub3D.Hub3D($("hub"), $("overlay"));
+  // sign in (or play offline) first: account.js puts the right world on this device
+  if (window.MiiAccount) await window.MiiAccount.ready;
   const settings = S.loadSettings();
   hub.friendships = settings.friendships || {};
   hub.chattiness = settings.chattiness || 1;

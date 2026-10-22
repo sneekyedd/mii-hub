@@ -16,6 +16,7 @@
  *   - is the referee: it keeps everyone's HP and score, checks that hits are
  *     believable (damage numbers, fire rate), decides kills, respawns and who wins
  *   - also hosts online chess games (see chess-rooms.js)
+ *   - and Mii Hub accounts with cloud saves (see accounts.js; saved in DATA_DIR, default ./data)
  *
  * Every message is a small JSON object with a type "t" (see PROTOCOL below).
  */
@@ -348,9 +349,12 @@ function validHit(p, v, msg, now) {
 
 // online chess lives in its own file (it shares the players and the connection)
 const chess = require("./chess-rooms.js")({ players, send, clean, num, log: (s) => log(s) });
+// so do accounts and cloud saves
+const accounts = require("./accounts.js")({ send, clean, log: (s) => log(s) });
 
 function onMessage(p, msg) {
   if (chess.handle(p, msg)) return;
+  if (accounts.handle(p, msg)) return;
   const now = Date.now();
   const room = p.room ? rooms.get(p.room) : null;
   switch (msg.t) {
@@ -489,7 +493,7 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server, maxPayload: MAX_MII_BYTES * 1.4 + 4096 });
 
 wss.on("connection", (ws, req) => {
-  const p = { id: "p" + (nextId++), ws, name: "Mii", color: "#ff3fa4", mii: null, skins: { ak: null, awp: null, deagle: null, knife: null }, room: null, ready: false, alive: false, hp: 100, score: 0, deaths: 0, lastSt: 0, lastAk: 0, lastKnife: 0, pos: null, isAlive: true };
+  const p = { id: "p" + (nextId++), ws, name: "Mii", color: "#ff3fa4", mii: null, skins: { ak: null, awp: null, deagle: null, knife: null }, room: null, ready: false, alive: false, hp: 100, score: 0, deaths: 0, lastSt: 0, lastAk: 0, lastKnife: 0, pos: null, isAlive: true, ip: req.socket.remoteAddress || "?" };
   players.set(p.id, p);
   log("+ " + p.id + " connected from " + (req.socket.remoteAddress || "?") + " (" + players.size + " online)");
   ws.on("pong", () => { p.isAlive = true; });
@@ -503,6 +507,7 @@ wss.on("connection", (ws, req) => {
   ws.on("close", () => {
     leaveRoom(p);
     chess.leave(p);
+    accounts.leave(p);
     players.delete(p.id);
     log("- " + p.id + " (" + p.name + ") left (" + players.size + " online)");
   });
@@ -564,4 +569,4 @@ if (require.main === module) {
   }).catch((err) => { log("Couldn't start: " + err.message); process.exit(1); });
 }
 
-module.exports = { server, wss, VERSION, PORT, rooms, players, chess, start, stop, running };
+module.exports = { server, wss, VERSION, PORT, rooms, players, chess, accounts, start, stop, running };
