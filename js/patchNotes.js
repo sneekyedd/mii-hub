@@ -11,7 +11,13 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-22", title: "A little planet",
+      v: null, date: "2026-10-22", title: "Back to school",
+      notes: [
+        "Students at the college don't wear graduation caps any more (they haven't graduated yet!).",
+      ],
+    },
+    {
+      v: "1.2.13", date: "2026-10-22", title: "A little planet",
       notes: [
         "🌍 Mii Hub is a little planet now! Pick another place and the camera flies over the planet to it, and all the way out to the Moon and back.",
         "🚗 Miis on their way somewhere ride a car, a boat, a plane or a rocket (to the Moon), in their favorite color. Spot them going past!",

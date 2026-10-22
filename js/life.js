@@ -88,7 +88,7 @@
       spots: /lecture|globe|lab experiment/i,
       lines: ["Settle down, class!", "Today's lesson is very important!", "Who knows the answer?", "Homework is due on Monday!"] },
     { id: "student", name: "Student", icon: "🎒", place: "school", pay: 5,
-      uniform: { shirt: "#3f7fbf", pants: "#2b2f3a", extras: ["backpack", "mortarboard"] },
+      uniform: { shirt: "#3f7fbf", pants: "#2b2f3a", extras: ["backpack"] }, // (no graduation cap: they haven't graduated yet!)
       spots: /notes|study|lockers|recital|easel/i,
       lines: ["Is this on the test?", "*scribble scribble*", "I love this class!", "Can I borrow a pencil?"] },
   ];
