@@ -159,7 +159,8 @@ assert(Object.keys(prog.state.stickers).length > 0, "some stickers are earned by
 {
   require("../js/crabSong.js");
   const S = global.MiiCrabSong;
-  assert.strictEqual(S.SONG_URL, null, "the made-up song plays unless a file is set");
+  // the real song is a file next to the game (the made-up one is only a fallback)
+  if (S.SONG_URL) assert(require("fs").existsSync(require("path").join(__dirname, "..", S.SONG_URL)), "the crab song file is there: " + S.SONG_URL);
   assert.strictEqual(S.duration(), 60);
   const { TUNE, CHORDS, BARS } = S._score;
   assert.strictEqual(CHORDS.length, BARS);
