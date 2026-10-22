@@ -118,7 +118,7 @@
       const from = rec.place;
       // home <-> courtyard is just the front door; anywhere else takes a little while
       const t = quick ? 0.3 : (from === "home" && to === "apartments") || (from === "apartments" && to === "home") ? 1.5 : rnd(5, 12);
-      r.travel = { to, left: t, from };
+      r.travel = { to, left: t, from, total: t }; // (total: so the car / boat / plane knows how far along it is)
       opts.changed();
     }
 
