@@ -206,7 +206,7 @@
       wear: 0.1, crate: ['PAPER', 'PRINTER INK', 'A4 500 SHEETS', 'MII CORP SUPPLIES'],
       drums: [[[52, 104, 176], 'WATER'], [[240, 140, 62], 'TONER']], wood: 'tray',
       ground: '#a3b1c8', fog: ['#d8efff', 0.003], env: ['#e9edf5', '#d8efff', '#9aa8c0'],
-      light: { sky: '#ffffff', gnd: '#d9c7a8', hemi: 1.05, amb: 0.5, key: '#fff6e8', keyI: 1.1, fill: 0.5 }, dust: '#ffffff'
+      light: { sky: '#ffffff', gnd: '#dfe6f0', hemi: 1.05, amb: 0.5, key: '#fff6e8', keyI: 1.1, fill: 0.5 }, dust: '#ffffff'
     }
   };
   var THEME = THEMES.park, PAINTS = THEME.paints, VARIANTS = THEME.variants;
