@@ -12,7 +12,9 @@
  *
  * Only the place you're looking at is shown in 3D (by hub3d.js). For the other
  * places, this file keeps track of who's there, and lets them chat with each other
- * (and phone friends who are somewhere else) "off screen".
+ * (and phone friends who are somewhere else) "off screen". On the way from one
+ * place to another, a Mii rides a car, boat, plane or rocket across the little
+ * planet (planet3d.js, from r.travel).
  */
 (function (root) {
   "use strict";

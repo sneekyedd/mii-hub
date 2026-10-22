@@ -3,6 +3,8 @@
  * The 3D hub: moves the Miis around, makes them talk and hang out,
  * and handles the camera, clicking and dragging. It also runs home visits
  * (the inside of one Mii's apartment) and hands out the Miis' coins.
+ * All the places sit on a little planet (planet3d.js): going somewhere else,
+ * the camera flies there over the planet (see setScene and startFlight).
  */
 (function () {
   "use strict";
@@ -388,7 +390,6 @@
       this.controls.update();
     }
 
-    // Shows a place (already built) and lets Miis find their way around it.
     // Shows a place (already built) and lets Miis find their way around it.
     // (Places on the planet stay on their spot; a home is put in the middle of the scene.)
     useWorld(world) {

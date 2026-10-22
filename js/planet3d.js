@@ -457,8 +457,10 @@
       .addScaledVector(out.z, out.d * sp * Math.cos(out.a));
     out.look.copy(out.target);
     if (!f.earth) {
-      // out in space: the camera swings round behind and looks ahead, at the place it's going to
-      const w = smooth(Math.min(1, hump * 1.8));
+      // out in space (well away from the planet and the Moon): the camera swings round
+      // behind and looks ahead, at the place it's going to
+      const away = Math.min(out.target.distanceTo(EARTH) - EARTH_R, out.target.distanceTo(MOON) - MOON_R);
+      const w = smooth(clamp((away - 40) / 120, 0, 1));
       const T = tmpA.copy(B.target).sub(out.target);
       if (T.lengthSq() > 1) {
         T.normalize();
@@ -468,6 +470,11 @@
         behind.copy(out.target).addScaledVector(T, -out.d * 0.8).addScaledVector(side, out.d * 0.35);
         out.cam.lerp(behind, w);
         out.look.lerp(B.target, w * 0.85);
+      }
+      // (never down among the trees, or inside the Moon)
+      if (w > 0) for (const [c, r] of [[EARTH, EARTH_R + 30], [MOON, MOON_R + 25]]) {
+        const off = tmpB.copy(out.cam).sub(c), len = off.length();
+        if (len < r) out.cam.copy(c).addScaledVector(off, r / Math.max(1e-6, len));
       }
     }
     return out;
