@@ -11,7 +11,17 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-21", title: "Settings, a bigger view and group photos",
+      v: null, date: "2026-10-22", title: "Little fixes",
+      notes: [
+        "🩹 Make up: Miis who are fighting get a Make up button in their menu (under Friendships), so they can be friends (and in pictures) again.",
+        "Daily goals reward you as soon as they're done (no Claim button to miss), so the daily-goal stickers unlock. Their hints are clearer too.",
+        "Helping with a wish no longer closes the Mii's menu.",
+        "Every Mii's favorite thing is always in stock in its shop, so you can find all of them.",
+        "The bonsai tree's branches and leaves are joined up, and Miis' faces don't vanish behind the bus stop glass.",
+      ],
+    },
+    {
+      v: "1.2.6", date: "2026-10-21", title: "Settings, a bigger view and group photos",
       notes: [
         "⚙️ Settings: dark mode, How chatty?, simulation speed, sandbox mode (everything free and unlocked), patch notes, updates, and reset all progress. Sandbox mode and fast speed pause sticker earning while they're on (you're asked first).",
         "The desktop app can open the hub as a tab in your web browser (in Settings).",

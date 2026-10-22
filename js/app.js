@@ -877,7 +877,20 @@
       if (o === rec) continue;
       const pr = progress.state.pairs[rec.id < o.id ? rec.id + "|" + o.id : o.id + "|" + rec.id];
       if (!pr) continue;
-      if (pr.fight) { const li = document.createElement("li"); li.textContent = "💢 Not talking to " + nameOf(o); ul.appendChild(li); }
+      if (pr.fight) {
+        const li = document.createElement("li");
+        li.textContent = "💢 Not talking to " + nameOf(o) + " ";
+        if (pr.makeUp) li.append("(making up...)");
+        else {
+          const mb = document.createElement("button");
+          mb.className = "tb-btn mm-makeup";
+          mb.textContent = "🩹 Make up";
+          mb.title = "Send " + nameOf(rec) + " to apologize to " + nameOf(o);
+          mb.addEventListener("click", () => { progress.startMakeUp(rec, o); toast("🩹 " + nameOf(rec) + " is going to apologize to " + nameOf(o) + "..."); mb.replaceWith("(making up...)"); });
+          li.appendChild(mb);
+        }
+        ul.appendChild(li);
+      }
       else if (pr.rival) { const li = document.createElement("li"); li.textContent = "⚡ Rivals with " + nameOf(o); ul.appendChild(li); }
     }
     if (!pals.length) ul.innerHTML = '<li class="empty">No friends yet!</li>';
@@ -973,7 +986,11 @@
       for (const a of progress.wishActions(rec)) {
         const b = document.createElement("button");
         b.textContent = a.text;
-        b.addEventListener("click", (e) => { closeMiiMenu(); wishAction(rec, a.id, e); });
+        // (the menu stays open while you help; it just updates)
+        b.addEventListener("click", (e) => {
+          wishAction(rec, a.id, e);
+          setTimeout(() => { if (!menu.hidden && menuWalker && menuWalker.record === rec) openMiiMenu(menuWalker); }, 0);
+        });
         wa.appendChild(b);
       }
       wishSec.appendChild(wa);
@@ -1083,7 +1100,9 @@
       // plus a peek at fancier things that a higher town level unlocks
       const forSale = progress.shopItems(panelSlot);
       const deals = progress.deals();
-      const list = H.ITEMS.filter((i) => i.slot === panelSlot && (forSale.includes(i) || rec.home.owned.includes(i.id) || progress.lockedTier(i)));
+      // (its favorite is always in stock for it, so every Mii's favorite can be found)
+      const favId = H.favoriteItem && H.favoriteItem(rec, panelSlot);
+      const list = H.ITEMS.filter((i) => i.slot === panelSlot && (forSale.includes(i) || i.id === favId || rec.home.owned.includes(i.id) || progress.lockedTier(i)));
       for (const it of list) {
         const owned = rec.home.owned.includes(it.id);
         const placed = rec.home.items[it.slot] === it.id;
@@ -1664,7 +1683,8 @@
     if (id.startsWith("t-wish")) return "Grant your Miis' wishes.";
     if (id.startsWith("t-lv")) return "Grow your town by granting wishes and finishing daily goals.";
     if (id.startsWith("t-mii")) return "Help a Mii level up by keeping it happy.";
-    if (id.startsWith("t-daily")) return "Finish your daily goals (📅 Daily).";
+    if (id === "t-daily") return "Finish all three of today's goals (📅 Daily).";
+    if (id === "t-daily7") return "Finish all your daily goals on 7 different days (📅 Daily).";
     if (id.startsWith("h-")) return st.hint || "Something rare happens somewhere, but only while you're watching...";
     // anything else: just the vaguest version of what it is
     return "Something to do with: " + String(st.desc).split(" ").slice(0, 3).join(" ") + "…";
@@ -2105,7 +2125,7 @@
       for (const [a, b] of fights) {
         const p = document.createElement("p");
         p.className = "ph-fight";
-        p.textContent = "💢 " + nameOf(a) + " and " + nameOf(b) + " had a fight and aren't talking to each other, so they won't be in the same picture. Take one of them out to add the other, or help them make up first!";
+        p.textContent = "💢 " + nameOf(a) + " and " + nameOf(b) + " had a fight and aren't talking to each other, so they won't be in the same picture. Take one of them out to add the other, or help them make up first (🩹 Make up in a Mii's menu)!";
         card.appendChild(p);
       }
 

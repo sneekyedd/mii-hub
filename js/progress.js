@@ -487,8 +487,9 @@
       opts.meetUp(a, b);
     }
 
-    function startMakeUp(rec) {
-      const o = records.get(rec.wish && rec.wish.target);
+    // (other: make up with someone even without a wish, from the Mii's menu)
+    function startMakeUp(rec, other) {
+      const o = other || records.get(rec.wish && rec.wish.target);
       if (!o) return;
       pair(rec.id, o.id).makeUp = true;
       bringTogether(rec, o);
@@ -540,7 +541,10 @@
         if (g.id !== kind || g.count >= g.n) continue;
         if (unique !== undefined) { if (g.seen.includes(unique)) continue; g.seen.push(unique); }
         g.count += 1;
-        if (g.count >= g.n) emit("toast", "📅 Daily goal done: " + g.text + "!");
+        if (g.count >= g.n) {
+          emit("toast", "📅 Daily goal done: " + g.text + "!");
+          claim(st.daily.goals.indexOf(g)); // (rewards straight away: no need to press Claim)
+        }
       }
     }
 
@@ -674,7 +678,7 @@
           { id: "t-mii5", icon: "⭐", name: "Rising Star", desc: "A Mii reached level 5", got: maxMiiLevel >= 5 },
           { id: "t-mii10", icon: "🌟", name: "Superstar", desc: "A Mii reached level 10", got: maxMiiLevel >= 10 },
           { id: "t-daily", icon: "📅", name: "Busy Day", desc: "Finished all daily goals", got: (t.dailyStreak || 0) >= 1 },
-          { id: "t-daily7", icon: "🗓️", name: "Every Day!", desc: "Finished all daily goals 7 times", got: (t.dailyStreak || 0) >= 7 },
+          { id: "t-daily7", icon: "🗓️", name: "Every Day!", desc: "Finished all daily goals on 7 different days", got: (t.dailyStreak || 0) >= 7 },
         ] },
         // rare things that only happen while you're watching: the page is "???" until you've seen one
         (() => {
