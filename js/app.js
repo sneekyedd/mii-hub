@@ -40,8 +40,10 @@
     theme: settings.theme === "light" || settings.theme === "dark" ? settings.theme : "system",
     sandbox: !!settings.sandbox,
     simSpeed: [1, 2, 4].includes(settings.simSpeed) ? settings.simSpeed : 1,
+    fly: settings.fly !== false, // the camera flies between places (off = jump straight there, for slower computers)
   };
   hub.timeScale = prefs.simSpeed;
+  hub.flyOn = prefs.fly;
   hub.setScene(settings.scene && window.World3D.list.some((l) => l.id === settings.scene) ? settings.scene : "park");
 
   // ---------- every Mii you have (out and about, or at home) ----------
@@ -202,7 +204,7 @@
 
   function saveSettings() {
     const scene = hub.visiting ? (hub.mainWorld && hub.mainWorld.id) : hub.world.id;
-    S.saveSettings({ scene, friendships: hub.friendships, chattiness: hub.chattiness, theme: prefs.theme, sandbox: prefs.sandbox, simSpeed: prefs.simSpeed });
+    S.saveSettings({ scene, friendships: hub.friendships, chattiness: hub.chattiness, theme: prefs.theme, sandbox: prefs.sandbox, simSpeed: prefs.simSpeed, fly: prefs.fly });
   }
 
   // ---------- a little pop-up with choices ----------
@@ -407,6 +409,15 @@
   let life = null, lifeHub = null; // vacations, and shows / jobs in 3D (made below)
   hub.onTick = (dt) => { town.tick(dt); if (progress) progress.tick(dt); if (life) life.tick(dt); if (lifeHub) lifeHub.tick(dt); };
   hub.onSceneChange = (id) => town.populate(id);
+  // the Miis on their way somewhere ride a car, boat, plane or rocket across the planet (planet3d.js)
+  hub.travelers = () => {
+    const out = [];
+    for (const r of records.values()) {
+      const t = town.info(r).travel;
+      if (t) out.push({ id: r.id, from: t.from, to: t.to, k: t.total ? 1 - Math.max(0, t.left) / t.total : 0.5, name: nameOf(r) });
+    }
+    return out;
+  };
 
   function sendHome(rec, then, quick) {
     town.sendTo(rec, "home", { then, quick });
@@ -1382,7 +1393,7 @@
     if (!weatherFx) {
       weatherFx = window.Weather3D.create(hub);
       const update = hub.update.bind(hub);
-      hub.update = (dt) => { update(dt); weatherFx.update(dt, hub.time); };
+      hub.update = (dt) => { update(dt); if (!hub.flying) weatherFx.update(dt, hub.time); }; // (no weather up in the sky)
       const useWorld = hub.useWorld.bind(hub);
       hub.useWorld = (world) => { useWorld(world); weatherFx.setWorld(world); weatherFx.set(stateNow()); };
       weatherFx.setWorld(hub.world);
@@ -1975,6 +1986,7 @@
       '<div class="set-head"><h3>⚙️ Settings</h3><button class="mm-close" id="setClose" aria-label="Close">✕</button></div>' +
       '<section class="set-sec"><h4>Look</h4>' +
         '<div class="set-row"><span>🌙 Dark mode</span>' + seg("theme", [["system", "Auto"], ["light", "☀️ Light"], ["dark", "🌙 Dark"]], prefs.theme) + "</div>" +
+        '<div class="set-row"><span>🌍 Going places<small>Fly over the planet to the next place, or jump straight there (faster on slower computers)</small></span>' + seg("fly", [["on", "✈️ Fly"], ["off", "⚡ Jump"]], prefs.fly ? "on" : "off") + "</div>" +
         (desktop ? '<div class="set-row"><span>🌐 Show as tab in browser<small>Opens Mii Hub in your web browser too. (Its Miis are saved separately from the app\'s.)</small></span><button class="tb-btn" id="openBrowserBtn">Open</button></div>' : "") +
       "</section>" +
       '<section class="set-sec"><h4>Your Miis</h4>' +
@@ -2003,6 +2015,7 @@
       b.addEventListener("click", async () => {
         const v = b.dataset.v;
         if (b.dataset.seg === "theme") { prefs.theme = v; applyTheme(); saveSettings(); }
+        else if (b.dataset.seg === "fly") { prefs.fly = v === "on"; hub.flyOn = prefs.fly; saveSettings(); }
         else {
           closeSettings(); // (so the "are you sure?" question isn't hidden behind it)
           if (b.dataset.seg === "speed") await setMode("speed", Number(v));

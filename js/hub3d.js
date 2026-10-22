@@ -3,6 +3,8 @@
  * The 3D hub: moves the Miis around, makes them talk and hang out,
  * and handles the camera, clicking and dragging. It also runs home visits
  * (the inside of one Mii's apartment) and hands out the Miis' coins.
+ * All the places sit on a little planet (planet3d.js): going somewhere else,
+ * the camera flies there over the planet (see setScene and startFlight).
  */
 (function () {
   "use strict";
@@ -242,6 +244,11 @@
   // the camera swung round behind it, and the houses across the road block the
   // view when it's zoomed right out.
   const CAMERA_LIMITS = { apartments: { maxDistance: 30, azimuth: [-1.5, 1.5] } };
+  const HIGH_SKY = new THREE.Color(0x4f86d8);  // the sky high above the planet...
+  const SPACE_SKY = new THREE.Color(0x151b4d); // ...and higher still
+  const tmpV = new THREE.Vector3();
+  // (a geometry's numbers aren't needed in memory once they're on the graphics card)
+  function releaseArray() { this.array = null; }
 
   class Hub3D {
     constructor(canvas, overlay) {
@@ -297,8 +304,31 @@
       this.controls.minPolarAngle = 0.25;
       this.controls.maxPolarAngle = 1.42;
 
-      this.miiGroup = new THREE.Group();
+      this.miiGroup = new THREE.Group(); // (it moves into the place you're looking at)
       this.scene.add(this.miiGroup);
+
+      // The little planet (planet3d.js): every place is built once, kept, and sits
+      // on its own spot. At a place, the planet is turned so that place is right
+      // here at the middle of the scene (so everything works in the place's own
+      // x/y/z, like before), and only that place is drawn. Going somewhere else, the
+      // camera flies over the planet to it (or off to the Moon).
+      const P = window.MiiPlanet3D;
+      this.planetRoot = new THREE.Group();
+      this.planetRoot.name = "planet-root";
+      this.planetRoot.matrixAutoUpdate = false;
+      this.scene.add(this.planetRoot);
+      this.places = new Map(); // id -> { id, frame, anchor (its spot on the planet), world (once built) }
+      this.planet = P.create();
+      this.planetRoot.add(this.planet.group);
+      for (const id of Object.keys(P.SPOTS)) this.planet.setPad(id); // (sized properly once each place is built)
+      this.traffic = P.createTraffic(this, this.planet); // Miis on their way somewhere
+      this.planetRoot.add(this.traffic.group);
+      this.travelers = null; // () -> [{ id, from, to, k, name }] (set by the app, see town.js)
+      this.flyOn = true;     // false = jump straight to the next place (Settings)
+      this.flight = null;    // the camera's trip to another place (see startFlight)
+      this.prebuildIn = 4;   // the other places get built a little later, one at a time
+      this.camera.layers.enable(window.World3D.FAR_LAYER);
+      this.camera.layers.enable(window.World3D.SMALL_LAYER);
 
       this.raycaster = new THREE.Raycaster();
       this.resize();
@@ -319,21 +349,29 @@
       this.renderer.setSize(w, h, false);
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
-      if (!keepView) this.fitCamera();
+      if (keepView) return;
+      if (this.flight) this.flight.to = this.endState(this.world); // (land with the new size)
+      else this.fitCamera();
     }
 
-    // Move the camera back far enough that the whole area fits on screen.
-    fitCamera() {
-      if (!this.world) return;
-      const b = this.world.bounds;
+    // Where the camera goes to see the whole of a place: { dist, ty, dir }.
+    fitPose(world) {
+      const b = world.bounds;
       const halfW = (b.maxX - b.minX) / 2 + 2;
       const vfov = (this.camera.fov * Math.PI) / 180;
       const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
       // the front of the area is closer than the middle, so we don't need the full width
       // (a home is a small room seen from close by, so it needs the full width)
-      const dist = clamp((halfW / Math.tan(hfov / 2)) * (this.world.isHome ? 1.05 : 0.8), 17, 30);
-      const ty = this.world.cameraTargetY || 1;
-      const dir = new THREE.Vector3(0, this.world.cameraTilt || 0.55, 1).normalize();
+      const dist = clamp((halfW / Math.tan(hfov / 2)) * (world.isHome ? 1.05 : 0.8), 17, 30);
+      const ty = world.cameraTargetY || 1;
+      const dir = new THREE.Vector3(0, world.cameraTilt || 0.55, 1).normalize();
+      return { dist, ty, dir };
+    }
+
+    // Move the camera back far enough that the whole area fits on screen.
+    fitCamera() {
+      if (!this.world || this.flight) return;
+      const { dist, ty, dir } = this.fitPose(this.world);
       // (the decorating panel opens beside the view now, so the room stays centered)
       const tx = 0;
       this.camera.position.copy(dir.multiplyScalar(dist)).add(new THREE.Vector3(tx, ty, 0));
@@ -353,21 +391,28 @@
     }
 
     // Shows a place (already built) and lets Miis find their way around it.
+    // (Places on the planet stay on their spot; a home is put in the middle of the scene.)
     useWorld(world) {
       this.world = world;
       this.nav = new window.MiiNav.Nav(world.bounds, world.obstacles);
-      this.scene.add(world.group);
-      this.scene.background = new THREE.Color(world.background);
-      this.scene.fog = world.fog ? new THREE.Fog(...world.fog) : null;
+      const e = this.places.get(world.id);
+      if (e && e.world === world) { if (world.group.parent !== e.anchor) e.anchor.add(world.group); }
+      else this.scene.add(world.group);
+      this.scene.background = this.placeBg = new THREE.Color(world.background);
+      this.scene.fog = this.placeFog = world.fog ? new THREE.Fog(...world.fog) : null;
       if (world.setResidents) world.setResidents(this.residents);
-      this.fitCamera();
+      if (!this.keepCamera) this.fitCamera();
     }
 
     // Shows another place. The Miis that were on screen stay where they were
     // (they live their own lives, see town.js); the ones in the new place appear.
+    // The camera flies there over the planet (unless that's turned off in Settings).
     setScene(id) {
       if (this.visiting) this.leaveHome();
       if (this.world && this.world.id === id) return;
+      const fly = !!(this.flyOn && this.world && this.isPlanetPlace(this.world));
+      const from = fly ? this.cameraState() : null;
+      const look = fly ? this.lookNow() : null;
       this.stopRare();
       for (const w of this.walkers.slice()) if (w.leaving) this.finishLeaving(w);
       // (phone calls carry on: they belong to both Miis, not to the place on screen)
@@ -375,19 +420,216 @@
       this.walkers = [];
       this.dragging = null; this.hover = null;
       this.clearWindowMiis();
-      if (this.world) {
-        this.scene.remove(this.world.group);
-        window.World3D.dispose(this.world);
-      }
-      this.useWorld(window.World3D.build(id, { residents: this.residents.length }));
+      const world = this.placeWorld(id);
+      this.places.get(id).anchor.add(this.miiGroup); // (the Miis there live in the place's own x/y/z)
+      this.keepCamera = fly;
+      this.useWorld(world);
+      this.keepCamera = false;
+      if (fly) this.startFlight(from, look);
+      else { this.endFlight(true); this.fitCamera(); }
       if (this.onSceneChange) this.onSceneChange(id);
       this.onChange();
+    }
+
+    // ---------- the little planet (see planet3d.js) ----------
+    // A place's spot on the planet (made the first time it's asked for).
+    placeEntry(id) {
+      let e = this.places.get(id);
+      if (!e) {
+        const frame = window.MiiPlanet3D.frameFor(id);
+        const anchor = new THREE.Group();
+        anchor.name = "place-" + id;
+        anchor.matrixAutoUpdate = false;
+        anchor.matrix.copy(frame.matrix);
+        anchor.visible = false;
+        this.planetRoot.add(anchor);
+        // (for a place's walls that hide when the camera is behind them: where the camera is, in the place's x/y/z)
+        e = { id, frame, anchor, world: null, cam: { position: new THREE.Vector3() } };
+        this.places.set(id, e);
+      }
+      return e;
+    }
+    isPlanetPlace(world) {
+      const e = world && this.places.get(world.id);
+      return !!e && e.world === world;
+    }
+    // A place, built the first time it's needed and then kept.
+    placeWorld(id) {
+      const e = this.placeEntry(id);
+      if (e.world && this.needsBiggerBuilding(e.world)) this.dropPlace(e); // (more Miis moved in meanwhile)
+      if (!e.world) {
+        const world = window.World3D.build(id, { residents: this.residents.length });
+        window.World3D.markFar(world);
+        // The big joined-up scenery never changes: once it's on the graphics card, the
+        // copy in memory isn't needed any more (every place is kept, so this adds up).
+        world.group.traverse((o) => {
+          if (!o.isMesh || !(o.userData.near || o.userData.far)) return;
+          const g = o.geometry;
+          if (!g.boundingSphere) g.computeBoundingSphere();
+          if (!g.boundingBox) g.computeBoundingBox();
+          for (const name of Object.keys(g.attributes)) g.attributes[name].onUpload(releaseArray);
+          if (g.index) g.index.onUpload(releaseArray);
+        });
+        if (world.setResidents) world.setResidents(this.residents);
+        e.anchor.add(world.group);
+        e.world = world;
+        this.planet.setPad(id, world.padRadius);
+      }
+      return e.world;
+    }
+    // Throws a built place away (to build it again).
+    dropPlace(e) {
+      if (!e.world) return;
+      e.anchor.remove(e.world.group);
+      window.World3D.dispose(e.world);
+      e.world = null;
+    }
+    // Every apartment taken? The building gets a new floor (if it can still grow).
+    needsBiggerBuilding(world) {
+      const MH = window.MiiHomes3D;
+      return !!(MH && world.capacity && MH.floorsFor(this.residents.length) * MH.APT.cols > world.capacity);
+    }
+    get flying() { return !!this.flight; }
+
+    // Where the camera is, on the planet: { target, up, z, d (distance), p (down from overhead), a (turned round) }
+    cameraState() {
+      if (this.flight) {
+        // (from where the camera really is, which isn't always right above the path)
+        const c = this.flight.cur, off = c.cam.clone().sub(c.target);
+        const d = Math.max(0.01, off.length());
+        return { target: c.target.clone(), up: c.up.clone(), z: c.z.clone(), d, p: Math.acos(clamp(off.dot(c.up) / d, -1, 1)), a: Math.atan2(off.dot(c.x), off.dot(c.z)) };
+      }
+      const f = this.places.get(this.world.id).frame;
+      const t = this.controls.target, off = this.camera.position.clone().sub(t);
+      const d = Math.max(0.01, off.length());
+      return { target: t.clone().applyMatrix4(f.matrix), up: f.up.clone(), z: f.z.clone(), d, p: Math.acos(clamp(off.y / d, -1, 1)), a: Math.atan2(off.x, off.z) };
+    }
+    // Where the camera ends up at a place (like fitCamera), on the planet.
+    endState(world) {
+      const f = this.places.get(world.id).frame;
+      const { dist, ty, dir } = this.fitPose(world);
+      return { target: f.pos.clone().addScaledVector(f.up, ty), up: f.up.clone(), z: f.z.clone(), d: dist, p: Math.acos(dir.y), a: 0 };
+    }
+    // The sky color and lights right now (where a flight starts from).
+    lookNow() {
+      if (this.flight) return { bg: this.flightBg.clone(), lights: this.planet.lightState(null) };
+      const bg = this.scene.background && this.scene.background.isColor ? this.scene.background.clone() : new THREE.Color(this.world.background);
+      return { bg, lights: this.planet.lightState(this.world) };
+    }
+
+    // Starts the camera's flight from camera state `from` to the place in this.world.
+    startFlight(from, look) {
+      const f = window.MiiPlanet3D.flightPath(from, this.endState(this.world));
+      f.t = 0; f.look = look; f.cur = null;
+      this.flight = f;
+      // the planet goes back to its own x/y/z, and every place on it can be seen
+      this.planetRoot.matrix.identity();
+      this.planetRoot.matrixWorldNeedsUpdate = true;
+      this.planet.group.visible = true;
+      this.camera.layers.disable(window.World3D.FAR_LAYER); // (no far-away scenery round the places)
+      this.controls.enabled = false;
+      this.flightBg = this.flightBg || new THREE.Color();
+      this.flightFog = this.flightFog || new THREE.Fog(0xffffff, 1e5, 2e5); // (no fog up there)
+      for (const w of this.walkers) w.ui.style.display = "none";
+      this.showWeather(false);
+      this.stepFlight(0);
+    }
+
+    // Moves the camera along its flight (dt in real seconds).
+    stepFlight(dt) {
+      const f = this.flight, P = window.MiiPlanet3D;
+      f.t = Math.min(1, f.t + dt / f.dur);
+      const s = (f.cur = P.samplePath(f, f.t, f.cur));
+      const cam = this.camera;
+      cam.position.copy(s.cam);
+      cam.up.copy(s.up);
+      cam.lookAt(s.look);
+      cam.near = clamp(s.d * 0.01, 0.1, 3);
+      cam.far = Math.max(400, s.d * 3 + 1900);
+      cam.updateProjectionMatrix();
+      // the sky and the light change from the place we left to the one we're going to
+      // (and the sky gets dark way up high, or on the way to the Moon)
+      const k = smooth(f.t);
+      const space = f.earth ? P.spaceAt(s.cam) : Math.max(P.spaceAt(s.cam), Math.min(1, Math.sin(Math.PI * f.t) * 2.5)); // (out in space on the way to the Moon)
+      this.flightBg.copy(f.look.bg).lerp(this.placeBg, k).lerp(HIGH_SKY, Math.min(1, space * 2)).lerp(SPACE_SKY, Math.max(0, space * 2 - 1));
+      this.scene.background = this.flightBg;
+      this.scene.fog = this.flightFog;
+      this.planet.setRig(f.look.lights, this.planet.lightState(this.world), k, s.target, s);
+      this.planet.update(space);
+      // only places above the horizon get drawn, and far away ones without their little things
+      for (const e of this.places.values()) {
+        if (!e.world) { e.anchor.visible = false; continue; }
+        tmpV.copy(s.cam).sub(e.frame.pos);
+        e.anchor.visible = tmpV.dot(e.frame.up) > -6 && tmpV.length() < 1500;
+        this.setLittleThings(e, tmpV.length() < 110);
+      }
+      if (f.t >= 1) this.endFlight();
+    }
+
+    // Landed (or no flight at all): shows just the place in this.world, right here.
+    // quiet = don't touch the camera
+    endFlight(quiet) {
+      const was = !!this.flight;
+      this.flight = null;
+      const e = this.places.get(this.world.id);
+      this.planetRoot.matrix.copy(e.frame.inverse);
+      this.planetRoot.matrixWorldNeedsUpdate = true;
+      for (const p of this.places.values()) { p.anchor.visible = p === e; this.setLittleThings(p, true); }
+      this.planet.group.visible = false;
+      this.camera.layers.enable(window.World3D.FAR_LAYER);
+      this.scene.background = this.placeBg;
+      this.scene.fog = this.placeFog;
+      this.showWeather(true);
+      if (!was) return;
+      const cam = this.camera;
+      cam.up.set(0, 1, 0);
+      cam.near = 0.1; cam.far = 400;
+      cam.updateProjectionMatrix();
+      this.controls.enabled = true;
+      if (!quiet) this.fitCamera();
+    }
+    // Shows or leaves out a place's little things (cups, books, flower pots...): from far away you can't see them anyway.
+    setLittleThings(e, on) {
+      if (!e.world || e.little === on) return;
+      e.little = on;
+      const layer = on ? window.World3D.SMALL_LAYER : 3;
+      for (const o of e.world.smallParts || []) o.layers.set(layer);
+    }
+
+    // Lands right away (before something that needs you to be at the place).
+    finishFlight() {
+      if (!this.flight) return;
+      this.flight.t = 1;
+      this.stepFlight(0);
+    }
+
+    // The weather (rain, snow, fireworks: weather3d.js) is only shown at a place.
+    showWeather(on) {
+      for (const o of this.scene.children) if (o.name === "weather-fx") o.visible = on;
+    }
+
+    // While flying: the places you can see keep moving (clouds, ducks...).
+    updatePlacesFlying() {
+      const c = this.camera.position;
+      for (const e of this.places.values()) {
+        if (!e.world || !e.anchor.visible) continue;
+        e.cam.position.copy(c).applyMatrix4(e.frame.inverse);
+        e.world.update(this.time, e.cam);
+      }
+    }
+
+    // Builds the next place nobody has been to yet (a little while after starting up),
+    // so it's there to see on the way.
+    prebuildNext() {
+      if (this.flight || this.visiting || !this.world) return;
+      const next = window.World3D.list.find((l) => !(this.places.get(l.id) || {}).world);
+      if (next) this.placeWorld(next.id);
     }
 
     // ---------- Miis you can see through their windows (in the Apartments) ----------
     clearWindowMiis() {
       for (const m of this.windowMiis.values()) {
-        this.scene.remove(m.inst.holder);
+        m.inst.holder.removeFromParent();
         M.disposeObject(m.inst.holder);
       }
       this.windowMiis.clear();
@@ -406,14 +648,14 @@
         want.add(r.id);
         let m = this.windowMiis.get(r.id);
         if (m && m.template !== r.template) {
-          this.scene.remove(m.inst.holder); M.disposeObject(m.inst.holder); m = null;
+          m.inst.holder.removeFromParent(); M.disposeObject(m.inst.holder); m = null;
         }
         if (!m) {
           const inst = M.createInstance(r.template, r.look || {});
           inst.holder.rotation.order = "YXZ";
           const s = (0.9 + clamp(r.template.info.height, 0, 127) / 127 * 0.2) * 1.3;
           inst.holder.scale.setScalar(s);
-          this.scene.add(inst.holder);
+          this.places.get(world.id).anchor.add(inst.holder); // (in the building, wherever it is on the planet)
           m = { inst, template: r.template, s, t0: Math.random() * 10 };
           this.windowMiis.set(r.id, m);
         }
@@ -439,7 +681,7 @@
       }
       for (const [id, m] of this.windowMiis) {
         if (want.has(id)) continue;
-        this.scene.remove(m.inst.holder); M.disposeObject(m.inst.holder);
+        m.inst.holder.removeFromParent(); M.disposeObject(m.inst.holder);
         this.windowMiis.delete(id);
       }
     }
@@ -516,12 +758,12 @@
     // The Miis outside stay where they are.
     // announce = say so in the feed (not when the app is just starting up)
     growApartments(announce) {
+      this.finishFlight();
       const before = this.world.capacity;
       const cam = { pos: this.camera.position.clone(), target: this.controls.target.clone() };
       this.stopRare();
-      this.scene.remove(this.world.group);
-      window.World3D.dispose(this.world);
-      this.useWorld(window.World3D.build("apartments", { residents: this.residents.length }));
+      this.dropPlace(this.placeEntry("apartments"));
+      this.useWorld(this.placeWorld("apartments"));
       this.camera.position.copy(cam.pos);
       this.controls.target.copy(cam.target);
       this.controls.update();
@@ -541,7 +783,8 @@
 
     // The direction a Mii at w should face to look at the camera.
     viewYaw(w) {
-      const c = this.camera.position;
+      // (while flying there: where the camera is, in the place's own x/y/z)
+      const c = this.flight ? tmpV.copy(this.camera.position).applyMatrix4(this.places.get(this.world.id).frame.inverse) : this.camera.position;
       return Math.atan2(c.x - w.x, c.z - w.z);
     }
 
@@ -577,7 +820,7 @@
       w.timer = rnd(1, 2.5);
       w.helmet.visible = !!this.world.helmet;
       this.walkers.push(w);
-      if (this.visiting) w.ui.style.display = "none";
+      if (this.visiting || this.flight) w.ui.style.display = "none"; // (shown once you get there)
       if (!silent) {
         const lines = opts && opts.lines ? opts.lines : ["Hi everyone!", "Hello! I'm {A}!", "I'm here!", "What's this place?"];
         this.later(w, 0.9, () => w.say(D.pick(lines), 2.5));
@@ -737,6 +980,7 @@
     visitHome(record, template, look, opts) {
       const empty = !!(opts && opts.empty);
       if (this.visiting) this.leaveHome();
+      this.finishFlight(); // (homes are their own little scene, not on the planet)
       if (this.dragging) { this.dragging.held = false; this.dragging = null; }
       this.hover = null;
       if (!empty && this.calls.has(record.id)) this.endCall(this.calls.get(record.id), record.id); // you're here: they hang up
@@ -744,7 +988,7 @@
       this.mainWorld = this.world;
       this.mainNav = this.nav;
       this.mainCamera = { pos: this.camera.position.clone(), target: this.controls.target.clone() };
-      this.scene.remove(this.world.group);
+      this.planetRoot.visible = false; // (the place you were at waits on the planet)
       this.clearWindowMiis();
       this.miiGroup.visible = false;
       for (const w of this.walkers) w.ui.style.display = "none";
@@ -777,6 +1021,7 @@
       window.World3D.dispose(this.world);
       this.visiting = null;
       this.useWorld(this.mainWorld);
+      this.planetRoot.visible = true;
       this.nav = this.mainNav;
       this.mainWorld = null;
       if (this.growLater) {
@@ -1317,6 +1562,7 @@
     }
 
     spawnHearts(A, B) {
+      if (this.flight) return; // (you're not there yet)
       const pos = new THREE.Vector3((A.x + B.x) / 2, MII_HEIGHT + 0.6, (A.z + B.z) / 2).project(this.camera);
       const x = (pos.x * 0.5 + 0.5) * this.W, y = (-pos.y * 0.5 + 0.5) * this.H;
       for (let i = 0; i < 8; i++) {
@@ -1335,13 +1581,14 @@
     update(dt) {
       this.time += dt;
       if (!this.world) return;
-      this.world.update(this.time, this.camera);
+      if (this.flight) this.updatePlacesFlying();
+      else this.world.update(this.time, this.camera);
       if (this.onTick) this.onTick(dt);
       if (this.world.windowSpot || this.windowMiis.size) this.syncWindowMiis(dt);
       if (this.world.riders) this.syncRiders(dt);
       // rare events (world.rare): they only run while you're looking at the place
-      // (in a home: only while the Mii is in)
-      if (this.world.rare && (!this.visiting || !this.visiting.empty)) this.world.rare.update(dt, this.time, this.rareContext());
+      // (in a home: only while the Mii is in; not while flying there)
+      if (this.world.rare && !this.flight && (!this.visiting || !this.visiting.empty)) this.world.rare.update(dt, this.time, this.rareContext());
       this.runDirector(dt);
       this.tickCalls(dt);
       const floaty = this.world.floaty;
@@ -2134,6 +2381,7 @@
 
       c.addEventListener("pointerdown", (e) => {
         if (e.button !== 0) return; // right-click opens the menu instead (see "contextmenu")
+        if (this.flight) return;    // (nothing to grab while flying)
         const w = this.pickWalker(this.pointerRay(e));
         down = { x: e.clientX, y: e.clientY, w };
         if (w) {
@@ -2164,7 +2412,7 @@
           w.lift = 1.4 + Math.sin(this.time * 4) * 0.08;
           w.liftVel = 0;
           w.targetYaw = this.viewYaw(w);
-        } else if (!down) {
+        } else if (!down && !this.flight) {
           this.hover = this.pickWalker(this.pointerRay(e));
           c.style.cursor = this.hover ? "grab" : "";
         }
@@ -2200,7 +2448,7 @@
           }
         }
         down = null;
-        this.controls.enabled = true;
+        this.controls.enabled = !this.flight;
       };
       c.addEventListener("pointerup", release);
       c.addEventListener("pointercancel", release);
@@ -2208,6 +2456,7 @@
       // right-click a Mii to open its menu
       c.addEventListener("contextmenu", (e) => {
         e.preventDefault();
+        if (this.flight) return;
         const w = this.pickWalker(this.pointerRay(e));
         if (w && this.onSelect) this.onSelect(w, e.clientX, e.clientY);
       });
@@ -2238,6 +2487,7 @@
     // Resolves with { url (PNG data URL), width, height, heads: [{ id, x, y }] (0..1 on the picture) }.
     takePhoto(list, poses, opts) {
       opts = opts || {};
+      this.finishFlight();
       const n = list.length;
       const scale = Math.max(...list.map((w) => w.sizeScale || 1));
       const gap = 1.3 * scale;
@@ -2351,14 +2601,20 @@
     start() {
       let last = performance.now();
       const frame = (now) => {
-        const dt = Math.min(0.05, (now - last) / 1000);
+        const real = Math.min(0.25, (now - last) / 1000); // (flights go by the clock, even on a slow computer)
+        const dt = Math.min(0.05, real);
         last = now;
         if (!this.paused) { // (paused while you play Paintball)
           const steps = Math.max(1, Math.round(this.timeScale || 1));
           for (let i = 0; i < steps; i++) this.update(dt);
-          this.controls.update();
+          if (this.flight) this.stepFlight(real);
+          else this.controls.update();
+          this.traffic.update(dt);
           this.renderer.render(this.scene, this.camera);
-          this.updateOverlay();
+          if (!this.flight) this.updateOverlay();
+          // build the places you haven't been to yet, one now and then
+          this.prebuildIn -= real;
+          if (this.prebuildIn <= 0) { this.prebuildIn = 2.5; this.prebuildNext(); }
         }
         requestAnimationFrame(frame);
       };

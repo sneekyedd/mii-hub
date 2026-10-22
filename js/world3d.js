@@ -159,6 +159,48 @@
   // This makes the scene MUCH faster to draw (hundreds of objects -> a few dozen).
   const debug = { noMerge: false }; // tests turn merging off to inspect single objects
 
+  // ---------- near and far (for the little planet, see planet3d.js) ----------
+  // Every place sits on a little planet. Seen from up in the sky, only the place
+  // itself shows (on its own round patch of ground); the far-away scenery around it
+  // (sky, sea, city, hills, the ring of trees...) is only drawn while you're there.
+  // Far things go on their own layer, which the camera only sees at a place.
+  const FAR_LAYER = 1;
+  // Little things (a cup, a book, a flower pot) go on this layer: seen from far away
+  // while flying, they're left out (see hub3d.js stepFlight). Layer 3 = left out.
+  const SMALL_LAYER = 2;
+  const FAR = { center: 30, radius: 36 }; // (in place units: the walking area is about 34 x 22)
+  let splitFar = false; // true while a place is being built (mergeStatic keeps near and far apart)
+  const tmpSphere = new THREE.Sphere();
+  function isFarSphere(s) {
+    return Math.hypot(s.center.x, s.center.z) > FAR.center || s.radius > FAR.radius;
+  }
+  // The bounding sphere of an object (from its geometry), where it really is.
+  function worldSphere(o, out) {
+    const geo = o.geometry;
+    if (!geo || !geo.attributes || !geo.attributes.position) return null;
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    if (!geo.boundingSphere || !isFinite(geo.boundingSphere.radius)) return null;
+    out.copy(geo.boundingSphere);
+    if (o.isInstancedMesh) {
+      // all its copies: from the middle of them to the furthest one
+      const m = new THREE.Matrix4(), c = new THREE.Vector3(), pts = [];
+      let scale = 0;
+      for (let i = 0; i < o.count; i++) {
+        o.getMatrixAt(i, m);
+        pts.push(geo.boundingSphere.center.clone().applyMatrix4(m));
+        scale = Math.max(scale, m.getMaxScaleOnAxis());
+      }
+      if (!pts.length) return null;
+      pts.forEach((q) => c.add(q));
+      c.divideScalar(pts.length);
+      let r = 0;
+      pts.forEach((q) => { r = Math.max(r, q.distanceTo(c)); });
+      out.center.copy(c);
+      out.radius = r + geo.boundingSphere.radius * scale;
+    }
+    return out.applyMatrix4(o.matrixWorld);
+  }
+
   function mergeStatic(rootGroup) {
     if (debug.noMerge) return;
     rootGroup.updateMatrixWorld(true);
@@ -176,8 +218,10 @@
       if (!g.attributes.uv) g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
       if (!g.attributes.normal) g.computeVertexNormals();
       g.applyMatrix4(o.matrixWorld);
-      const key = o.material.uuid + "|" + o.castShadow + "|" + o.receiveShadow;
-      if (!buckets.has(key)) buckets.set(key, { mat: o.material, cast: o.castShadow, receive: o.receiveShadow, geos: [] });
+      // (while a place is being built, near and far things go into separate meshes)
+      const far = splitFar ? !!worldSphere(o, tmpSphere) && isFarSphere(tmpSphere) : null;
+      const key = o.material.uuid + "|" + o.castShadow + "|" + o.receiveShadow + "|" + far;
+      if (!buckets.has(key)) buckets.set(key, { mat: o.material, cast: o.castShadow, receive: o.receiveShadow, far, geos: [] });
       buckets.get(key).geos.push(g);
       remove.push(o);
     });
@@ -190,8 +234,62 @@
       m.castShadow = b.cast;
       m.receiveShadow = b.receive;
       m.matrixAutoUpdate = false;
+      if (b.far !== null) m.userData[b.far ? "far" : "near"] = true;
       rootGroup.add(m);
     }
+  }
+
+  // Puts a place's far-away scenery and its lights on the far layer (see FAR_LAYER),
+  // and works out how big the round patch of ground under it should be (world.padRadius).
+  function markFar(world) {
+    const top = world.group;
+    top.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(top.matrixWorld).invert();
+    const s = new THREE.Sphere(), box = new THREE.Box3(), b = new THREE.Box3();
+    const far = new Set(), check = [], merged = [], spheres = new Map();
+    top.traverse((o) => {
+      if (o.isLight) {
+        far.add(o);
+        if (o.shadow && o.shadow.camera) { o.shadow.camera.layers.enable(FAR_LAYER); o.shadow.camera.layers.enable(SMALL_LAYER); } // (they still cast shadows)
+        return;
+      }
+      if (!o.geometry) return;
+      if (o.userData.near) { merged.push(o); return; }
+      if (o.userData.far || (o.isInstancedMesh && !o.frustumCulled) || o.isPoints) far.add(o);
+      else check.push(o);
+    });
+    // Things that move (a comet, satellites, a tram...) are checked at a few moments
+    // of their animation: anything that ever goes far away counts as far.
+    [0, 13.7, 61.3, 147.9].forEach((t, i) => {
+      if (i > 0) {
+        if (!world.update) return;
+        try { world.update(t); } catch (e) { return; }
+        top.updateMatrixWorld(true);
+      }
+      for (const o of check) {
+        if (far.has(o) || (i > 0 && o.isInstancedMesh)) continue;
+        // (the copies in an InstancedMesh don't move: measured once)
+        const sp = o.isInstancedMesh ? spheres.get(o) || worldSphere(o, new THREE.Sphere()) : worldSphere(o, s);
+        if (!sp) continue;
+        if (o.isInstancedMesh) spheres.set(o, sp);
+        if (isFarSphere(s.copy(sp).applyMatrix4(inv))) far.add(o);
+      }
+    });
+    if (world.update) try { world.update(0); } catch (e) { /* (it moves on by itself) */ }
+    top.updateMatrixWorld(true);
+    for (const o of far) o.traverse((c) => c.layers.set(FAR_LAYER));
+    // how far the near things reach (for the patch of ground), and which ones are little
+    world.smallParts = [];
+    for (const o of check.concat(merged)) {
+      if (far.has(o) || !o.isMesh || o.isInstancedMesh || o.layers.mask !== 1 || !o.geometry.attributes.position) continue;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      box.union(b.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld).applyMatrix4(inv));
+      const sp = !o.userData.near && worldSphere(o, s);
+      if (sp && sp.radius < 1.6) { o.layers.set(SMALL_LAYER); world.smallParts.push(o); }
+    }
+    const ext = box.isEmpty() ? 24 : Math.hypot(Math.max(-box.min.x, box.max.x, 17), Math.max(-box.min.z, box.max.z, 11));
+    world.padRadius = Math.max(22, Math.min(31, ext * 0.92));
+    return world;
   }
 
   // Lots of copies of one small shape (flowers, grass, books) drawn in one go.
@@ -2598,7 +2696,9 @@
 
   // opts: anything the place needs (for a home: whose home and its furniture)
   function build(id, opts) {
-    const s = builders[id](opts || {});
+    splitFar = true;
+    let s;
+    try { s = builders[id](opts || {}); } finally { splitFar = false; }
     const meta = list.find((l) => l.id === id) || hiddenPlaces.find((l) => l.id === id);
     return Object.assign(s, meta, { helmet: !!s.helmet, floaty: !!s.floaty });
   }
@@ -2623,7 +2723,8 @@
   const kit = {
     THREE, TAU, toon, glow, G, put, ball, cylinder, block, disc, group, dynamic, canvasTexture, seeded,
     skyDome, addLights, mergeStatic, scatter, roundTree, palmTree, bush, parkBench, lampPost, rock,
+    bakeGeo, paintedMat,
   };
 
-  root.World3D = { build, dispose, list, debug, kit, addPlace };
+  root.World3D = { build, dispose, list, debug, kit, addPlace, markFar, FAR_LAYER, SMALL_LAYER };
 })(typeof self !== "undefined" ? self : this);

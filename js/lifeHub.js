@@ -108,7 +108,7 @@
     // A little "♪" floating up from a performer.
     function note(w) {
       const THREE = root.THREE;
-      if (!THREE || !hub.camera) return;
+      if (!THREE || !hub.camera || hub.flying) return;
       const s = w.inst.holder.scale.y;
       const v = new THREE.Vector3(w.inst.holder.position.x, w.inst.holder.position.y + 1.9 * s, w.inst.holder.position.z).project(hub.camera);
       if (v.z >= 1) return;
