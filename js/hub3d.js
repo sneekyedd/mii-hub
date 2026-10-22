@@ -2300,7 +2300,7 @@
 
     // Landing from a jump (or a drop): a little squash, more the faster it came down.
     landed(w) {
-      if (w.liftVel < -1.5) w.squashVel -= Math.min(3.4, -w.liftVel * 0.45);
+      if (w.liftVel < -1.5) w.squashVel -= Math.min(2.8, -w.liftVel * 0.4);
     }
 
     // Turns a Mii towards `goal` the way a person would: easing into the turn and out
@@ -2412,7 +2412,7 @@
 
       // squash and stretch: stretching up while flying through the air, squashing on landing
       // (a springy wobble, from the feet up)
-      const air = !anchor && !w.held && !reduce && w.lift > this.baseLift(w) + 0.03 ? Math.min(0.1, Math.abs(w.liftVel) * 0.016) : 0;
+      const air = !anchor && !w.held && !reduce && w.lift > this.baseLift(w) + 0.03 ? Math.min(0.07, Math.abs(w.liftVel) * 0.013) : 0;
       if (reduce) { w.squash = 0; w.squashVel = 0; }
       else {
         const steps = Math.max(1, Math.ceil(dt * 120)), h = dt / steps;
@@ -2438,7 +2438,7 @@
       w.blinkIn -= dt;
       if (w.blinkIn <= 0) { w.blinkT = 0.13; w.blinkIn = Math.random() < 0.18 ? 0.3 : rnd(2, 6); }
       if (w.blinkT > 0) w.blinkT -= dt;
-      if (M.setEyesClosed) M.setEyesClosed(w.inst, w.sleep || lying || (w.blinkT > 0 && !w.held));
+      if (M.setEyesClosed) M.setEyesClosed(w.inst, w.sleep || lying || (w.blinkT > 0 && !w.held && w.state !== "photo"));
       rig.pose({
         t: this.time + (w.id.length % 7) * 0.37,
         dt,
@@ -2769,7 +2769,8 @@
         w.arms = pose.arms || "down";
         w.bow = !!pose.bow;
         w.yaw = w.targetYaw = this.viewYaw(w) + (pose.face || 0) * 0.65;
-        w.yawVel = 0; w.lookYaw = 0; w.squash = 0; w.squashVel = 0;
+        w.yawVel = 0; w.lookYaw = 0; w.squash = 0; w.squashVel = 0; w.walkAmt = 0;
+        w.inst.rig.poseKey = null; // (straight into the pose, no blending: the picture is taken soon)
       });
       const release = () => {
         for (const w of list) {
