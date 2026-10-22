@@ -2757,9 +2757,20 @@
         block(g, 0x3a6ab8, 0, 0.56, 0, 0.6, 0.12, 0.4, 0.03);
         block(g, 0x5a8a3a, 0, 0.62, 0, 0.54, 0.02, 0.34, 0.008);
         const bark = toon(0x7a5230);
-        const segs = [[0, 0.62, 0, 0.06, 0.32, 0.25], [0.08, 0.9, 0.0, 0.05, 0.3, -0.45], [-0.03, 1.15, 0.02, 0.04, 0.26, 0.4], [0.15, 1.02, 0.0, 0.03, 0.26, -1.1]];
-        for (const [x, y, z, r, len, rz] of segs) put(g, G.taper(r * 0.75, r), bark, { x: x - Math.sin(rz) * len / 2, y: y + Math.cos(rz) * len / 2, z, sy: len, rz });
-        for (const [x, y, z, r] of [[-0.12, 1.3, 0, 0.2], [0.12, 1.4, 0.02, 0.17], [0.32, 1.13, 0.02, 0.15], [-0.25, 1.12, 0.03, 0.13]]) ball(g, 0x4f9e35, x, y, z, r, { sy: 0.45 });
+        // each branch starts where the one it grows from is (trunk -> top, plus two side branches),
+        // with a knot at every joint, and the leaf pads sit on the branch tips
+        const tip = (x, y, rz, len) => [x - Math.sin(rz) * len, y + Math.cos(rz) * len];
+        const branch = (x, y, r, len, rz) => {
+          put(g, G.taper(r * 0.75, r), bark, { x: x - Math.sin(rz) * len / 2, y: y + Math.cos(rz) * len / 2, z: 0, sy: len, rz });
+          ball(g, bark, x, y, 0, r * 0.95);
+          return tip(x, y, rz, len);
+        };
+        const t0 = branch(0, 0.62, 0.06, 0.32, 0.25);
+        const t1 = branch(t0[0], t0[1], 0.05, 0.3, -0.45);
+        const t2 = branch(t0[0], t0[1], 0.04, 0.24, 0.6);
+        const mid = tip(t0[0], t0[1], -0.45, 0.15);
+        const t3 = branch(mid[0], mid[1], 0.03, 0.28, -1.1);
+        for (const [x, y, r] of [[t1[0] - 0.08, t1[1] + 0.07, 0.2], [t1[0] + 0.08, t1[1] + 0.19, 0.15], [t3[0] + 0.03, t3[1] + 0.02, 0.15], [t2[0] - 0.03, t2[1] + 0.02, 0.13]]) ball(g, 0x4f9e35, x, y, 0, r, { sy: 0.45 });
         for (const [x, z] of [[0.18, 0.08], [-0.2, -0.06]]) ball(g, 0x9a9aa0, x, 0.64, z, 0.04, { sy: 0.6 });
         // little scissors on the stand
         for (const s of [-1, 1]) block(g, 0xdfe4ea, 0.36, 0.505, 0.17, 0.14, 0.01, 0.02, 0.004, { ry: s * 0.25 });

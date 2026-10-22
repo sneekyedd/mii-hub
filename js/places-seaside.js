@@ -1556,7 +1556,7 @@
     const BS = { x: 9.4, z: 7.6 };
     const bs = group(root, BS.x, 0, BS.z);
     for (const sx of [-1.6, 1.6]) cylinder(bs, 0x55606e, sx, 1.4, -0.45, 0.06, 2.8);
-    block(bs, toon(0xd8f2ff, { transparent: true, opacity: 0.45 }), 0, 1.55, -0.5, 3.2, 1.9, 0.04, 0.01);
+    block(bs, toon(0xd8f2ff, { transparent: true, opacity: 0.45, depthWrite: false }), 0, 1.55, -0.5, 3.2, 1.9, 0.04, 0.01);
     block(bs, 0x4a90e2, 0, 2.85, -0.1, 3.6, 0.12, 1.3, 0.04);
     block(bs, 0x4a90e2, 0, 0.47, -0.2, 2.4, 0.07, 0.5, 0.03);
     for (const sx of [-1.0, 1.0]) block(bs, 0x55606e, sx, 0.23, -0.2, 0.06, 0.46, 0.4, 0.02);
