@@ -554,7 +554,7 @@
       this.scene.background = this.flightBg;
       this.scene.fog = this.flightFog;
       this.planet.setRig(f.look.lights, this.planet.lightState(this.world), k, s.target, s);
-      this.planet.update(this.time, space);
+      this.planet.update(space);
       // only places above the horizon get drawn, and far away ones without their little things
       for (const e of this.places.values()) {
         if (!e.world) { e.anchor.visible = false; continue; }

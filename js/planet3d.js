@@ -147,14 +147,15 @@
   // ------------------------------------------------------------------
   function colorOf(d, out) {
     const v = land(d);
-    if (Math.abs(d.y) > 0.93 + Math.sin(d.x * 13) * 0.02) return out.setHex(0xf4f8ff); // snowy poles
     // deep sea, shallow sea, a sandy beach, then grass (blended, so the coasts look soft)
-    if (v < 0) return out.setHex(0x2f8ae0).lerp(SHALLOW, smooth(clamp((v + 0.3) / 0.3, 0, 1)));
-    if (v < 0.1) return out.copy(SAND).lerp(GRASS, smooth(clamp((v - 0.04) / 0.06, 0, 1)));
-    return out.copy(GRASS).lerp(GRASS2, clamp(Math.sin(d.x * 21 + d.z * 17) * 0.5 + 0.5, 0, 1) * 0.5);
+    if (v < 0) out.setHex(0x2f8ae0).lerp(SHALLOW, smooth(clamp((v + 0.3) / 0.3, 0, 1)));
+    else if (v < 0.1) out.copy(SAND).lerp(GRASS, smooth(clamp((v - 0.04) / 0.06, 0, 1)));
+    else out.copy(GRASS).lerp(GRASS2, clamp(Math.sin(d.x * 21 + d.z * 17) * 0.5 + 0.5, 0, 1) * 0.5);
+    // ...and snow at the poles
+    return out.lerp(SNOW, smooth(clamp((Math.abs(d.y) - 0.91 - Math.sin(d.x * 13) * 0.015) / 0.04, 0, 1)));
   }
 
-  const SHALLOW = new THREE.Color(0x6cc6f2), SAND = new THREE.Color(0xf2dca0), GRASS = new THREE.Color(0x6cc85a), GRASS2 = new THREE.Color(0x58b04c);
+  const SHALLOW = new THREE.Color(0x6cc6f2), SAND = new THREE.Color(0xf2dca0), GRASS = new THREE.Color(0x6cc85a), GRASS2 = new THREE.Color(0x58b04c), SNOW = new THREE.Color(0xf4f8ff);
 
   // A sphere whose corners are colored by fn(direction, color).
   function paintedSphere(r, wSeg, hSeg, fn) {
@@ -171,13 +172,14 @@
   }
 
   /*
-   * Planet.create(hub) -> {
+   * Planet.create() -> {
    *   group      everything for flying (planet, Moon, patches under the places, sun...)
    *   setPad(id, radius)   the patch of ground under a place (once we know its size)
    *   pads       id -> { frame, radius }
    *   rig        the sun and sky light used while flying (see setRig)
-   *   setRig(a, b, k, at, basis, space)  mixes the lights of two places, around point at
-   *   update(t, camera, space)  clouds drift, stars fade in out in space
+   *   setRig(a, b, k, at, basis)  mixes the lights of two places (lightState), around point at
+   *   lightState(world)  how a place is lit right now (null: the flying lights)
+   *   update(space)  the stars show up (space: 0 near the ground .. 1 out in space)
    * }
    */
   function create() {
@@ -200,7 +202,7 @@
     const craters = [];
     const cr = (() => { let s = 5; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
     for (let i = 0; i < 40; i++) craters.push({ c: new V3(cr() - 0.5, cr() - 0.5, cr() - 0.5).normalize(), r: 0.08 + cr() * 0.2 });
-    const moon = new THREE.Mesh(paintedSphere(MOON_R, 96, 64, (d, out) => {
+    const moon = new THREE.Mesh(paintedSphere(MOON_R, 128, 88, (d, out) => {
       out.setHex(0xb9a9dd);
       for (const k of craters) {
         const a = Math.acos(clamp(d.dot(k.c), -1, 1)) / k.r;
@@ -270,24 +272,28 @@
     });
     group.add(trees);
 
-    // a few puffy clouds drifting round
+    // a few puffy clouds
     const cloudGeo = K.bakeGeo((g) => {
       const puff = (x, y, z, s) => K.put(g, K.G.lowSphere(), K.toon(0xffffff), { x, y, z, s });
       puff(0, 0, 0, 2.2); puff(2.2, -0.4, 0.3, 1.6); puff(-2.1, -0.5, 0, 1.5); puff(0.6, 1.1, 0, 1.4); puff(-0.9, 0.7, 0.6, 1.2);
     });
     const cloudMat = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: K.paintedMat.gradientMap, vertexColors: true, transparent: true, opacity: 0.92 });
-    const clouds = new THREE.InstancedMesh(cloudGeo, cloudMat, 16);
-    for (let i = 0; i < 16; i++) {
+    // (not over the places, where they'd get in the camera's way)
+    const cloudSpots = [];
+    for (let tries = 0; tries < 400 && cloudSpots.length < 16; tries++) {
       pd.set(tr() * 2 - 1, (tr() * 2 - 1) * 0.8, tr() * 2 - 1).normalize();
-      o.position.copy(pd).multiplyScalar(EARTH_R + 38 + tr() * 16);
+      if (!Object.keys(SPOTS).some((id) => !SPOTS[id].moon && pd.dot(frameFor(id).up) > Math.cos(48 / EARTH_R))) cloudSpots.push(pd.clone());
+    }
+    const clouds = new THREE.InstancedMesh(cloudGeo, cloudMat, cloudSpots.length);
+    for (let i = 0; i < cloudSpots.length; i++) {
+      pd.copy(cloudSpots[i]);
+      o.position.copy(pd).multiplyScalar(EARTH_R + 24 + tr() * 10);
       o.quaternion.setFromUnitVectors(new V3(0, 1, 0), pd);
       o.scale.set(2.2 + tr(), 1.4 + tr() * 0.6, 2 + tr());
       o.updateMatrix();
       clouds.setMatrixAt(i, o.matrix);
     }
-    const cloudSpin = new THREE.Group();
-    cloudSpin.add(clouds);
-    group.add(cloudSpin);
+    group.add(clouds);
 
     // stars (they show when you're high up, or on the way to the Moon)
     const sp = [];
@@ -366,8 +372,7 @@
       rig.fill.target.position.copy(at);
     }
 
-    function update(t, space) {
-      cloudSpin.rotation.y = t * 0.004;
+    function update(space) {
       stars.material.opacity = clamp(space, 0, 1) * 0.9;
       stars.visible = space > 0.02;
     }
@@ -554,7 +559,7 @@
   }
 
   /*
-   * Traffic.create(hub, planet) -> { group, update(dt), clear() }
+   * createTraffic(hub, planet) -> { group, update(dt), clear(), list }
    * Every frame it asks hub.travelers() for the Miis on their way somewhere:
    * [{ id, from, to, k (0..1 of the way), name }] and moves a vehicle for each.
    */
@@ -565,7 +570,7 @@
     const M = root.MiiModel;
     const placeOf = (id) => (id === "home" ? "apartments" : id);
 
-    // a point at the edge of place a's patch, on the side facing direction d
+    // a point at the edge of a place's patch of ground, on the side facing the point "toward"
     function edgePoint(id, toward) {
       const f = frameFor(id);
       const pad = planet.pads.get(id);
@@ -632,7 +637,7 @@
 
     function makeVehicle(t) {
       if (!models) models = makeModels();
-      const v = { id: t.id, name: t.name, to: t.to, from: t.from, root: new THREE.Group(), body: {}, shown: null, k0: 0, kPrev: t.k };
+      const v = { id: t.id, to: t.to, root: new THREE.Group(), body: {}, shown: null, k0: 0 };
       const paintMat = new THREE.MeshToonMaterial({ color: colorFor(t.id), gradientMap: root.World3D.kit.paintedMat.gradientMap, vertexColors: true });
       v.paintMat = paintMat;
       for (const kind of ["car", "boat", "plane", "rocket"]) {
@@ -737,7 +742,8 @@
         v.root.scale.setScalar(Math.max(0.01, pop * clamp(dist / 80, 1, 3)));
         // the Mii only moves when you can see it
         const onScreen = ndc.copy(wp).project(hub.camera);
-        const visible = hub.vehiclesShown !== false && ndc.z < 1 && Math.abs(ndc.x) < 1.1 && Math.abs(ndc.y) < 1.1;
+        const visible = !hub.visiting && // (not while you're inside a home)
+          ndc.z < 1 && Math.abs(ndc.x) < 1.1 && Math.abs(ndc.y) < 1.1;
         if (v.mii) v.mii.holder.visible = !!models[v.shown].seat && visible && dist < 300;
         if (v.mii && v.mii.holder.visible && dist < 160) {
           v.mii.rig.pose({ t: time, dt, arms: v.shown === "car" ? "type" : "down", sit: true, walk: 0, phase: 0, legsOut: true });
