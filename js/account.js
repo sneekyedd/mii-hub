@@ -363,6 +363,10 @@
   // ---------------------------------------------------------------------
   // Noticing changes and saving online
   // ---------------------------------------------------------------------
+  // when you last clicked or pressed a key here: Miis change the world by themselves all the time,
+  // so a change only counts as yours (meta.touchedAt, kept between visits) if you just did something
+  let lastTouch = 0;
+  for (const ev of ["pointerdown", "keydown", "wheel"]) root.addEventListener(ev, () => { lastTouch = Date.now(); }, { capture: true, passive: true });
   let changeSeq = 0, changedSinceBackup = false, saveTimer = null, saving = null, leaving = false, started = false;
   const signedIn = () => !!(meta.token && meta.owner);
 
@@ -370,6 +374,7 @@
     if (quiet || leaving || !started) return;
     changeSeq++;
     changedSinceBackup = true;
+    if (Date.now() - lastTouch < 15000 && Date.now() - (meta.touchedAt || 0) > 5000) { meta.touchedAt = Date.now(); saveMeta(); }
     if (meta.owner && !meta.dirty) { meta.dirty = true; saveMeta(); renderStatus(); }
     if (signedIn() && !saveTimer) saveTimer = setTimeout(() => { saveTimer = null; saveOnline().catch(() => {}); }, SAVE_AFTER_CHANGE);
   }
@@ -410,7 +415,9 @@
   }
   // saved on another device since this copy was loaded: which one do you want?
   async function conflict(data) {
-    const pick = await dialog("This world changed somewhere else",
+    // nothing you did here since the last online save (only the Miis living their lives): take the newer one
+    const idle = !((meta.touchedAt || 0) > (meta.lastSave || 0));
+    const pick = idle ? "theirs" : await dialog("This world changed somewhere else",
       "“" + (meta.worldName || "This world") + "” was saved on another device while this one had changes that weren't saved online. Which one do you want to keep?",
       [{ label: "💻 Keep this device's world", value: "mine", kind: "primary" }, { label: "☁️ Use the other device's world", value: "theirs" }]);
     if (pick === "theirs") {

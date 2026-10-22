@@ -11,7 +11,16 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-22", title: "Paintball all over town",
+      v: null, date: "2026-10-22", title: "Accounts and cloud saves",
+      notes: [
+        "👤 Sign in: make an account to keep your world online and play it on any of your devices. Your device stays signed in until you sign out. Your world from before is kept: it becomes your account's first world.",
+        "🌍 Several worlds: make, rename, switch between and delete worlds (⚙️ Settings → Account).",
+        "💾 Your world saves online by itself, and you can press Save now. This device also keeps backups every 10 minutes (the last 8) that you can go back to.",
+        "Don't want an account? Play offline, just like before.",
+      ],
+    },
+    {
+      v: "1.2.9", date: "2026-10-22", title: "Paintball all over town",
       notes: [
         "🎨 Paintball has 10 maps now: Shipment at the park, Café Street, the beach, the Moon and the office, plus a map of its own for each of those places (Picnic Park, Market Square, Boardwalk, Moon Base and Open Office) with high spots to crouch-jump onto.",
         "Online, you vote between two maps or Random (which picks a different one). Playing against a Mii, you can pick any map.",

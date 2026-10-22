@@ -53,6 +53,10 @@ const MAX_TOKENS = 10;                      // devices signed in at once (the ol
 const TOKEN_DAYS = 365;                     // a device unused for a year signs in again
 const SCRYPT = { N: 16384, r: 8, p: 1 };
 
+// never let saves fill the disk (other things on this computer need it too):
+// accounts stop saving while less than this is free
+const MIN_FREE_BYTES = parseFloat(process.env.MIN_FREE_GB || "10") * 1024 ** 3;
+
 const USER_RE = /^[A-Za-z0-9_.-]{3,20}$/;
 const HASH_RE = /^[0-9a-f]{64}$/;
 const ID_RE = /^w[0-9a-z]{4,24}$/;
@@ -60,11 +64,23 @@ const ID_RE = /^w[0-9a-z]{4,24}$/;
 module.exports = function accounts(ctx) {
   const { send, clean, log } = ctx;
   const usersDir = path.join(DATA_DIR, "users");
-  fs.mkdirSync(usersDir, { recursive: true });
+  // (if the folder can't be made, e.g. no permission, accounts are off but games still work)
+  let off = null;
+  try { fs.mkdirSync(usersDir, { recursive: true }); fs.accessSync(usersDir, fs.constants.W_OK); } catch (e) {
+    off = e.code || "error";
+    log("⚠️ accounts are OFF: can't write to " + usersDir + " (" + off + "). Set DATA_DIR to a folder this server can write to.");
+  }
   let accountCount = 0;
   try { accountCount = fs.readdirSync(usersDir).length; } catch (e) { /* new folder */ }
 
   // ---------- small helpers ----------
+  async function diskOk() {
+    if (!fsp.statfs) return true; // (older Node: can't tell)
+    try { const st = await fsp.statfs(DATA_DIR); return st.bavail * st.bsize > MIN_FREE_BYTES; } catch (e) { return true; }
+  }
+  async function needDisk() {
+    if (!(await diskOk())) { log("⚠️ accounts: disk almost full, not saving"); throw err("disk", "The server is out of space right now. Your world is still saved on this device."); }
+  }
   const keyOf = (user) => String(user).toLowerCase();
   const userDir = (key) => path.join(usersDir, key);
   const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
@@ -140,6 +156,7 @@ module.exports = function accounts(ctx) {
     if (pass.length < 6 || pass.length > 200) throw err("pass", "Passwords need at least 6 characters.");
     if (tooMany("signup:" + p.ip, 20, 3600e3, Date.now())) throw err("slow", "Too many new accounts from here. Try again later.");
     if (accountCount >= MAX_ACCOUNTS) throw err("full", "This server can't take any more accounts.");
+    await needDisk();
     const key = keyOf(user);
     return locked(key, async () => {
       try { await fsp.mkdir(userDir(key)); } catch (e) {
@@ -272,6 +289,7 @@ module.exports = function accounts(ctx) {
         case "acSave": {
           const w = findWorld(acc, msg.id);
           if (!msg.force && w.rev !== msg.base) throw Object.assign(err("conflict", "This world was saved on another device."), { rev: w.rev });
+          await needDisk();
           const data = msg.data;
           if (!data || typeof data !== "object" || !Array.isArray(data.miis)) throw err("bad", "That save doesn't look right.");
           const blobs = path.join(userDir(key), "blobs");
@@ -311,7 +329,7 @@ module.exports = function accounts(ctx) {
           if (!HASH_RE.test(h) || n < 1 || n > Math.ceil(MAX_BLOB_BYTES / BLOB_CHUNK) || typeof msg.b64 !== "string") throw err("bad", "That model doesn't look right.");
           const piece = Buffer.from(msg.b64, "base64");
           if (piece.length > BLOB_CHUNK) throw err("bad", "That piece is too big.");
-          if (i === 0) p.acUp = { hash: h, n, next: 0, parts: [], size: 0 };
+          if (i === 0) { await needDisk(); p.acUp = { hash: h, n, next: 0, parts: [], size: 0 }; }
           const up = p.acUp;
           if (!up || up.hash !== h || up.n !== n || up.next !== i) { p.acUp = null; throw err("order", "Model pieces arrived out of order."); }
           up.parts.push(piece); up.size += piece.length; up.next++;
@@ -353,6 +371,7 @@ module.exports = function accounts(ctx) {
       send(p, Object.assign({ t: "acRes", q, ok: false, code: e.code && e.mine ? e.code : "server", msg: e.mine ? e.message : "The server had a problem. Try again in a bit." }, e.rev != null ? { rev: e.rev } : {}));
     };
     let job;
+    if (off) { fail(err("off", "Accounts aren't available on this server right now.")); return true; }
     switch (msg.t) {
       case "acSignup": job = signup(p, msg); break;
       case "acLogin": job = login(p, msg); break;

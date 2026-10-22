@@ -515,8 +515,17 @@ const server = http.createServer((req, res) => {
 });
 const wss = new WebSocketServer({ server, maxPayload: MAX_MII_BYTES * 1.4 + 4096 });
 
+// who's connecting: behind a proxy on this computer (like Tailscale Funnel) every connection comes
+// from 127.0.0.1, so the real address is the last one the proxy added to X-Forwarded-For
+function clientIp(req) {
+  const direct = req.socket.remoteAddress || "?";
+  const local = direct === "127.0.0.1" || direct === "::1" || direct === "::ffff:127.0.0.1";
+  const fwd = String(req.headers["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(Boolean);
+  return local && fwd.length ? fwd[fwd.length - 1].slice(0, 64) : direct;
+}
+
 wss.on("connection", (ws, req) => {
-  const p = { id: "p" + (nextId++), ws, name: "Mii", color: "#ff3fa4", mii: null, skins: { ak: null, awp: null, deagle: null, knife: null }, room: null, ready: false, alive: false, hp: 100, score: 0, deaths: 0, lastSt: 0, lastAk: 0, lastKnife: 0, pos: null, isAlive: true, ip: req.socket.remoteAddress || "?" };
+  const p = { id: "p" + (nextId++), ws, name: "Mii", color: "#ff3fa4", mii: null, skins: { ak: null, awp: null, deagle: null, knife: null }, room: null, ready: false, alive: false, hp: 100, score: 0, deaths: 0, lastSt: 0, lastAk: 0, lastKnife: 0, pos: null, isAlive: true, ip: clientIp(req) };
   players.set(p.id, p);
   log("+ " + p.id + " connected from " + (req.socket.remoteAddress || "?") + " (" + players.size + " online)");
   ws.on("pong", () => { p.isAlive = true; });
