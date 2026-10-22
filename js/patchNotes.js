@@ -11,7 +11,14 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-22", title: "Jobs, vacations, clothes, rooms and bands",
+      v: null, date: "2026-10-22", title: "Paintball all over town",
+      notes: [
+        "🎨 Paintball has 10 maps now: Shipment at the park, Café Street, the beach, the Moon and the office, plus a map of its own for each of those places (Picnic Park, Market Square, Boardwalk, Moon Base and Open Office) with high spots to crouch-jump onto.",
+        "Online, you vote between two maps or Random (which picks a different one). Playing against a Mii, you can pick any map.",
+      ],
+    },
+    {
+      v: "1.2.8", date: "2026-10-22", title: "Jobs, vacations, clothes, rooms and bands",
       notes: [
         "💼 Jobs: every Mii has a job (help desk at the office, astronaut on the Moon, lifeguard at the beach, teacher or student at the college) and goes to work now and then in its uniform to earn coins. Change it in the Mii's menu under Life.",
         "✈️ Vacations: now and then a Mii goes away for a while, and comes back with lots of coins and souvenirs for its home.",
