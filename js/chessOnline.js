@@ -73,7 +73,10 @@
 
   // a tiny "tock" for moves (no sound files needed)
   let actx = null;
+  let lastTock = 0;
   function tock(capture) {
+    if (Date.now() - lastTock < 150) return; // never twice for one move
+    lastTock = Date.now();
     try {
       actx = actx || new (root.AudioContext || root.webkitAudioContext)();
       const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
@@ -257,6 +260,7 @@
             if (!next) return;
             const lm = C.legalMoves(gameState(), mv.from).find((m) => m.to === mv.to);
             tock(lm && lm.capture);
+            lastMoves = room.moves.length + 1; // so the server's echo of this move doesn't tock again
             board.setPosition(next, { from: mv.from, to: mv.to });
             board.setInteractive(null);
             send({ t: "chMove", from: mv.from, to: mv.to, promo: mv.promo, n: room.moves.length });

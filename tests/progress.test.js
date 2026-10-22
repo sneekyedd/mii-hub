@@ -128,5 +128,37 @@ assert(Object.keys(prog.state.stickers).length > 0, "some stickers are earned by
   H.ensureHome(fresh);
   assert(H.SLOTS.every((s) => prog.newFor(fresh, s.id).every((it) => !fresh.home.owned.includes(it.id))));
 }
+// rare events: each one has its own hidden sticker (the page is "???" until you've seen one)
+{
+  const ids = prog.HIDDEN_EVENTS.map((e) => e.id);
+  for (const id of ["mustang", "ufo", "crabs", "boo", "ducks", "printer", "koi", "plane", "cat"]) assert(ids.includes(id), "hidden event " + id);
+  assert.strictEqual(new Set(ids).size, ids.length, "hidden event ids are unique");
+  assert(prog.HIDDEN_EVENTS.every((e) => e.icon && e.name && e.desc && e.hint), "every hidden event has an icon, name, description and hint");
+  const hiddenPage = () => prog.stickerPages().find((p) => p.hidden);
+  const before = hiddenPage().stickers.filter((s) => s.got).length;
+  let got = [];
+  prog.on("sticker", (s) => got.push(s.id));
+  prog.hiddenEvent("not-a-real-event");
+  assert.strictEqual(got.length, 0, "unknown rare events give nothing");
+  prog.hiddenEvent("crabs");
+  prog.hiddenEvent("crabs"); // (seeing it again gives nothing new)
+  assert.deepStrictEqual(got, ["h-crabs"], "the crab dance gives its sticker once");
+  for (const id of ["boo", "ducks", "printer", "koi", "plane", "cat"]) prog.hiddenEvent(id);
+  assert.strictEqual(hiddenPage().stickers.filter((s) => s.got).length, before + 7, "all the new rare events give stickers");
+  assert.strictEqual(hiddenPage().name, "Hidden Events");
+}
+
+// the crabs' song: 30 full bars (60 seconds at 120 bpm), every bar of the tune adds up
+{
+  require("../js/crabSong.js");
+  const S = global.MiiCrabSong;
+  assert.strictEqual(S.SONG_URL, null, "the made-up song plays unless a file is set");
+  assert.strictEqual(S.duration(), 60);
+  const { TUNE, CHORDS, BARS } = S._score;
+  assert.strictEqual(CHORDS.length, BARS);
+  assert.strictEqual(TUNE.length, BARS);
+  TUNE.forEach((bar, i) => { if (bar) assert.strictEqual(bar.reduce((n, [, len]) => n + len, 0), 8, "bar " + (i + 1) + " is 8 eighths long"); });
+}
+
 assert(saved, "progress is saved");
 console.log("All progress tests passed. Town level " + prog.state.level + ", " + Object.keys(prog.state.stickers).length + " stickers, " + wishing.length + " wishes after 600 s.");

@@ -659,7 +659,7 @@
 
   const ready = start().catch((e) => { console.warn("Account start-up problem:", e); }).then(() => {
     started = true;
-    setupPanel();
+    if (signedIn()) refreshWorlds();
     // first save of a new account, a world brought along, or changes made offline
     if (signedIn() && (meta.dirty || meta.force)) {
       changeSeq++;
@@ -680,32 +680,47 @@
   }
 
   // ---------------------------------------------------------------------
-  // The Account panel (in the sidebar)
+  // The Account section at the top of ⚙️ Settings (app.js asks for it each
+  // time Settings opens: MiiAccount.settingsSection())
   // ---------------------------------------------------------------------
-  function setupPanel() {
-    const panel = $("accountPanel");
-    if (!panel) return;
-    panel.hidden = false;
-    $("acWorldSel").addEventListener("change", (e) => switchWorld(e.target.value));
-    $("acNew").addEventListener("click", newWorld);
-    $("acRename").addEventListener("click", renameWorld);
-    $("acDelete").addEventListener("click", deleteWorld);
-    $("acSaveNow").addEventListener("click", saveNow);
-    $("acBackups").addEventListener("click", toggleBackups);
-    $("acSignOut").addEventListener("click", signOutOrIn);
-    renderPanel();
-    if (signedIn()) refreshWorlds();
+  function settingsSection() {
+    const sec = document.createElement("section");
+    sec.className = "set-sec ac-sec";
+    sec.id = "acSection";
+    sec.innerHTML =
+      "<h4>Account</h4>" +
+      '<p class="ac-status" id="acStatus"></p>' +
+      '<div id="acWorldsBox" hidden>' +
+        '<label class="set-row"><span>🏝️ World<small>Each world has its own Miis, homes and progress</small></span><select id="acWorldSel" class="ac-select" aria-label="Your worlds"></select></label>' +
+        '<div class="ac-btns"><button class="tb-btn" id="acNew">➕ New world</button><button class="tb-btn" id="acRename">✏️ Rename</button><button class="tb-btn" id="acDelete">🗑️ Delete…</button></div>' +
+      "</div>" +
+      '<div class="set-row"><span>💾 Save<small id="acSaveHint"></small></span><span class="ac-btns"><button class="tb-btn" id="acSaveNow">Save now</button><button class="tb-btn" id="acBackups">🕘 Backups</button></span></div>' +
+      '<ul class="ac-backups" id="acBackupList" hidden></ul>' +
+      '<div class="set-row" id="acSignRow"><span id="acSignText"></span><button class="tb-btn" id="acSignOut"></button></div>';
+    const q = (id) => sec.querySelector("#" + id);
+    q("acWorldSel").addEventListener("change", (e) => switchWorld(e.target.value));
+    q("acNew").addEventListener("click", newWorld);
+    q("acRename").addEventListener("click", renameWorld);
+    q("acDelete").addEventListener("click", deleteWorld);
+    q("acSaveNow").addEventListener("click", saveNow);
+    q("acBackups").addEventListener("click", toggleBackups);
+    q("acSignOut").addEventListener("click", signOutOrIn);
+    // (filled in once it's on the page)
+    setTimeout(() => { renderPanel(); if (signedIn()) refreshWorlds(); }, 0);
+    return sec;
   }
   async function refreshWorlds() {
     try { const r = await rpc({ t: "acWorlds" }); worlds = r.worlds; } catch (e) { /* offline: keep what we have */ }
     renderPanel();
   }
   function renderPanel() {
-    if (!$("accountPanel") || !started) return;
+    if (!$("acSection") || !started) return;
     const inAccount = signedIn();
     $("acWorldsBox").hidden = !inAccount;
-    $("acSignOut").hidden = noServer;
-    $("acSignOut").textContent = inAccount ? "Sign out" : "Sign in or create an account";
+    $("acSignRow").hidden = noServer;
+    $("acSignOut").textContent = inAccount ? "Sign out" : "Sign in…";
+    $("acSignText").textContent = inAccount ? "🚪 Sign out of this device" : "☁️ Sign in or create an account";
+    $("acSaveHint").textContent = inAccount ? "Saves online now (it also saves by itself), plus a backup on this device" : "Keeps a backup on this device (one is also made every 10 minutes)";
     const sel = $("acWorldSel");
     sel.innerHTML = "";
     const list = worlds.length ? worlds : meta.worldId ? [{ id: meta.worldId, name: meta.worldName || "My island" }] : [];
@@ -755,7 +770,7 @@
     return true;
   }
   async function switchWorld(id) {
-    const sel = $("acWorldSel");
+    const sel = $("acWorldSel") || {};
     if (id === meta.worldId) return;
     sel.disabled = true;
     try {
@@ -807,7 +822,7 @@
 
   // ---------- saving and backups ----------
   async function saveNow() {
-    const btn = $("acSaveNow");
+    const btn = $("acSaveNow") || {};
     btn.disabled = true;
     try {
       await backup("Saved with “Save now”");
@@ -817,7 +832,7 @@
         if (!meta.dirty) { meta.dirty = true; saveMeta(); }
         try { await saveOnline(); } catch (e) { renderStatusText("📴 Saved on this device. Couldn't save online (" + e.message + "): it'll try again later."); return; }
       } else renderStatusText("💾 Saved a backup on this device.");
-      if (!$("acBackupList").hidden) renderBackups();
+      if ($("acBackupList") && !$("acBackupList").hidden) renderBackups();
     } finally { btn.disabled = false; }
   }
   function toggleBackups() {
@@ -827,6 +842,7 @@
   }
   async function renderBackups() {
     const list = $("acBackupList");
+    if (!list) return;
     const all = await listBackups();
     list.innerHTML = "";
     if (!all.length) { const li = document.createElement("li"); li.className = "ac-empty"; li.textContent = "No backups yet. One is made every 10 minutes while you play, and when you press Save now."; list.appendChild(li); return; }
@@ -873,6 +889,7 @@
   root.MiiAccount = {
     ready,
     saveNow,
+    settingsSection,
     get user() { return signedIn() ? meta.user : null; },
     get online() { return online; },
     _meta: () => Object.assign({}, meta, { token: meta.token ? "(set)" : null }), // for tests

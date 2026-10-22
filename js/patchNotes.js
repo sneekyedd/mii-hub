@@ -11,7 +11,31 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-20", title: "Game reviews, wishes you have to ask about, and secrets",
+      v: null, date: "2026-10-21", title: "Settings, a bigger view and group photos",
+      notes: [
+        "⚙️ Settings: dark mode, How chatty?, simulation speed, sandbox mode (everything free and unlocked), patch notes, updates, and reset all progress. Sandbox mode and fast speed pause sticker earning while they're on (you're asked first).",
+        "The desktop app can open the hub as a tab in your web browser (in Settings).",
+        "The right-side menu is gone, so the world gets the whole screen. Residents are in the Places dropdown (click one to go to them), ➕ Add Miis is in the top bar, and a Mii's menu opens in a side panel.",
+        "📷 Group pictures: in a Mii's menu, pick who's in the picture and their poses (better friends unlock more poses; Miis who are fighting won't pose together). It's saved to your Downloads folder.",
+      ],
+    },
+    {
+      v: "1.2.5", date: "2026-10-21", title: "Crabs, ducks, cats and more secrets",
+      notes: [
+        "Seven new very rare Hidden Events: something might happen at the beach, the park, the office, the courtyard, the college, the stage... and even while you're visiting a Mii's home. You have to be watching!",
+        "Apartments have their curtains closed while their Mii is out.",
+        "The chandelier hangs from the ceiling now instead of a super-long chain.",
+        "In windy weather, leaves (or petals, or snow) sometimes blow past.",
+      ],
+    },
+    {
+      v: "1.2.4", date: "2026-10-21", title: "Chess sound fix",
+      notes: [
+        "Online chess: the move sound no longer plays twice when a turn changes.",
+      ],
+    },
+    {
+      v: "1.2.3", date: "2026-10-20", title: "Game reviews, wishes you have to ask about, and secrets",
       notes: [
         "Chess: after every game (vs a Mii or online), 📊 Review the game shows your accuracy and how good each move was, from Book and Best to Blunder, with the better move for your mistakes.",
         "Wishes: the Wishes list is gone. A 💭 by a Mii's name in Residents (and a ❗ over its head) means it wants something: go and talk to it (its menu) to find out what and help.",

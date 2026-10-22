@@ -6,12 +6,13 @@
  * Use: MiiMusic.start()        (call once; it begins after your first click, as browsers require)
  *      MiiMusic.pause(true|false)  (e.g. while Paintball is open)
  *      MiiMusic.toggle()       on/off (remembered)
+ *      MiiMusic.duck(true|false)   fade out (and back in) while another song plays (e.g. the crab dance)
  */
 (function (root) {
   "use strict";
   const KEY = "mii-hub-music";
   let ctx = null, gain = null, src = null, buffer = null, loading = null;
-  let enabled = true, paused = false, started = false;
+  let enabled = true, paused = false, started = false, ducked = false;
   try { enabled = localStorage.getItem(KEY) !== "off"; } catch (e) { /* private window */ }
   const VOLUME = 0.35;
 
@@ -38,13 +39,13 @@
     src.start(0, src.loopStart);
   }
   function stop() { if (src) { try { src.stop(); } catch (e) { /* already stopped */ } src.disconnect(); src = null; } }
-  function update() {
+  function update(fade) {
     if (!ctx) return;
     const on = enabled && !paused;
     const t = ctx.currentTime;
     gain.gain.cancelScheduledValues(t);
     gain.gain.setValueAtTime(gain.gain.value, t);
-    gain.gain.linearRampToValueAtTime(on ? VOLUME : 0, t + 0.6);
+    gain.gain.linearRampToValueAtTime(on && !ducked ? VOLUME : 0, t + (fade || 0.6));
     if (on) { if (ctx.state === "suspended") ctx.resume(); decode().then(play).catch(() => {}); }
     if (root.MiiMusic.onChange) root.MiiMusic.onChange(enabled);
   }
@@ -64,12 +65,23 @@
     document.addEventListener("pointerdown", once, true);
     document.addEventListener("keydown", once, true);
   }
-  function pause(p) { paused = !!p; update(); }
+  function pause(p) {
+    paused = !!p;
+    if (paused && root.MiiCrabSong) root.MiiCrabSong.stop(); // (no crab song in Paintball either)
+    update();
+  }
+  // Another song is playing: fade this one out slowly (it keeps looping silently), and back in after.
+  function duck(d) {
+    if (ducked === !!d) return;
+    ducked = !!d;
+    update(2);
+  }
   function toggle() {
     enabled = !enabled;
+    if (!enabled && root.MiiCrabSong) root.MiiCrabSong.stop();
     try { localStorage.setItem(KEY, enabled ? "on" : "off"); } catch (e) { /* private window */ }
     update();
     return enabled;
   }
-  root.MiiMusic = { start, pause, toggle, isOn: () => enabled, onChange: null, _state: () => ({ ctx: ctx && ctx.state, playing: !!src, buffer: buffer && buffer.duration, gain: gain && gain.gain.value, paused }) };
+  root.MiiMusic = { start, pause, toggle, duck, isOn: () => enabled, isDucked: () => ducked, onChange: null, _state: () => ({ ctx: ctx && ctx.state, playing: !!src, buffer: buffer && buffer.duration, gain: gain && gain.gain.value, paused, ducked }) };
 })(typeof window !== "undefined" ? window : globalThis);

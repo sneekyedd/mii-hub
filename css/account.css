@@ -13,8 +13,8 @@
 .lg-tabs button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
 .lg-field { display: grid; gap: 4px; font-size: 0.85rem; font-weight: 800; }
 .lg-field[hidden] { display: none; }
-.lg-field input, .ac-input, .ac-world select { padding: 9px 11px; border-radius: 10px; border: 2px solid var(--border); background: var(--bg); color: var(--text); font: inherit; font-weight: 600; min-width: 0; }
-.lg-field input:focus, .ac-input:focus, .ac-world select:focus { outline: none; border-color: var(--accent); }
+.lg-field input, .ac-input { padding: 9px 11px; border-radius: 10px; border: 2px solid var(--border); background: var(--bg); color: var(--text); font: inherit; font-weight: 600; min-width: 0; }
+.lg-field input:focus, .ac-input:focus, .ac-select:focus { outline: none; border-color: var(--accent); }
 .lg-note { margin: 0; font-size: 0.82rem; color: var(--muted); font-weight: 700; }
 .lg-note:empty, .lg-msg:empty { display: none; }
 .lg-msg { margin: 0; font-size: 0.85rem; font-weight: 800; color: var(--danger); }
@@ -22,17 +22,16 @@
 .lg-offline { justify-self: center; padding: 6px 10px; border: none; background: none; color: var(--muted); font: inherit; font-size: 0.85rem; font-weight: 800; text-decoration: underline; cursor: pointer; }
 .lg-offline:hover { color: var(--text); }
 
-/* the Account panel */
-.ac-status { margin: 0 0 8px; }
-.ac-status small { color: var(--muted); }
-.ac-world { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; margin-bottom: 8px; font-weight: 800; font-size: 0.9rem; }
-.ac-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.ac-btns .btn { flex: 1 1 auto; width: auto; margin: 0; padding: 7px 10px; font-size: 0.85rem; }
-.ac-backups { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; max-height: 220px; overflow-y: auto; }
+/* the Account section in ⚙️ Settings */
+.ac-status { margin: 0 0 4px; font-size: 0.88rem; font-weight: 700; }
+.ac-status small { display: block; color: var(--muted); font-weight: 600; }
+.ac-select { max-width: 170px; padding: 6px 9px; border-radius: 10px; border: 2px solid var(--border); background: var(--bg); color: var(--text); font: inherit; font-weight: 700; }
+.ac-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+#acWorldsBox > .ac-btns { margin: 2px 0 6px; justify-content: flex-end; }
+#acWorldsBox[hidden], #acSignRow[hidden] { display: none; }
+.ac-backups { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 4px; max-height: 200px; overflow-y: auto; }
 .ac-backups li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 9px; background: var(--bg); font-size: 0.8rem; font-weight: 700; }
 .ac-backups li.ac-empty { color: var(--muted); }
-.ac-signout { display: block; }
-.ac-signout[hidden] { display: none; }
 
 /* a small pop-up (above the sign-in page too) */
 .ac-modal { position: fixed; inset: 0; z-index: 10001; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(20, 30, 60, 0.45); backdrop-filter: blur(2px); }
