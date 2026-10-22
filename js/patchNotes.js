@@ -11,7 +11,13 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-22", title: "Accounts and cloud saves",
+      v: null, date: "2026-10-22", title: "The real crab song",
+      notes: [
+        "🦀 The crabs at the beach now dance to their real song (and on its beat). You still have to be watching the beach to see them...",
+      ],
+    },
+    {
+      v: "1.2.10", date: "2026-10-22", title: "Accounts and cloud saves",
       notes: [
         "👤 Sign in: make an account to keep your world online and play it on any of your devices. Your device stays signed in until you sign out. Your world from before is kept: it becomes your account's first world.",
         "🌍 Several worlds: make, rename, switch between and delete worlds (⚙️ Settings → Account).",

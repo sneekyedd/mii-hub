@@ -19,7 +19,8 @@
   "use strict";
 
   // >>> Set this to a sound file (relative to index.html) to replace the made-up song. <<<
-  const SONG_URL = null; // e.g. "music/crab-dance.ogg"
+  const SONG_URL = "music/crab-dance.ogg"; // the real crab song (the made-up one plays if this can't load)
+  const SONG_BPM = 125; // its tempo, so the crabs change moves on the beat (change it with the file)
 
   const VOLUME = 0.4;
   const BPM = 120, BEAT = 60 / BPM, BAR = BEAT * 4, E = BEAT / 2; // E = one eighth note
@@ -270,6 +271,8 @@
     }
   }
 
+  // seconds per beat of whichever song is playing
+  const beat = () => 60 / (useFile() ? SONG_BPM : BPM);
   function duration() {
     if (useFile() && el && isFinite(el.duration) && el.duration > 0) return el.duration;
     return LENGTH;
@@ -277,7 +280,7 @@
 
   root.MiiCrabSong = {
     SONG_URL, LENGTH, BPM,
-    prepare, play, stop, duration,
+    prepare, play, stop, duration, beat,
     playing: () => wantPlay || !!src || !!(el && !el.paused),
     _render: render, _score: { TUNE, CHORDS, BARS }, // (for testing)
   };

@@ -14,11 +14,11 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..");
 const PORT = 47863;
 // only the files the page needs (never anything else on the computer)
-const ALLOWED = ["index.html", "css", "js", "fonts", "build"];
+const ALLOWED = ["index.html", "css", "js", "fonts", "music", "build"];
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml",
-  ".woff2": "font/woff2", ".woff": "font/woff", ".glb": "model/gltf-binary", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav",
+  ".woff2": "font/woff2", ".woff": "font/woff", ".glb": "model/gltf-binary", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".ogg": "audio/ogg", ".wav": "audio/wav",
   ".ico": "image/x-icon", ".txt": "text/plain; charset=utf-8",
 };
 

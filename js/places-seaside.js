@@ -958,7 +958,7 @@
             if (window.MiiCrabSong) music(() => window.MiiCrabSong.play());
           }
         } else if (P.phase === "dance") {
-          const b = P.time / BEAT;                  // beats since the song began
+          const b = P.time / ((window.MiiCrabSong && window.MiiCrabSong.beat) ? window.MiiCrabSong.beat() : BEAT); // beats since the song began
           const move = Math.floor(b / 8) % 5;       // a new move every 2 bars
           const pulse = Math.pow(1 - (b % 1), 2.5); // a kick on every beat
           const finale = P.time > P.length - 2.2;
