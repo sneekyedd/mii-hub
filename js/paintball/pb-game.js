@@ -1,6 +1,6 @@
 /*
  * paintball/pb-game.js
- * Paintball: a first-person shooter on Shipment, against one of your Miis
+ * Paintball: a first-person shooter on Shipment (and a map for each hub place), against one of your Miis
  * or online against other people (pb-online.js + the server in /server).
  *
  *   Lobby   "VS a Mii": pick the Mii you play as and the Mii you play against.
@@ -46,7 +46,7 @@
   // ---------------------------------------------------------------------
   // Settings (kept between games)
   // ---------------------------------------------------------------------
-  const DEFAULTS = { mode: "respawn", tab: "mii", server: "", fov: 90, sens: 2.0, volume: 0.7, xhColor: "#3dff6e", xhStyle: "static", xhSize: 5, xhGap: 3, player: null, opponent: null };
+  const DEFAULTS = { mode: "respawn", map: "shipment_park", tab: "mii", server: "", fov: 90, sens: 2.0, volume: 0.7, xhColor: "#3dff6e", xhStyle: "static", xhSize: 5, xhGap: 3, player: null, opponent: null };
   function loadSettings() {
     try { return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")); } catch (e) { return Object.assign({}, DEFAULTS); }
   }
@@ -58,6 +58,11 @@
     const h = clamp(fov || 90, 60, 150) * DEG;
     return 2 * Math.atan(Math.tan(h / 2) / (4 / 3)) / DEG;
   }
+
+  // The maps (pb-layouts.js): names, and picking one
+  const LY = () => root.PBLayouts;
+  const mapName = (id) => { const m = LY() && LY().mapById(id); return m ? m.name : "Shipment"; };
+  const validMap = (id) => (LY() && LY().mapById(id) ? id : (LY() ? LY().DEFAULT_MAP : "shipment_park"));
 
   // Make the whole map (looks + everything you bump into) bigger
   function scaleMap(map, k) {
@@ -75,6 +80,7 @@
       }
     });
     if (map.fog && map.fog.density) map.fog.density /= k;
+    if (map.ceiling) map.ceiling *= k;
     return map;
   }
 
@@ -255,6 +261,12 @@
 .pb-mode{background:#ffffff0d;border:2px solid #ffffff1a;color:#fff;border-radius:12px;padding:7px 12px;text-align:left}
 .pb-mode b{display:block;font-size:15px}.pb-mode span{font-size:12px;opacity:.7}
 .pb-mode.on{border-color:#ffb21e;background:#ffb21e22}
+.pb-maps{margin-top:22px}
+.pb-map-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.pb-map{background:#ffffff0d;border:2px solid #ffffff1a;color:#fff;border-radius:12px;padding:7px 10px;text-align:left;display:grid;grid-template-columns:auto 1fr;column-gap:8px;align-items:center}
+.pb-map i{font-style:normal;font-size:22px;grid-row:span 2}
+.pb-map b{font-size:14px}.pb-map span{font-size:11px;opacity:.65;line-height:1.25}
+.pb-map.on{border-color:#ffb21e;background:#ffb21e22}
 .pb-net{position:absolute;top:14px;left:14px;font-size:12px;opacity:.6;font-weight:700}
 .pb-kill.note{opacity:.8;font-weight:700}
 .pb-death .again{margin-top:8px;font-size:16px;color:#ffb21e}
@@ -401,7 +413,7 @@
       const lob = el("div", "pb-lobby");
       const head = el("div", "pb-lob-head");
       const h1 = el("h1", null, "🎯 PAINTBALL");
-      h1.appendChild(el("small", null, "Shipment"));
+      h1.appendChild(el("small", null, tab === "online" ? "Online" : mapName(settings.map === "random" ? null : settings.map)));
       const tabs = el("div", "pb-tabs");
       for (const [id, label] of [["mii", "🤖 VS a Mii"], ["online", "🌐 Online"]]) {
         const b = el("button", "pb-tab" + (tab === id ? " on" : ""), label);
@@ -462,24 +474,44 @@
       });
       goWrap.append(modes, go, el("div", "pb-vs", you && opp ? (you.name + " vs " + opp.name) : "You need at least 2 Miis"));
       bottom.append(setBox, controlsBox(), goWrap);
-      lob.append(cols, bottom);
+      lob.append(cols, mapPicker(), bottom);
+    }
+
+    // VS a Mii: play on any map (or a random one)
+    function mapPicker() {
+      const box = el("div", "pb-box pb-maps");
+      box.appendChild(el("h3", null, "Map"));
+      const grid = el("div", "pb-map-grid");
+      const maps = LY() ? LY().MAPS : [];
+      const icon = (m) => { const st = LY().SETTINGS.find((x) => x.id === m.setting); return st ? st.icon : "🎯"; };
+      for (const m of maps.concat([{ id: "random", name: "Random", desc: "Any map, picked by chance." }])) {
+        const b = el("button", "pb-map" + ((settings.map || "shipment_park") === m.id ? " on" : ""));
+        b.append(el("i", null, m.id === "random" ? "🎲" : icon(m)), el("b", null, m.name), el("span", null, m.desc || ""));
+        b.addEventListener("click", () => { settings.map = m.id; saveSettings(settings); showLobby(); });
+        grid.appendChild(b);
+      }
+      box.appendChild(grid);
+      return box;
     }
 
     function loading(text) {
       rootEl.innerHTML = "";
-      const load = el("div", "pb-loading", text || "LOADING SHIPMENT");
+      const load = el("div", "pb-loading", text || "LOADING");
       load.appendChild(el("i"));
       rootEl.appendChild(load);
       return load;
     }
 
     async function startMatch() {
-      const load = loading();
+      let mapId = settings.map;
+      if (mapId === "random" && LY()) mapId = LY().MAPS[Math.floor(Math.random() * LY().MAPS.length)].id;
+      mapId = validMap(mapId);
+      const load = loading("LOADING " + mapName(mapId).toUpperCase());
       await new Promise((r) => setTimeout(r, 30));
       try {
         const [tYou, tOpp] = await Promise.all([opts.templateFor(you), opts.templateFor(opp)]);
         match = new Match({
-          root: rootEl, opts, settings, you, opp, tYou, tOpp, mode: settings.mode,
+          root: rootEl, opts, settings, you, opp, tYou, tOpp, mode: settings.mode, map: mapId,
           onExit: (to) => { if (to === "lobby") showLobby(); else close(); },
           onRematch: () => startMatch(),
         });
@@ -504,11 +536,12 @@
       // the room's match is starting: build it
       async startOnline(cfg) {
         if (match) { match.dispose(); match = null; }
-        const load = loading("LOADING SHIPMENT");
+        const mapId = validMap(cfg.map);
+        const load = loading("LOADING " + mapName(mapId).toUpperCase());
         try {
           const tYou = await opts.templateFor(you);
           match = new Match({
-            root: rootEl, opts, settings, you, tYou, net: cfg.net, roster: cfg.roster, youColor: cfg.youColor,
+            root: rootEl, opts, settings, you, tYou, net: cfg.net, roster: cfg.roster, youColor: cfg.youColor, map: mapId,
             initial: cfg.initial, roomName: cfg.roomName,
             onExit: (to) => { match && match.dispose(); match = null; root.__pb = null; if (cfg.onLeave) cfg.onLeave(); if (to === "hub") close(); else showLobby(); },
           });
@@ -620,18 +653,8 @@
       this.renderer = r;
 
       // the map
-      this.map = scaleMap(root.PBMap.build({}), MAP_SCALE);
       this.scene = new THREE.Scene();
-      this.scene.add(this.map.group);
-      this.scene.background = this.map.background || new THREE.Color(0x6d7884);
-      this.scene.fog = this.map.fog || null;
-      this.world = new E.World(this.map);
-      this.spawns = this.map.spawns.a.concat(this.map.spawns.b);
-      // the bot finds its way around with the same route-finder Miis use in the hub
-      const obstacles = [];
-      for (const b of this.map.boxes) if (b.y1 > CFG.step && b.y0 < 1.6) obstacles.push({ x: b.x, z: b.z, w: b.hw * 2, d: b.hd * 2, rot: -(b.rot || 0) });
-      for (const c of this.map.cyls) if (c.y1 > CFG.step) obstacles.push({ x: c.x, z: c.z, r: c.r });
-      this.nav = new root.MiiNav.Nav(this.map.bounds, obstacles, 0.35);
+      this.loadMap(validMap(o.map));
 
       this.camera = new THREE.PerspectiveCamera(verticalFov(this.settings.fov), 16 / 9, 0.03, 400);
       this.camera.rotation.order = "YXZ";
@@ -697,6 +720,40 @@
       this.resize();
       this.onResize = () => this.resize();
       window.addEventListener("resize", this.onResize);
+    }
+
+    // (Re)builds the map: what you see, what you bump into, the spawns and the bot's routes
+    loadMap(id) {
+      if (this.map) {
+        this.scene.remove(this.map.group);
+        try { this.map.dispose(); } catch (e) { /* ignore */ }
+        // paint splats belong to the old walls
+        for (const m of this.splats || []) this.scene.remove(m);
+        if (this.splats) this.splats.length = 0;
+      }
+      this.mapId = id;
+      this.map = scaleMap(root.PBMap.build({ map: id }), MAP_SCALE);
+      this.scene.add(this.map.group);
+      this.scene.background = this.map.background || new THREE.Color(0x6d7884);
+      this.scene.fog = this.map.fog || null;
+      // (one World for the whole match: the movers and the bot keep pointing at it)
+      const w = new E.World(this.map);
+      if (this.world) Object.assign(this.world, { boxes: w.boxes, cyls: w.cyls, bounds: w.bounds }); else this.world = w;
+      this.spawns = this.map.spawns.a.concat(this.map.spawns.b);
+      // the bot finds its way around with the same route-finder Miis use in the hub
+      const obstacles = [];
+      for (const b of this.map.boxes) if (b.y1 > CFG.step && b.y0 < 1.6) obstacles.push({ x: b.x, z: b.z, w: b.hw * 2, d: b.hd * 2, rot: -(b.rot || 0) });
+      for (const c of this.map.cyls) if (c.y1 > CFG.step && c.y0 < 1.6) obstacles.push({ x: c.x, z: c.z, r: c.r });
+      this.nav = new root.MiiNav.Nav(this.map.bounds, obstacles, 0.35);
+      if (this.bot && this.bot.brain) { this.bot.brain.nav = this.nav; this.bot.brain.resetRound(); }
+    }
+    // online: the lobby moved on to another map
+    useMap(id) {
+      id = validMap(id);
+      if (id === this.mapId) return;
+      this.loadMap(id);
+      for (const f of this.fighters) if (f.mover && f !== this.you) f.mover.place(f.mover.pos.x, f.mover.pos.z);
+      this.notice("Map: " + mapName(id));
     }
 
     addFighter(kind, name, color, rec) {
@@ -956,7 +1013,8 @@
       const b = this.hudBoard;
       b.innerHTML = "";
       const h = el("h3");
-      const title = this.mode === "rounds" ? "Shipment · Round " + this.round : this.online ? "Shipment · " + (this.o.roomName || "Online") : "Shipment · Respawn";
+      const mn = mapName(this.mapId);
+      const title = this.mode === "rounds" ? mn + " · Round " + this.round : this.online ? mn + " · " + (this.o.roomName || "Online") : mn + " · Respawn";
       h.append(el("span", null, title), el("small", null, this.mode === "rounds" ? "First to " + this.toWin + " rounds" : "First to " + this.toWin + " eliminations"));
       b.appendChild(h);
       const tbl = el("table");
@@ -1152,7 +1210,7 @@
           for (const p of m.room.players) { const f = fOf(p.id); if (f) { f.score = p.score; f.stats.deaths = Math.max(f.stats.deaths, p.deaths); } }
           this.updateScore();
         },
-        warmup: () => this.netWarmup(),
+        warmup: (m) => this.netWarmup(m),
         start: (m) => this.netStart(m, 0),
         round: (m) => this.netRound(m, 0),
         roundEnd: (m) => this.netRoundEnd(m),
@@ -1185,7 +1243,7 @@
         if (I.phase && I.phase.t === "start") {
           this.netStart(I.phase, age(I.phase));
           if (I.round && I.round.at >= I.phase.at) this.netRound(I.round, age(I.round));
-        } else this.netWarmup();
+        } else this.netWarmup(I.phase);
         if (I.over && I.inter) { this.finish(null, "You arrived just as a match ended"); this.showVote(I.inter, age(I.inter)); if (I.votes) this.updateVotes(I.votes); }
         return;
       }
@@ -1221,7 +1279,8 @@
       if (!this.locked()) { this.ovClick.classList.add("show"); }
     }
     // nobody to play with: run around freely until someone joins
-    netWarmup() {
+    netWarmup(m) {
+      if (m && m.map) this.useMap(m.map);
       this.closeResults();
       this.phase = "warmup";
       this.mode = "respawn";
@@ -1233,6 +1292,7 @@
       this.updateScore();
     }
     netStart(m, age) {
+      if (m.map) this.useMap(m.map);
       this.closeResults();
       this.mode = m.mode === "rounds" ? "rounds" : "respawn";
       this.toWin = m.toWin || (this.mode === "rounds" ? 7 : RESPAWN_TO_WIN);
@@ -1300,7 +1360,8 @@
         for (const o of list) {
           const c = el("button", "pb-vote-card" + (list.length === 1 ? " sel" : ""));
           c.dataset.key = key; c.dataset.id = o.id;
-          c.append(el("b", null, o.name), el("span", "desc", o.desc || (list.length === 1 ? "More maps coming soon!" : "")), el("span", "pb-votes", ""));
+          const known = key === "map" && LY() && LY().mapById(o.id);
+          c.append(el("b", null, o.name), el("span", "desc", o.desc || (known ? known.desc : "")), el("span", "pb-votes", ""));
           c.addEventListener("click", () => {
             this.myVote = Object.assign(this.myVote || {}, { [key]: o.id });
             r.querySelectorAll(".pb-vote-card").forEach((n) => n.classList.toggle("sel", n === c));
@@ -1329,8 +1390,8 @@
     voteResult(m) {
       if (!this.voteBox) return;
       clearInterval(this.voteTimer);
-      const names = { respawn: "Respawn", rounds: "Rounds", shipment: "Shipment" };
-      const res = el("div", "pb-vote-result", "Next: " + (names[m.mode] || m.mode) + " on " + (names[m.map] || m.map));
+      const names = { respawn: "Respawn", rounds: "Rounds" };
+      const res = el("div", "pb-vote-result", "Next: " + (names[m.mode] || m.mode) + " on " + (m.name || mapName(m.map)) + (m.random ? " (random)" : ""));
       this.voteBox.appendChild(res);
     }
 
