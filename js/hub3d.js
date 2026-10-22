@@ -946,7 +946,7 @@
     }
 
     isBusy(w) {
-      return this.calls.has(w.id) || w.held || w.leaving || w.inShow || w.state === "interact" || w.state === "approach" || w.state === "waiting" || w.state === "perform" || w.state === "playing" || w.state === "photo";
+      return w.photoHold || this.calls.has(w.id) || w.held || w.leaving || w.inShow || w.state === "interact" || w.state === "approach" || w.state === "waiting" || w.state === "perform" || w.state === "playing" || w.state === "photo";
     }
 
     // You started a mini-game with this Mii: it stops and faces you while you play.
@@ -2214,6 +2214,23 @@
     }
 
     // ---------- group photo ----------
+    // While you're setting up a group picture, the Miis here stay put (nobody wanders off or
+    // leaves for somewhere else) until the picture is taken or you close the picker.
+    holdForPhoto(list) {
+      this.releasePhotoHold();
+      this.photoHeld = list.slice();
+      for (const w of this.photoHeld) {
+        w.photoHold = true;
+        if (w.state === "idle" || w.state === "walk") { w.path = null; w.target = null; w.state = "photo"; w.photo = null; }
+      }
+    }
+    releasePhotoHold() {
+      for (const w of this.photoHeld || []) {
+        w.photoHold = false;
+        if (w.state === "photo" && !w.photo) { w.state = "idle"; w.timer = rnd(1, 2.5); }
+      }
+      this.photoHeld = null;
+    }
     // Lines the Miis up (left to right, in list order) in front of the camera, each in
     // its pose, frames them and takes the picture. poses: id -> { arms, bow, lean, face }
     // (lean / face: -1 = toward the Mii on the left, 1 = toward the one on the right).

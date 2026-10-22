@@ -11,7 +11,13 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-22", title: "The real crab song",
+      v: null, date: "2026-10-22", title: "Say cheese!",
+      notes: [
+        "📷 While you're setting up a group picture, the Miis there hold still (nobody wanders off or leaves) until the picture is taken.",
+      ],
+    },
+    {
+      v: "1.2.11", date: "2026-10-22", title: "The real crab song",
       notes: [
         "🦀 The crabs at the beach now dance to their real song (and on its beat). You still have to be watching the beach to see them...",
       ],

@@ -2090,7 +2090,10 @@
     card.setAttribute("aria-label", "Group picture");
     back.appendChild(card);
     $("stage").appendChild(back);
-    const close = () => { back.remove(); document.removeEventListener("keydown", onKey); };
+    // everyone here holds still while you set it up (and goes back to normal when it closes)
+    hub.holdForPhoto(here);
+    let keepHold = false;
+    const close = () => { back.remove(); document.removeEventListener("keydown", onKey); if (!keepHold) hub.releasePhotoHold(); };
     const onKey = (e) => { if (e.key === "Escape") close(); };
     document.addEventListener("keydown", onKey);
     back.addEventListener("pointerdown", (e) => { if (e.target === back) close(); });
@@ -2201,6 +2204,7 @@
       go.className = "choice-btn primary ph-go";
       go.innerHTML = "📸 <b>Take the picture</b>";
       go.addEventListener("click", () => {
+        keepHold = true; // (still holding still for the picture itself)
         close();
         const poses = {};
         order.forEach((r, i) => {
@@ -2229,7 +2233,7 @@
   let photoBusy = false;
   async function takeGroupPhoto(order, poses, jump) {
     const list = order.map((r) => walkerOf(r.id)).filter(Boolean);
-    if (list.length < 2 || photoBusy) return;
+    if (list.length < 2 || photoBusy) { if (!photoBusy) hub.releasePhotoHold(); return; }
     photoBusy = true;
     closeMiiMenu();
     const say = pick(list);
@@ -2247,6 +2251,7 @@
     stageEl.appendChild(flash);
     setTimeout(() => flash.remove(), 700);
     stageEl.classList.remove("photo-mode");
+    hub.releasePhotoHold();
     photoBusy = false;
     if (!shot) return;
     const r = pick(list);
