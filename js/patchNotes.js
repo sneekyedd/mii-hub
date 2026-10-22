@@ -11,7 +11,19 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-22", title: "Little fixes",
+      v: null, date: "2026-10-22", title: "Jobs, vacations, clothes, rooms and bands",
+      notes: [
+        "💼 Jobs: every Mii has a job (help desk at the office, astronaut on the Moon, lifeguard at the beach, teacher or student at the college) and goes to work now and then in its uniform to earn coins. Change it in the Mii's menu under Life.",
+        "✈️ Vacations: now and then a Mii goes away for a while, and comes back with lots of coins and souvenirs for its home.",
+        "👕 Buy clothes: hats, glasses, capes and more. The more clothes a Mii has, the bigger its wardrobe gets.",
+        "🚪 Buy rooms: a kitchen, a bathroom and a game room, each with new kinds of furniture.",
+        "🎸 At the concert stage, a Mii sometimes hops up and plays an instrument while the others gather round and clap.",
+        "🎤 Miis learn songs as they level up, and might wish to start a band. When 4 friends join, go watch their show!",
+        "Miis sometimes drop hints about the furniture they'd love to have. There's also a new Life page in the sticker book.",
+      ],
+    },
+    {
+      v: "1.2.7", date: "2026-10-22", title: "Little fixes",
       notes: [
         "🩹 Make up: Miis who are fighting get a Make up button in their menu (under Friendships), so they can be friends (and in pictures) again.",
         "Daily goals reward you as soon as they're done (no Claim button to miss), so the daily-goal stickers unlock. Their hints are clearer too.",
