@@ -107,19 +107,21 @@ assert(Object.keys(prog.state.stickers).length > 0, "some stickers are earned by
     const w = prog.makeWish(sam);
     assert(!w || (w.type !== "furniture" && w.type !== "style"), "impossible furniture wish: " + (w && w.text));
   }
-  // one plant left to buy (and in the shop today): furniture wishes are only for plants
-  const plant = prog.shopItems("plant").find((it) => !it.starter);
-  assert(plant, "some plant is for sale today");
+  // one thing left to buy (and in the shop today): furniture wishes are only for that kind of thing
+  // (which kinds are in stock changes every day, so pick one that is today)
+  const slot = H.SLOTS.map((s) => s.id).find((id) => !["wallpaper", "floor"].includes(id) && prog.shopItems(id).some((it) => !it.starter));
+  const plant = slot && prog.shopItems(slot).find((it) => !it.starter);
+  assert(plant, "something is for sale today");
   sam.home.owned = sam.home.owned.filter((id) => id !== plant.id);
   let furn = 0;
   for (let i = 0; i < 600; i++) {
     const w = prog.makeWish(sam);
-    if (w && w.type === "furniture") { furn++; assert.strictEqual(w.slot, "plant", "only the plant slot has something new"); }
+    if (w && w.type === "furniture") { furn++; assert.strictEqual(w.slot, slot, "only that slot has something new"); }
     assert(!w || w.type !== "style", "walls and floor are all owned");
   }
   assert(furn > 0, "a furniture wish can still happen when there's something new");
   // ...and the wish goes away by itself if the Mii gets the last one some other way
-  sam.wish = { type: "furniture", slot: "plant", icon: "🪴", text: "I want a new plant!", left: 480 };
+  sam.wish = { type: "furniture", slot, icon: "🪴", text: "I want something new!", left: 480 };
   sam.home.owned.push(plant.id);
   prog.tick(0.1);
   assert(!sam.wish || sam.wish.type !== "furniture", "an impossible furniture wish is dropped");
