@@ -11,7 +11,15 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-22", title: "Say cheese!",
+      v: null, date: "2026-10-22", title: "A little planet",
+      notes: [
+        "🌍 Mii Hub is a little planet now! Pick another place and the camera flies over the planet to it, and all the way out to the Moon and back.",
+        "🚗 Miis on their way somewhere ride a car, a boat, a plane or a rocket (to the Moon), in their favorite color. Spot them going past!",
+        "Prefer it instant? ⚙️ Settings → Going places → ⚡ Jump.",
+      ],
+    },
+    {
+      v: "1.2.12", date: "2026-10-22", title: "Say cheese!",
       notes: [
         "📷 While you're setting up a group picture, the Miis there hold still (nobody wanders off or leaves) until the picture is taken.",
       ],
