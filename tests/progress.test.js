@@ -27,9 +27,14 @@ for (const k of Object.keys(events)) prog.on(k, (...a) => events[k].push(a));
 for (const r of records.values()) prog.ensure(r);
 
 // wishes appear over time (not too many at once)
-for (let i = 0; i < 600; i++) prog.tick(1);
+// (count every wish made, not just the ones still waiting at the end: wishes also expire)
+const madeWishes = new Set();
+prog.on("event", (e) => { if (e && e.type === "newWish") madeWishes.add(e.rec.id); });
+let most = 0;
+for (let i = 0; i < 600; i++) { prog.tick(1); most = Math.max(most, Array.from(records.values()).filter((r) => r.wish).length); }
 const wishing = Array.from(records.values()).filter((r) => r.wish);
-assert(wishing.length >= 1 && wishing.length <= 4, "a few Miis should have wishes after a while: " + wishing.length);
+assert(madeWishes.size >= 1, "a few Miis should have wished for something after a while: " + madeWishes.size);
+assert(most <= 4, "not too many wishes at once: " + most);
 
 // granting a food wish: coins, happiness, town XP
 const mia = records.get("m0");
