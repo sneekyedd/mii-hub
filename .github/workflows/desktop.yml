@@ -83,6 +83,13 @@ jobs:
         with:
           path: out
           merge-multiple: true
+      # never publish a release with nothing in it (installed apps would fail to check for updates)
+      - name: Check something was built
+        run: |
+          if ! ls out/latest*.yml >/dev/null 2>&1; then
+            echo "::error::No installers were built, so nothing is released. Check the build jobs above."
+            exit 1
+          fi
 
       - uses: softprops/action-gh-release@v2
         with:

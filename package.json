@@ -1,7 +1,7 @@
 {
   "name": "mii-hub",
   "productName": "Mii Hub",
-  "version": "1.2.7",
+  "version": "1.2.9",
   "description": "Watch your 3D Miis walk around, chat and become friends.",
   "main": "electron/main.js",
   "author": "sneekyedd",
@@ -10,7 +10,7 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --publish never",
-    "test": "node tests/glb.test.js && node tests/nav.test.js && node tests/minigames.test.js && node tests/homes.test.js && node tests/progress.test.js && node tests/paintball.test.js && node tests/chess.test.js"
+    "test": "node tests/glb.test.js && node tests/nav.test.js && node tests/minigames.test.js && node tests/homes.test.js && node tests/progress.test.js && node tests/life.test.js && node tests/paintball.test.js && node tests/chess.test.js"
   },
   "devDependencies": {
     "electron": "33.4.11",

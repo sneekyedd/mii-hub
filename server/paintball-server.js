@@ -26,7 +26,7 @@ const http = require("http");
 const crypto = require("crypto");
 const { WebSocketServer } = require("ws");
 
-const VERSION = 5; // (2: lobbies with warmup, modes and voting; 3: AWP loadout; 4: weapon skins; 5: online chess)
+const VERSION = 6; // (2: lobbies with warmup, modes and voting; 3: AWP loadout; 4: weapon skins; 5: online chess; 6: more maps)
 const PORT = parseInt(process.env.PORT || "8787", 10);
 const HOST = process.env.HOST || undefined; // e.g. 127.0.0.1 = only reachable through Tailscale Funnel
 const MAX_PLAYERS = Math.max(2, Math.min(16, parseInt(process.env.MAX_PLAYERS || "8", 10))); // most a host can pick
@@ -56,7 +56,7 @@ const KNIFE_DAMAGE = [25, 40, 65, 90, 180];
  *   create { name, password, max }       host a lobby (password optional; max players 2..MAX_PLAYERS)
  *   join   { room, password }            join a lobby by id (password if it has one)
  *   leave  {}
- *   vote   { mode, map }                 during the 15 s intermission: what to play next
+ *   vote   { mode, map }                 during the 15 s intermission: what to play next (map: one of the two shown, or "random")
  *   st     { s: [x, y, z, vx, vz, yaw, pitch, duck, flags] }   your movement, ~30 times a second
  *   shot   { w, o: [x,y,z], e: [x,y,z], n: [nx,ny,nz] | null, m }  w = "ak" | "awp" | "deagle"  a paintball you fired (for everyone's screens)
  *   ev     { k }                         a sound to play at your position (reload, deploy, land...)
@@ -65,12 +65,13 @@ const KNIFE_DAMAGE = [25, 40, 65, 90, 180];
  *   ping   { c }
  * server -> client
  *   welcome { id, v, maxPlayers, name, online }   rooms { rooms }   room { room }   mii { id, name, color, mii, skins }   skins { id, s }   bye { id }
- *   warmup {}                        nobody to play with yet: run around freely
+ *   warmup { map }                   nobody to play with yet: run around freely (on this map)
  *   start { in, mode, map, toWin, timeLimit, late?, round? }   a match begins after `in` ms
  *   round { n, in, scores }  roundEnd { winner, scores }   (rounds mode)
  *   st { id, s }  shot { id, ... }  ev { id, k }
  *   dmg { v, by, d, z, hp, w }  kill { v, by, w, h, b, scores }  spawn { id, x, z, yaw }
- *   over { winner, scores, mode }  intermission { in, modes, maps }  votes { modes, maps }  voted { mode, map }
+ *   over { winner, scores, mode }  intermission { in, modes, maps }  votes { modes, maps }  voted { mode, map, name, random }
+ *   (intermission maps: two maps + { id: "random" }; "random" ends up as a map that wasn't one of the two)
  *   pong { c, s }  err { msg }
  */
 
@@ -97,7 +98,7 @@ const hashPass = (salt, pw) => crypto.createHash("sha256").update(salt + "\u0000
 
 function roomInfo(room) {
   return {
-    id: room.id, name: room.name, host: room.host, state: room.state, toWin: TO_WIN, timeLimit: TIME_LIMIT, max: room.max, locked: !!room.pass,
+    id: room.id, name: room.name, host: room.host, state: room.state, map: room.map, toWin: TO_WIN, timeLimit: TIME_LIMIT, max: room.max, locked: !!room.pass,
     players: room.players.map((id) => {
       const p = players.get(id);
       return { id, name: p.name, color: p.color, score: p.score, deaths: p.deaths, alive: p.alive };
@@ -131,7 +132,26 @@ const MODES = {
   respawn: { id: "respawn", name: "Respawn", desc: "Back in 2 s after being splattered. First to " + TO_WIN + " eliminations.", toWin: TO_WIN, timeLimit: TIME_LIMIT },
   rounds: { id: "rounds", name: "Rounds", desc: "No respawning: the last one standing wins the round. First to " + ROUNDS_TO_WIN + " rounds.", toWin: ROUNDS_TO_WIN, timeLimit: 0 },
 };
-const MAPS = { shipment: { id: "shipment", name: "Shipment" } };
+// The maps (the same ids as js/paintball/pb-layouts.js; the server doesn't need
+// their shapes: it only decides which one is played)
+const MAP_LIST = [
+  ["shipment_park", "Shipment Park"], ["shipment_cafe", "Shipment Café"], ["shipment_beach", "Shipment Beach"],
+  ["shipment_moon", "Shipment Moon"], ["shipment_office", "Shipment Office"],
+  ["picnic", "Picnic Park"], ["market", "Market Square"], ["boardwalk", "Boardwalk"], ["moonbase", "Moon Base"], ["openoffice", "Open Office"],
+];
+const MAPS = {};
+for (const [id, name] of MAP_LIST) MAPS[id] = { id, name };
+const RANDOM = { id: "random", name: "Random", desc: "Any other map, picked by chance." };
+const anyOf = (list) => list[Math.floor(Math.random() * list.length)];
+// two different maps to vote on (not the one just played)
+function voteMaps(current) {
+  const a = anyOf(Object.keys(MAPS).filter((id) => id !== current));
+  const b = anyOf(Object.keys(MAPS).filter((id) => id !== current && id !== a));
+  return [a, b];
+}
+// "Random": any map that isn't one of the two shown
+const randomOther = (shown) => anyOf(Object.keys(MAPS).filter((id) => !shown.includes(id)));
+const mapOptions = (room) => room.voteMaps.map((id) => MAPS[id]).concat([RANDOM]);
 
 function clearTimers(room) {
   clearTimeout(room.timer); clearTimeout(room.roundTimer);
@@ -143,7 +163,7 @@ function toWarmup(room) {
   room.state = "warmup";
   room.votes = new Map();
   for (const id of room.players) { const p = players.get(id); p.score = 0; p.deaths = 0; }
-  broadcast(room, { t: "warmup" });
+  broadcast(room, { t: "warmup", map: room.map });
   roomChanged(room);
 }
 
@@ -208,10 +228,11 @@ function endMatch(room) {
   room.state = "intermission";
   room.votes = new Map();
   room.voteEnds = Date.now() + INTERMISSION_MS;
+  room.voteMaps = voteMaps(room.map);
   broadcast(room, {
     t: "intermission", in: INTERMISSION_MS,
     modes: Object.values(MODES).map((m) => ({ id: m.id, name: m.name, desc: m.desc })),
-    maps: Object.values(MAPS).map((m) => ({ id: m.id, name: m.name })),
+    maps: mapOptions(room),
   });
   room.timer = setTimeout(() => finishVote(room), INTERMISSION_MS);
   roomChanged(room);
@@ -237,8 +258,10 @@ function finishVote(room) {
   if (room.state !== "intermission") return;
   const c = voteCounts(room);
   const mode = pickVote(c.modes, Object.keys(MODES));
-  room.map = pickVote(c.maps, Object.keys(MAPS));
-  broadcast(room, { t: "voted", mode, map: room.map, counts: c });
+  const shown = room.voteMaps || voteMaps(room.map);
+  const pick = pickVote(c.maps, shown.concat(["random"]));
+  room.map = pick === "random" ? randomOther(shown) : pick;
+  broadcast(room, { t: "voted", mode, map: room.map, name: MAPS[room.map].name, random: pick === "random", counts: c });
   if (room.players.length >= 2) startMatch(room, mode);
   else { room.mode = mode; toWarmup(room); }
 }
@@ -283,12 +306,12 @@ function joinRoom(p, room) {
   // what's going on in here right now
   const now = Date.now();
   const M = MODES[room.mode] || MODES.respawn;
-  if (room.state === "warmup") send(p, { t: "warmup" });
+  if (room.state === "warmup") send(p, { t: "warmup", map: room.map });
   else if (room.state === "live") {
     send(p, { t: "start", in: Math.max(0, room.startedAt - now), mode: room.mode, map: room.map, toWin: M.toWin, timeLimit: M.timeLimit ? M.timeLimit - Math.max(0, now - room.startedAt) : 0, late: true, round: room.round });
   } else if (room.state === "intermission") {
     send(p, { t: "over", winner: null, scores: scores(room), mode: room.mode, late: true });
-    send(p, { t: "intermission", in: Math.max(0, room.voteEnds - now), modes: Object.values(MODES).map((m) => ({ id: m.id, name: m.name, desc: m.desc })), maps: Object.values(MAPS).map((m) => ({ id: m.id, name: m.name })) });
+    send(p, { t: "intermission", in: Math.max(0, room.voteEnds - now), modes: Object.values(MODES).map((m) => ({ id: m.id, name: m.name, desc: m.desc })), maps: mapOptions(room) });
     send(p, Object.assign({ t: "votes" }, voteCounts(room)));
   }
   // who's already running around (they spawned before you got here)
@@ -384,7 +407,7 @@ function onMessage(p, msg) {
       const max = Math.max(2, Math.min(MAX_PLAYERS, Math.round(num(msg.max)) || MAX_PLAYERS));
       const r = {
         id, name: clean(msg.name, 32) || p.name + "'s lobby", host: p.id, players: [], state: "warmup", timer: null, roundTimer: null, startedAt: 0,
-        max, salt, pass: pw ? hashPass(salt, pw) : null, mode: "respawn", map: "shipment", votes: new Map(), round: 0,
+        max, salt, pass: pw ? hashPass(salt, pw) : null, mode: "respawn", map: anyOf(Object.keys(MAPS)), votes: new Map(), voteMaps: null, round: 0,
       };
       rooms.set(id, r);
       joinRoom(p, r);
@@ -411,7 +434,7 @@ function onMessage(p, msg) {
       if (!room || room.state !== "intermission") return;
       const v = room.votes.get(p.id) || {};
       if (MODES[msg.mode]) v.mode = msg.mode;
-      if (MAPS[msg.map]) v.map = msg.map;
+      if (msg.map === "random" || (room.voteMaps || []).includes(msg.map)) v.map = msg.map;
       room.votes.set(p.id, v);
       broadcast(room, Object.assign({ t: "votes" }, voteCounts(room)));
       break;
@@ -569,4 +592,4 @@ if (require.main === module) {
   }).catch((err) => { log("Couldn't start: " + err.message); process.exit(1); });
 }
 
-module.exports = { server, wss, VERSION, PORT, rooms, players, chess, accounts, start, stop, running };
+module.exports = { server, wss, VERSION, PORT, rooms, players, chess, accounts, start, stop, running, MAPS, voteMaps, randomOther };

@@ -27,9 +27,14 @@ for (const k of Object.keys(events)) prog.on(k, (...a) => events[k].push(a));
 for (const r of records.values()) prog.ensure(r);
 
 // wishes appear over time (not too many at once)
-for (let i = 0; i < 600; i++) prog.tick(1);
+// (count every wish made, not just the ones still waiting at the end: wishes also expire)
+const madeWishes = new Set();
+prog.on("event", (e) => { if (e && e.type === "newWish") madeWishes.add(e.rec.id); });
+let most = 0;
+for (let i = 0; i < 600; i++) { prog.tick(1); most = Math.max(most, Array.from(records.values()).filter((r) => r.wish).length); }
 const wishing = Array.from(records.values()).filter((r) => r.wish);
-assert(wishing.length >= 1 && wishing.length <= 4, "a few Miis should have wishes after a while: " + wishing.length);
+assert(madeWishes.size >= 1, "a few Miis should have wished for something after a while: " + madeWishes.size);
+assert(most <= 4, "not too many wishes at once: " + most);
 
 // granting a food wish: coins, happiness, town XP
 const mia = records.get("m0");
@@ -107,19 +112,21 @@ assert(Object.keys(prog.state.stickers).length > 0, "some stickers are earned by
     const w = prog.makeWish(sam);
     assert(!w || (w.type !== "furniture" && w.type !== "style"), "impossible furniture wish: " + (w && w.text));
   }
-  // one plant left to buy (and in the shop today): furniture wishes are only for plants
-  const plant = prog.shopItems("plant").find((it) => !it.starter);
-  assert(plant, "some plant is for sale today");
+  // one thing left to buy (and in the shop today): furniture wishes are only for that kind of thing
+  // (which kinds are in stock changes every day, so pick one that is today)
+  const slot = H.SLOTS.map((s) => s.id).find((id) => !["wallpaper", "floor"].includes(id) && prog.shopItems(id).some((it) => !it.starter));
+  const plant = slot && prog.shopItems(slot).find((it) => !it.starter);
+  assert(plant, "something is for sale today");
   sam.home.owned = sam.home.owned.filter((id) => id !== plant.id);
   let furn = 0;
   for (let i = 0; i < 600; i++) {
     const w = prog.makeWish(sam);
-    if (w && w.type === "furniture") { furn++; assert.strictEqual(w.slot, "plant", "only the plant slot has something new"); }
+    if (w && w.type === "furniture") { furn++; assert.strictEqual(w.slot, slot, "only that slot has something new"); }
     assert(!w || w.type !== "style", "walls and floor are all owned");
   }
   assert(furn > 0, "a furniture wish can still happen when there's something new");
   // ...and the wish goes away by itself if the Mii gets the last one some other way
-  sam.wish = { type: "furniture", slot: "plant", icon: "🪴", text: "I want a new plant!", left: 480 };
+  sam.wish = { type: "furniture", slot, icon: "🪴", text: "I want something new!", left: 480 };
   sam.home.owned.push(plant.id);
   prog.tick(0.1);
   assert(!sam.wish || sam.wish.type !== "furniture", "an impossible furniture wish is dropped");

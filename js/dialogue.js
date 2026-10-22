@@ -367,6 +367,36 @@
         { who: "B", say: pick(["Hahaha!", "Tell me another!", "What a story!"]), expr: "laugh", dur: 1.6 },
       ];
     },
+    // a hint for you: A talks about its favorite furniture that it doesn't have yet
+    // (ctx.favWant = { name, icon }, from progress.js)
+    hint(A, B, scene, points, ctx) {
+      const it = ctx.favWant;
+      const n = it.name.toLowerCase();
+      const a = /^[aeiou]/.test(n) ? "an " : "a ";
+      return [
+        { who: "A", say: pick(["I wish I had " + a + n + "...", "*sigh* If only I had " + a + n + "...", "You know what I really want? " + it.icon + " " + it.name + "!"]), emote: "💭", dur: 2.6 },
+        { who: "B", say: pick([it.name + "? That would suit you!", "Ooh, that sounds nice!", "Maybe someone will get you one!"]), dur: 2.2 },
+        { who: "A", say: pick(["One day...", "A Mii can dream!", "*daydreams*"]), expr: "laugh", dur: 1.8 },
+      ];
+    },
+
+    // A asks B to join its band (ctx.bandAsk = { song, accept }, from progress.js)
+    bandInvite(A, B, scene, points, ctx) {
+      const ask = ctx.bandAsk;
+      const steps = [
+        { who: "A", say: pick(["{B}, want to join my band? 🎸", "I'm starting a band! Want to be in it, {B}?", "We need one more cool Mii for my band... you in?"]), arms: "out", dur: 2.4 },
+        { who: "A", say: "We're going to play \"" + ask.song + "\"!", emote: "🎶", dur: 2.2 },
+      ];
+      if (ask.accept) return steps.concat([
+        { who: "B", say: pick(["Count me in! 🤘", "YES! I've always wanted to be in a band!", "Let's rock!"]), arms: "cheer", hop: true, emote: "🤘", dur: 2.2 },
+        { who: "both", say: "🎸🥁🎤", dance: true, emote: "🎵", dur: 2.0 },
+      ]);
+      return steps.concat([
+        { who: "B", say: pick(["Sorry, I'm not really a band person...", "Hmm... maybe another time.", "I get stage fright... sorry!"]), expr: "sad", dur: 2.4 },
+        { who: "A", say: pick(["Aww, okay!", "No worries!", "Your loss! Hehe."]), dur: 1.6 },
+      ]);
+    },
+
     sleepy() {
       return [
         { who: "A", say: "*yawwwn*", sleep: true, emote: "💤", dur: 2 },
@@ -415,9 +445,11 @@
     if (!remote && ctx.confess) type = "confess";
     else if (ctx.makeUp) type = "makeUp";
     else if (ctx.fight) type = "cold";
+    else if (ctx.bandAsk) type = "bandInvite";
     else if (remote) {
       type = points === 0 ? "chat" : weighted([
         ["chat", 3],
+        ["hint", ctx.favWant ? 0.5 : 0],
         ["joke", 0.5 + avg("humor") / 30],
         ["compliment", points >= 4 ? 0.3 + a.kindness / 35 : 0],
         ["disagree", points >= 1 ? 0.08 + (100 - avg("kindness")) / 110 : 0],
@@ -425,6 +457,7 @@
     } else {
       type = points === 0 ? "chat" : weighted([
         ["chat", 3],
+        ["hint", ctx.favWant ? 0.6 : 0],
         ["joke", 0.5 + avg("humor") / 30],
         ["compliment", 0.3 + a.kindness / 35],
         ["highFive", 0.4 + avg("energy") / 45],
@@ -440,7 +473,7 @@
         ["story", un.stories && points >= 1 ? 0.7 + avg("chatty") / 80 : 0],
       ]);
     }
-    const hello = remote ? remoteGreeting(A, B, points, remote) : type === "cold" || type === "makeUp" || type === "confess" ? [] : greeting(A, B, points);
+    const hello = remote ? remoteGreeting(A, B, points, remote) : type === "cold" || type === "makeUp" || type === "confess" || type === "bandInvite" ? [] : greeting(A, B, points);
     let body = interactions[type](A, B, scene, points, ctx);
     let fight = false;
     if (body && body.steps) { fight = !!body.fight; body = body.steps; }
@@ -455,7 +488,12 @@
     // sometimes finish with a catchphrase
     const cp = a.catchphrase && a.catchphrase.trim();
     if (cp && Math.random() < 0.35 && !fight && type !== "cold") steps.push({ who: "A", say: cp, dur: 2.0 });
-    return { type, steps, fight, success: type === "confess" ? !!(ctx.confess && ctx.confess.success) : undefined };
+    const success = type === "confess" ? !!(ctx.confess && ctx.confess.success) : type === "bandInvite" ? !!ctx.bandAsk.accept : undefined;
+    // a feed line with more detail than FEED_TEXT (what it hinted at, whether B joined the band)
+    let feed;
+    if (type === "hint") feed = "{A} told {B} they'd love " + (/^[aeiou]/i.test(ctx.favWant.name) ? "an " : "a ") + ctx.favWant.name.toLowerCase() + ". " + ctx.favWant.icon;
+    if (type === "bandInvite") feed = success ? "{B} joined {A}'s band! 🎸" : "{B} said no to joining {A}'s band.";
+    return { type, steps, fight, success, feed };
   }
 
   // What happens to the friendship after an interaction (some are more fun than others!)
@@ -463,6 +501,7 @@
     chat: 1, compliment: 2, joke: 2, dance: 2, highFive: 1,
     rockPaperScissors: 1, disagree: 1, sleepy: 1, spaceBounce: 2,
     cold: 0, makeUp: 3, confess: 3, date: 3, rivalry: 1, picnic: 2, karaoke: 2, story: 2,
+    hint: 1, bandInvite: 2,
   };
 
   // Short descriptions for the activity feed.
@@ -484,6 +523,8 @@
     picnic: "{A} and {B} had a picnic. 🧺",
     karaoke: "{A} and {B} sang karaoke! 🎤",
     story: "{A} told {B} a story. 📚",
+    hint: "{A} told {B} about something they'd love to have. 💭",
+    bandInvite: "{A} asked {B} to join their band. 🎸",
   };
 
   // Things a Mii says to nobody in particular.

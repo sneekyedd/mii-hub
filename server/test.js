@@ -47,6 +47,19 @@ async function player(port, name, mii) {
   await wait(80);
   const roomId = a.last("room").room.id;
   assert(a.last("warmup"), "warmup while alone");
+  assert(S.MAPS[a.last("warmup").map] && a.last("room").room.map === a.last("warmup").map, "warmup says which map");
+  // the map list matches the game's, and voting never offers the same map twice
+  {
+    const L = require("../js/paintball/pb-layouts.js");
+    assert.deepStrictEqual(Object.keys(S.MAPS).sort(), L.MAPS.map((m) => m.id).sort(), "server and game know the same maps");
+    for (const m of L.MAPS) assert.strictEqual(S.MAPS[m.id].name, m.name, "same name for " + m.id);
+    for (let i = 0; i < 300; i++) {
+      const cur = L.MAPS[i % L.MAPS.length].id, two = S.voteMaps(cur);
+      assert(two[0] !== two[1] && !two.includes(cur), "two other maps");
+      const r = S.randomOther(two);
+      assert(S.MAPS[r] && !two.includes(r), "Random isn't one of the two shown");
+    }
+  }
   a.send({ t: "spawn", x: 1, z: 2, yaw: 0 });
   await wait(40);
   assert(a.last("spawn") && a.last("spawn").id === a.id, "spawn in warmup");
@@ -128,15 +141,24 @@ async function player(port, name, mii) {
   const over = a.last("over");
   assert(over && over.winner === a.id && over.scores[a.id] === 20, "A wins at 20");
   const im = b.last("intermission");
-  assert(im && im.modes.length === 2 && im.maps.length === 1, "intermission with mode + map choices");
-  a.send({ t: "vote", mode: "rounds", map: "shipment" });
-  b.send({ t: "vote", mode: "rounds" });
+  // two maps (not the one just played) + "Random"
+  const played = st.map;
+  assert(im && im.modes.length === 2 && im.maps.length === 3, "intermission with mode + map choices");
+  assert(im.maps[2].id === "random" && S.MAPS[im.maps[0].id] && S.MAPS[im.maps[1].id] && im.maps[0].id !== im.maps[1].id, "two different maps and Random");
+  assert(im.maps[0].id !== played && im.maps[1].id !== played, "not the map just played");
+  const shown = [im.maps[0].id, im.maps[1].id];
+  a.send({ t: "vote", mode: "rounds", map: "random" });
+  b.send({ t: "vote", mode: "rounds", map: "random" });
   await wait(60);
   assert.strictEqual(b.last("votes").modes.rounds, 2, "votes counted");
+  assert.strictEqual(b.last("votes").maps.random, 2, "map votes counted");
   await wait(1500);
-  assert.strictEqual(a.last("voted").mode, "rounds", "the vote decides");
+  const voted = a.last("voted");
+  assert.strictEqual(voted.mode, "rounds", "the vote decides");
+  assert(voted.random && S.MAPS[voted.map] && !shown.includes(voted.map), "Random picked a map that wasn't shown: " + voted.map);
   const st2 = a.last("start");
-  assert(st2.mode === "rounds" && a.last("round"), "rounds match started");
+  assert(st2.mode === "rounds" && a.last("round") && st2.map === voted.map, "rounds match started on the voted map");
+  assert(a.last("room").room.map === voted.map, "the room says which map");
 
   // rounds: no respawning, last one standing wins the round
   await wait(60);

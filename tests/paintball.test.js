@@ -180,4 +180,153 @@ assert(rates.awpNoScope < 0.7, "AWP no-scope is a gamble " + rates.awpNoScope);
 for (let k = 0; k < 128; k++) E.updateArms(arms, m, T, 2 + k * T);
 assert(arms.recY < 0.5 && arms.recoilIdx < 1, "recoil resets");
 
+// ---------------------------------------------------------------------
+// The maps (pb-layouts.js): the list, voting, and each place's own floor plan
+// ---------------------------------------------------------------------
+const LY = require("../js/paintball/pb-layouts.js");
+const { MiiNav } = require("../js/nav.js");
+const mapReport = [];
+{
+  const K = 1.25; // the game makes every map this much bigger
+  const ids = LY.MAPS.map((m) => m.id);
+  assert(ids.length === new Set(ids).size && ids.length >= 10, "map ids are unique");
+  for (const s of LY.SETTINGS) {
+    const of = LY.MAPS.filter((m) => m.setting === s.id);
+    assert(of.some((m) => m.layout === "shipment") && of.some((m) => m.layout !== "shipment"), s.id + ": Shipment + its own map");
+  }
+  for (const m of LY.MAPS) assert(LY.SETTINGS.some((s) => s.id === m.setting) && (m.layout === "shipment" || LY.LAYOUTS[m.layout]), "map " + m.id);
+  assert(LY.mapById(LY.DEFAULT_MAP), "default map");
+  // voting: two different maps, then Random is never one of them
+  for (let i = 0; i < 500; i++) {
+    const cur = ids[i % ids.length], two = LY.pickVoteMaps(cur);
+    assert(two.length === 2 && two[0] !== two[1] && !two.includes(cur), "vote maps " + two);
+    const r = LY.randomOther(two);
+    assert(ids.includes(r) && !two.includes(r), "random isn't one of the shown maps");
+  }
+
+  // the same reach a player has (crouch-jumps included), measured with the real movement
+  const reach = (crouch) => {
+    let best = 0;
+    for (let h = 0.4; h < 3.2; h += 0.05) {
+      const w = new E.World({ boxes: [{ x: 0, z: -8, hw: 2, hd: 6, rot: 0, y0: 0, y1: h * K }], cyls: [], bounds: map.bounds });
+      const mv = new E.Mover(w); mv.place(0, -1.4);
+      for (let i = 0; i < 8; i++) mv.step(T, { fwd: 1, yaw: 0, maxSpeed: E.CFG.speedAK });
+      mv.step(T, { fwd: 1, yaw: 0, jump: true, duck: crouch, maxSpeed: E.CFG.speedAK });
+      for (let i = 0; i < 200; i++) mv.step(T, { fwd: 1, yaw: 0, duck: crouch, maxSpeed: E.CFG.speedAK });
+      if (Math.abs(mv.pos.y - h * K) < 0.01) best = h;
+    }
+    return best;
+  };
+  const JUMP = reach(false), CJUMP = reach(true);
+  assert(CJUMP > JUMP && JUMP > 1, "crouch-jumps reach higher: " + JUMP.toFixed(2) + " / " + CJUMP.toFixed(2));
+
+  const scaled = (L) => ({
+    boxes: L.boxes.map((b) => ({ x: b.x * K, z: b.z * K, hw: b.hw * K, hd: b.hd * K, rot: b.rot, y0: b.y0 * K, y1: b.y1 * K, mat: b.mat })),
+    cyls: L.cyls.map((c) => ({ x: c.x * K, z: c.z * K, r: c.r * K, y0: c.y0 * K, y1: c.y1 * K, mat: c.mat })),
+    bounds: { minX: L.bounds.minX * K, maxX: L.bounds.maxX * K, minZ: L.bounds.minZ * K, maxZ: L.bounds.maxZ * K },
+  });
+  const inside = (q, x, z, pad) => {
+    if (q.t === "cyl") return Math.hypot(x - q.x, z - q.z) < q.r - pad;
+    const c = Math.cos(q.rot), s = Math.sin(q.rot), dx = x - q.x, dz = z - q.z;
+    return Math.abs(dx * c - dz * s) < q.w / 2 - pad && Math.abs(dx * s + dz * c) < q.d / 2 - pad;
+  };
+  for (const id of Object.keys(LY.LAYOUTS)) {
+    const L = LY.build(id), S = scaled(L), W = new E.World(S), B = L.bounds;
+    // nothing pokes out of the arena, and no two things are inside each other
+    for (const p of L.pieces) {
+      const R = p.t === "cyl" ? p.r : Math.hypot(p.w, p.d) / 2;
+      assert(p.x - R > B.minX - 0.6 && p.x + R < B.maxX + 0.6 && p.z - R > B.minZ - 0.6 && p.z + R < B.maxZ + 0.6, id + ": " + p.k + " is in the arena");
+    }
+    for (let i = 0; i < L.pieces.length; i++) for (let j = i + 1; j < L.pieces.length; j++) {
+      const a = L.pieces[i], b = L.pieces[j];
+      if (!(a.y < b.y + b.h - 0.01 && b.y < a.y + a.h - 0.01)) continue; // one on top of the other
+      const R = a.t === "cyl" ? a.r : Math.hypot(a.w, a.d) / 2;
+      for (let x = a.x - R; x <= a.x + R; x += 0.08) for (let z = a.z - R; z <= a.z + R; z += 0.08) {
+        assert(!(inside(a, x, z, 0.02) && inside(b, x, z, 0.02)), id + ": " + a.k + " and " + b.k + " overlap at " + x.toFixed(1) + "," + z.toFixed(1));
+      }
+    }
+    // fair spawns: the same for both teams (turned around), not in anything, and out of sight of each other
+    assert(L.spawns.a.length >= 4 && L.spawns.a.length === L.spawns.b.length, id + ": spawns");
+    L.spawns.a.forEach((a, i) => assert(Math.abs(a.x + L.spawns.b[i].x) < 1e-9 && Math.abs(a.z + L.spawns.b[i].z) < 1e-9, id + ": spawns mirror each other"));
+    for (const sp of L.spawns.a.concat(L.spawns.b)) {
+      const x = sp.x * K, z = sp.z * K;
+      assert(x > S.bounds.minX + E.CFG.radius && x < S.bounds.maxX - E.CFG.radius && z > S.bounds.minZ + E.CFG.radius && z < S.bounds.maxZ - E.CFG.radius, id + ": spawn in bounds");
+      for (const b of W.boxes) if (b.y0 < E.CFG.standH) assert(!W.circleHitsBox(b, x, z, E.CFG.radius + 0.1), id + ": spawn " + sp.x + "," + sp.z + " inside a box");
+      for (const c of S.cyls) if (c.y0 < E.CFG.standH) assert(Math.hypot(x - c.x, z - c.z) > c.r + E.CFG.radius + 0.1, id + ": spawn inside a cylinder");
+    }
+    for (const a of L.spawns.a) for (const b of L.spawns.b) {
+      assert(!W.clear({ x: a.x * K, y: E.CFG.eyeStand, z: a.z * K }, { x: b.x * K, y: E.CFG.eyeStand, z: b.z * K }), id + ": spawns see each other " + a.x + "," + a.z);
+    }
+    // the bot's routes: from every spawn to every other one, and to most of the open floor
+    const obstacles = [];
+    for (const b of S.boxes) if (b.y1 > E.CFG.step && b.y0 < 1.6) obstacles.push({ x: b.x, z: b.z, w: b.hw * 2, d: b.hd * 2, rot: -(b.rot || 0) });
+    for (const c of S.cyls) if (c.y1 > E.CFG.step && c.y0 < 1.6) obstacles.push({ x: c.x, z: c.z, r: c.r });
+    const nav = new MiiNav.Nav(S.bounds, obstacles, 0.35);
+    const all = L.spawns.a.concat(L.spawns.b);
+    for (const a of all) {
+      assert(!nav.isBlocked(a.x * K, a.z * K), id + ": spawn on open floor (for the bot)");
+      for (const b of all) if (a !== b) {
+        const path = nav.findPath(a.x * K, a.z * K, b.x * K, b.z * K);
+        assert(path && path.length && Math.hypot(path[path.length - 1].x - b.x * K, path[path.length - 1].z - b.z * K) < 0.6, id + ": bot route " + a.x + "," + a.z + " -> " + b.x + "," + b.z);
+      }
+    }
+    // flood fill the bot's grid from a spawn: (almost) all open floor is connected
+    const s0 = nav.cellOf(all[0].x * K, all[0].z * K), seen = new Uint8Array(nav.cols * nav.rows), q = [s0.r * nav.cols + s0.c];
+    seen[q[0]] = 1;
+    while (q.length) {
+      const k = q.pop(), c = k % nav.cols, r = (k / nav.cols) | 0;
+      for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const c2 = c + dc, r2 = r + dr, k2 = r2 * nav.cols + c2;
+        if (c2 < 0 || r2 < 0 || c2 >= nav.cols || r2 >= nav.rows || seen[k2] || nav.blocked[k2]) continue;
+        seen[k2] = 1; q.push(k2);
+      }
+    }
+    let free = 0, reached = 0;
+    for (let k = 0; k < nav.blocked.length; k++) if (!nav.blocked[k]) { free++; if (seen[k]) reached++; }
+    assert(reached / free > 0.97, id + ": bots can get almost everywhere (" + reached + "/" + free + ")");
+    // higher ground: tops you can stand on, reached by jumping/crouch-jumping from the floor or other tops
+    const tops = L.pieces.filter((p) => p.t === "box" && p.w >= 0.8 && p.d >= 0.8 && !L.pieces.some((o) => o !== p && o.y >= p.y + p.h - 0.01 && o.y < p.y + p.h + E.CFG.standH / K && inside(o, p.x, p.z, 0)));
+    const gap = (a, b) => { // rough distance between two footprints (box-box, by sampling a's edge)
+      let best = Infinity;
+      for (let i = 0; i < 64; i++) {
+        const u = (i % 16) / 15 - 0.5, side = i >> 4, c = Math.cos(a.rot), s = Math.sin(a.rot);
+        const lx = side < 2 ? u * a.w : (side === 2 ? -1 : 1) * a.w / 2, lz = side < 2 ? (side ? -1 : 1) * a.d / 2 : u * a.d;
+        const x = a.x + lx * c + lz * s, z = a.z - lx * s + lz * c;
+        const bc = Math.cos(b.rot), bs = Math.sin(b.rot), dx = x - b.x, dz = z - b.z;
+        const bx = dx * bc - dz * bs, bz = dx * bs + dz * bc;
+        best = Math.min(best, Math.hypot(Math.max(0, Math.abs(bx) - b.w / 2), Math.max(0, Math.abs(bz) - b.d / 2)));
+      }
+      return best;
+    };
+    const level = new Map();
+    const queue = tops.filter((p) => p.y + p.h <= JUMP - 0.05);
+    queue.forEach((p) => level.set(p, 0));
+    while (queue.length) {
+      const a = queue.shift();
+      for (const b of tops) if (!level.has(b) && b.y + b.h - (a.y + a.h) <= CJUMP - 0.08 && gap(a, b) < 0.5) { level.set(b, level.get(a) + 1); queue.push(b); }
+    }
+    const high = tops.filter((p) => level.has(p) && p.y + p.h >= 1.9);
+    assert(high.length >= 2, id + ": higher ground you can climb to (" + high.map((p) => p.k).join(", ") + ")");
+    assert(high.some((p) => level.get(p) >= 1), id + ": some of it needs a (crouch-)jump from something lower");
+    // nobody gets stuck or ends up inside anything: Miis running around at random
+    let stuck = 0;
+    const r = ((seed) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647))(id.length * 77 + 5);
+    for (let w = 0; w < 24; w++) {
+      const sp = all[w % all.length], mv = new E.Mover(W);
+      mv.place(sp.x * K, sp.z * K);
+      let yaw = r() * 6.28, moved = 0, last = { x: mv.pos.x, z: mv.pos.z };
+      for (let i = 0; i < 128 * 6; i++) {
+        if (i % 64 === 0) yaw = r() * 6.28;
+        mv.step(T, { fwd: 1, side: r() < 0.3 ? 1 : 0, yaw, jump: r() < 0.01, duck: r() < 0.05, maxSpeed: E.CFG.speedAK });
+        for (const b of W.boxes) if (b.y1 > mv.pos.y + E.CFG.step + 0.02 && b.y0 < mv.pos.y + mv.height() - 0.02) assert(!W.circleHitsBox(b, mv.pos.x, mv.pos.z, E.CFG.radius - 0.03), id + ": inside a " + (b.mat) + " box at " + mv.pos.x.toFixed(2) + "," + mv.pos.z.toFixed(2) + " y " + mv.pos.y.toFixed(3) + " box " + JSON.stringify([b.x, b.z, b.y0, b.y1]) + " ground " + mv.onGround + " tick " + i);
+        if (i % 128 === 127) { moved += Math.hypot(mv.pos.x - last.x, mv.pos.z - last.z) > 0.5 ? 1 : 0; last = { x: mv.pos.x, z: mv.pos.z }; }
+      }
+      if (moved < 2) stuck++;
+    }
+    assert(stuck <= 2, id + ": walkers got stuck " + stuck + " times");
+    mapReport.push(id + " (high ground: " + high.map((p) => p.k + " " + (p.y + p.h).toFixed(1)).join(", ") + ")");
+  }
+}
+console.log("Maps OK: " + LY.MAPS.length + " maps; own layouts: " + mapReport.join("; "));
+
 console.log("All paintball tests passed. Stop " + (t * 1000).toFixed(0) + " ms, counter-strafe " + (t2 * 1000).toFixed(0) + " ms, jump " + top.toFixed(2) + " m, AK hits at 10 m: still " + rates.akStill + " / running " + rates.akRun + " / jumping " + rates.akJump + ", AK head " + E.damageFor("head", 10) + " / chest " + E.damageFor("chest", 10));
