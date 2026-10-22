@@ -233,6 +233,116 @@
   }
 
   // opts.residents = how many Miis live here (decides how many floors to build)
+  // RARE (courtyard): a golden koi turns up in the koi pond, glittering. Click it and
+  // it leaps right out of the water in a big sparkly arc (very lucky!) for a sticker.
+  // Leave it be and it slips away again after a while.
+  function goldenKoi(root, KP) {
+    const fish = dynamic(group(root, KP.x, -2, KP.z));
+    const gold = toon(0xffc93a, { emissive: 0xffb000, emissiveIntensity: 0.45 });
+    put(fish, G.sphere(), gold, { s: 0.3, sx: 1.0, sy: 0.3, sz: 0.48, shadow: false });
+    put(fish, G.sphere(), toon(0xfff1a8, { emissive: 0xffe070, emissiveIntensity: 0.5 }), { x: 0.08, y: 0.04, s: 0.12, sy: 0.3, shadow: false });
+    put(fish, G.cone(4), gold, { x: -0.38, s: 0.17, sy: 0.25, rz: PI / 2, sz: 0.06, shadow: false });
+    put(fish, G.cone(4), gold, { y: 0.09, s: 0.1, sy: 0.14, sz: 0.04, shadow: false }); // fin
+    for (const sz of [-0.09, 0.09]) ball(fish, 0x222222, 0.22, 0.03, sz, 0.025, { shadow: false });
+    fish.visible = false;
+    // glitter around it, and the splash when it jumps
+    const sparkles = [];
+    for (let i = 0; i < 10; i++) {
+      const s = dynamic(ball(root, glow(0xfff3a0, 1.4), KP.x, -2, KP.z, 0.05, { shadow: false }));
+      s.visible = false;
+      sparkles.push(s);
+    }
+    const ring = dynamic(put(root, G.torus(1, 0.04), toon(0xffffff, { transparent: true, opacity: 0.8 }), { x: KP.x, y: 0.08, z: KP.z, rx: -PI / 2, shadow: false }));
+    ring.visible = false;
+    let ev = null, check = 5;
+    const tmpV = new THREE.Vector3();
+    function end(ctx, done) {
+      ev = null; check = 5;
+      fish.visible = ring.visible = false;
+      sparkles.forEach((s) => { s.visible = false; });
+      if (done) ctx.event("koi");
+    }
+    // where it swims: a lazy figure of eight round the pond
+    const swimAt = (u) => ({ x: KP.x + Math.sin(u) * (KP.rx - 0.8), z: KP.z + Math.sin(u * 2) * (KP.rz - 0.6) * 0.8 });
+    return {
+      update(dt, t, ctx) {
+        if (!ev) {
+          check -= dt;
+          if (check > 0) return;
+          check = 5;
+          if (Math.random() < 0.006) this.force(ctx);
+          return;
+        }
+        ev.time += dt;
+        let glitter = 1;
+        if (ev.phase === "swim" || ev.phase === "away") {
+          ev.u += dt * 0.55;
+          const a = swimAt(ev.u), b = swimAt(ev.u + 0.05);
+          const rise = ev.phase === "away" ? 1 - Math.min(1, ev.time / 1.5) : Math.min(1, ev.time / 1.2);
+          fish.position.set(a.x, 0.02 - (1 - rise) * 0.4, a.z);
+          fish.rotation.set(0, -Math.atan2(b.z - a.z, b.x - a.x), 0);
+          fish.rotation.y += Math.sin(t * 7) * 0.15;
+          glitter = rise;
+          if (ev.phase === "swim" && !ev.noticed && ev.time > 3) {
+            ev.noticed = true;
+            const w = ctx.all().sort((p, q) => Math.hypot(p.x - KP.x, p.z - KP.z) - Math.hypot(q.x - KP.x, q.z - KP.z))[0];
+            if (w) ctx.say(w, "Is that... a golden koi?!", 2.6);
+          }
+          if (ev.phase === "swim" && ev.time > 30) { ev.phase = "away"; ev.time = 0; }
+          if (ev.phase === "away" && ev.time > 1.5) { end(ctx, false); return; }
+        } else if (ev.phase === "jump") {
+          // a big arc out of the water, turning head over tail
+          const k = Math.min(1, ev.time / 1.6);
+          const x = ev.from.x + (ev.to.x - ev.from.x) * k, z = ev.from.z + (ev.to.z - ev.from.z) * k;
+          fish.position.set(x, 0.05 + Math.sin(k * PI) * 2.8, z);
+          fish.rotation.set(0, -Math.atan2(ev.to.z - ev.from.z, ev.to.x - ev.from.x), PI / 2 - k * PI);
+          if (k >= 1 && !ev.splashed) { ev.splashed = true; ev.splashT = 0; ring.position.set(x, 0.08, z); }
+          if (ev.splashT !== undefined) {
+            ev.splashT += dt;
+            const r = ev.splashT / 1.1;
+            ring.visible = r < 1;
+            ring.scale.set(0.2 + r * 1.3, 0.2 + r * 0.9, 1);
+            ring.material.opacity = 0.8 * (1 - r);
+            fish.position.y = -Math.min(0.5, ev.splashT * 0.6); // (and away it goes)
+            glitter = Math.max(0, 1 - ev.splashT);
+          }
+          if (!ev.cheered && ev.time > 0.8) {
+            ev.cheered = true;
+            const cheers = ["Whoa! A golden koi!", "Make a wish, quick!", "So lucky!!", "Did you see that?!"];
+            ctx.all().slice(0, 4).forEach((w, i) => { ctx.say(w, cheers[i], 2.6); if (!w.anchored) w.targetYaw = Math.atan2(KP.x - w.x, KP.z - w.z); });
+          }
+          if (ev.time > 3) { end(ctx, true); return; }
+        }
+        // the glitter twinkles round the fish
+        sparkles.forEach((s, i) => {
+          const a = t * 1.7 + (i / sparkles.length) * TAU, r = 0.35 + (i % 3) * 0.18;
+          s.visible = glitter > 0.05;
+          s.position.set(fish.position.x + Math.cos(a) * r, Math.max(0.12, fish.position.y) + 0.12 + Math.sin(t * 4 + i) * 0.12 + (i % 2) * 0.15, fish.position.z + Math.sin(a) * r * 0.7);
+          s.scale.setScalar(0.07 * glitter * (0.6 + 0.6 * Math.abs(Math.sin(t * 6 + i * 1.3))));
+        });
+      },
+      pick(ray) {
+        if (!ev || ev.phase !== "swim" || ev.time < 1) return false;
+        tmpV.copy(fish.position).setY(0.1);
+        if (ray.distanceSqToPoint(tmpV) > 0.9 * 0.9) return false;
+        this.leap();
+        return true;
+      },
+      leap() { // (also used for testing)
+        if (!ev || ev.phase !== "swim") return;
+        const a = swimAt(ev.u), b = swimAt(ev.u + 0.6);
+        Object.assign(ev, { phase: "jump", time: 0, from: { x: a.x, z: a.z }, to: { x: b.x, z: b.z } });
+      },
+      stop(ctx) { if (ev) end(ctx, false); },
+      force() { // (also used for testing)
+        if (ev) return;
+        ev = { phase: "swim", time: 0, u: Math.random() * TAU };
+        fish.visible = true;
+      },
+      _state: () => ev, _fish: fish, // (for testing)
+    };
+  }
+
   function buildApartments(opts) {
     const FL = floorsFor(opts && opts.residents);
     const N = FL * APT.cols; // number of apartments
@@ -319,7 +429,7 @@
       bx(root, 0xffffff, wx, by, bz, 2.6, 1.6, 0.1);
       bx(root, 0x9fd0f0, wx, by, bz - 0.05, 2.3, 1.3, 0.04);
       bx(root, 0xffffff, wx, by, bz - 0.08, 0.08, 1.3, 0.04);
-      bx(root, u.curtain, wx - 0.85, by, bz - 0.08, 0.5, 1.3, 0.04);
+      // (its curtains open and shut with the front ones: see backCurtains)
       if (u.f > 0) {
         block(root, 0xfdf8f0, wx, u.y - 0.1, bz - 0.55, 3.0, 0.2, 1.1, 0.04);
         block(root, railC, wx, u.y + 0.5, bz - 1.07, 3.0, 0.9, 0.06, 0.04);
@@ -460,8 +570,28 @@
       curtains.setColorAt(i * 2, curtainCol);
       curtains.setColorAt(i * 2 + 1, curtainCol);
     });
-    for (const m of [curtains, rentSigns]) { m.castShadow = false; m.frustumCulled = false; root.add(dynamic(m)); }
+    // the window at the back of each flat has curtains too (shut while the Mii is out)
+    const backCurtains = new THREE.InstancedMesh(G.box(), toon(0xffffff), N * 2);
+    units.forEach((u, i) => {
+      curtainCol.set(u.curtain);
+      backCurtains.setColorAt(i * 2, curtainCol);
+      backCurtains.setColorAt(i * 2 + 1, curtainCol);
+    });
+    for (const m of [curtains, rentSigns, backCurtains]) { m.castShadow = false; m.frustumCulled = false; root.add(dynamic(m)); }
+    function placeBackCurtains(u) {
+      const half = 1.17, bw = half + (0.42 - half) * Math.max(0, u.openNow);
+      const wx = -u.cx, by = u.y + 1.8, bz = APT.back - 0.11;
+      for (const s of [0, 1]) {
+        tmpO.position.set(s ? wx + half - bw / 2 : wx - half + bw / 2, by, bz);
+        tmpO.rotation.set(0, 0, 0);
+        tmpO.scale.set(bw, 1.3, 0.04);
+        tmpO.updateMatrix();
+        backCurtains.setMatrixAt(u.i * 2 + s, tmpO.matrix);
+      }
+      backCurtains.instanceMatrix.needsUpdate = true;
+    }
     function placeCurtains(u) {
+      placeBackCurtains(u);
       const cw = (WIN.w / 2 + 0.06) + (0.34 - (WIN.w / 2 + 0.06)) * Math.max(0, u.openNow); // each curtain's width
       for (const s of [0, 1]) {
         tmpO.position.set(s ? u.winX + WIN.w / 2 + 0.02 - cw / 2 : u.winX - WIN.w / 2 - 0.02 + cw / 2, u.y + WY - 0.05, FZ - 0.17);
@@ -719,6 +849,7 @@
       const vx = -Math.sin(a) * rx * dir, vz = Math.cos(a) * rz * dir;
       f.rotation.y = -Math.atan2(vz, vx) + Math.sin(t * 6 + i) * 0.15;
     }));
+    const koiRare = goldenKoi(root, KP); // (very rarely, a golden one)
 
     // trees, bushes and lamps around the courtyard
     const trees = [[-16.0, -2.4, 1.0, [0x5cc84a, 0x7fdc5c], null], [15.9, -2.6, 1.0, [0x4fbf47, 0x79d65a], 0xff4b3a],
@@ -966,6 +1097,7 @@
       group: root,
       background: 0xcdeeff,
       fog: [0xd8f2ff, 70, 190],
+      rare: koiRare,
       cameraTilt: 0.42,
       cameraTargetY: 3.4 + (FL - 3) * 0.5,
       capacity: N, // how many apartments there are
@@ -1765,9 +1897,10 @@
     "lamp-chandelier": {
       at: { x: 0.3, z: 1.0 }, obs: [], spot: { wx: -1.5, wz: 2.75, toward: true },
       build(g, ctx) {
-        // it hangs on a long golden chain (the room has no ceiling, like a dollhouse)
+        // it hangs on a golden chain from the ceiling (which you can't see: it's a dollhouse),
+        // so the chain stops where the walls end
         const cy = ROOM.h - 1.2;
-        cylinder(g, 0xd9a441, 0, cy + 6, 0, 0.022, 12, { shadow: false });
+        cylinder(g, 0xd9a441, 0, (cy + ROOM.h) / 2, 0, 0.022, ROOM.h - cy, { shadow: false });
         put(g, G.torus(0.75, 0.05), toon(0xffcf3a), { y: cy, rx: PI / 2, shadow: false });
         ball(g, 0xffcf3a, 0, cy - 0.05, 0, 0.18, { shadow: false });
         put(g, G.cone(), toon(0xffcf3a), { y: cy - 0.3, s: 0.12, sy: 0.3, rx: PI, shadow: false });
@@ -2624,9 +2757,20 @@
         block(g, 0x3a6ab8, 0, 0.56, 0, 0.6, 0.12, 0.4, 0.03);
         block(g, 0x5a8a3a, 0, 0.62, 0, 0.54, 0.02, 0.34, 0.008);
         const bark = toon(0x7a5230);
-        const segs = [[0, 0.62, 0, 0.06, 0.32, 0.25], [0.08, 0.9, 0.0, 0.05, 0.3, -0.45], [-0.03, 1.15, 0.02, 0.04, 0.26, 0.4], [0.15, 1.02, 0.0, 0.03, 0.26, -1.1]];
-        for (const [x, y, z, r, len, rz] of segs) put(g, G.taper(r * 0.75, r), bark, { x: x - Math.sin(rz) * len / 2, y: y + Math.cos(rz) * len / 2, z, sy: len, rz });
-        for (const [x, y, z, r] of [[-0.12, 1.3, 0, 0.2], [0.12, 1.4, 0.02, 0.17], [0.32, 1.13, 0.02, 0.15], [-0.25, 1.12, 0.03, 0.13]]) ball(g, 0x4f9e35, x, y, z, r, { sy: 0.45 });
+        // each branch starts where the one it grows from is (trunk -> top, plus two side branches),
+        // with a knot at every joint, and the leaf pads sit on the branch tips
+        const tip = (x, y, rz, len) => [x - Math.sin(rz) * len, y + Math.cos(rz) * len];
+        const branch = (x, y, r, len, rz) => {
+          put(g, G.taper(r * 0.75, r), bark, { x: x - Math.sin(rz) * len / 2, y: y + Math.cos(rz) * len / 2, z: 0, sy: len, rz });
+          ball(g, bark, x, y, 0, r * 0.95);
+          return tip(x, y, rz, len);
+        };
+        const t0 = branch(0, 0.62, 0.06, 0.32, 0.25);
+        const t1 = branch(t0[0], t0[1], 0.05, 0.3, -0.45);
+        const t2 = branch(t0[0], t0[1], 0.04, 0.24, 0.6);
+        const mid = tip(t0[0], t0[1], -0.45, 0.15);
+        const t3 = branch(mid[0], mid[1], 0.03, 0.28, -1.1);
+        for (const [x, y, r] of [[t1[0] - 0.08, t1[1] + 0.07, 0.2], [t1[0] + 0.08, t1[1] + 0.19, 0.15], [t3[0] + 0.03, t3[1] + 0.02, 0.15], [t2[0] - 0.03, t2[1] + 0.02, 0.13]]) ball(g, 0x4f9e35, x, y, 0, r, { sy: 0.45 });
         for (const [x, z] of [[0.18, 0.08], [-0.2, -0.06]]) ball(g, 0x9a9aa0, x, 0.64, z, 0.04, { sy: 0.6 });
         // little scissors on the stand
         for (const s of [-1, 1]) block(g, 0xdfe4ea, 0.36, 0.505, 0.17, 0.14, 0.01, 0.02, 0.004, { ry: s * 0.25 });
@@ -3197,29 +3341,188 @@
   // The front of the apartment building (doors, windows, curtains) as a picture,
   // one floor of two flats per tile: for the floors under a home's room.
   // (back = the back and sides of the building: just windows)
-  function facadeTexture(floors, back) {
-    return canvasTexture(512, 128, (c, w, h) => {
-      c.fillStyle = "#ffe6c7"; c.fillRect(0, 0, w, h);
-      c.fillStyle = "#ffd3a8"; c.fillRect(0, 0, w, 6);
-      if (back) {
-        for (let k = 0; k < 3; k++) {
-          const x0 = k * 170 + 30;
-          c.fillStyle = "#ffffff"; c.fillRect(x0, 34, 110, 64);
-          c.fillStyle = "#9fd0f0"; c.fillRect(x0 + 6, 40, 98, 52);
-          c.fillStyle = hex(UNIT_COLORS[(k * 5 + 2) % UNIT_COLORS.length][1]); c.fillRect(x0 + 6, 40, 30, 52);
+  // homes (optional, from the ground floor up): [{ here, next }] who's in the flat right
+  // below and the one beside it (true = in: curtains open, false = out: curtains shut,
+  // null = nobody lives there). Then the picture has one row per floor.
+  function facadeTexture(floors, back, homes) {
+    const rows = homes && homes.length === floors ? floors : 1;
+    // a window's curtains (x, y, w, h = the glass), open or shut
+    const curtains = (c, x, y, w, h, color, open) => {
+      c.fillStyle = hex(color);
+      if (open) { c.fillRect(x, y, w * 0.23, h); c.fillRect(x + w * 0.77, y, w * 0.23, h); return; }
+      c.fillRect(x, y, w, h);
+      c.fillStyle = "rgba(0,0,0,0.12)";
+      for (let k = 1; k < 6; k++) c.fillRect(x + (w * k) / 6 - 1, y, 2, h); // the folds
+      c.fillStyle = "rgba(255,255,255,0.7)"; c.fillRect(x + w / 2 - 1, y, 2, h);
+    };
+    return canvasTexture(512, 128 * rows, (c, w, H) => {
+      for (let r = 0; r < rows; r++) {
+        const y0 = r * 128;
+        const row = rows > 1 ? homes[floors - 1 - r] : null; // (the top row is the floor just below)
+        const isOpen = (here) => !row || row[here ? "here" : "next"] === true;
+        c.fillStyle = "#ffe6c7"; c.fillRect(0, y0, w, 128);
+        c.fillStyle = "#ffd3a8"; c.fillRect(0, y0, w, 6);
+        if (back) {
+          for (let k = 0; k < 3; k++) {
+            const x0 = k * 170 + 30;
+            c.fillStyle = "#ffffff"; c.fillRect(x0, y0 + 34, 110, 64);
+            c.fillStyle = "#9fd0f0"; c.fillRect(x0 + 6, y0 + 40, 98, 52);
+            curtains(c, x0 + 6, y0 + 40, 98, 52, UNIT_COLORS[(k * 5 + 2) % UNIT_COLORS.length][1], isOpen(k !== 1));
+          }
+          continue;
         }
-        return;
+        for (let k = 0; k < 2; k++) {
+          const x0 = k * 256, col = UNIT_COLORS[(k * 3 + 1) % UNIT_COLORS.length];
+          const open = isOpen(k === 0);
+          c.fillStyle = "#ffffff"; c.fillRect(x0 + 32, y0 + 46, 54, 82);
+          c.fillStyle = hex(col[0]); c.fillRect(x0 + 36, y0 + 50, 46, 78);
+          c.fillStyle = "#ffffff"; c.fillRect(x0 + 108, y0 + 22, 124, 94);
+          c.fillStyle = open ? "#bfe6ff" : "#9fc4dc"; c.fillRect(x0 + 114, y0 + 28, 112, 84);
+          if (open) { c.fillStyle = "rgba(255,255,255,0.5)"; c.fillRect(x0 + 150, y0 + 32, 8, 76); }
+          curtains(c, x0 + 114, y0 + 28, 112, 84, col[1], open);
+        }
       }
-      for (let k = 0; k < 2; k++) {
-        const x0 = k * 256, col = UNIT_COLORS[(k * 3 + 1) % UNIT_COLORS.length];
-        c.fillStyle = "#ffffff"; c.fillRect(x0 + 32, 46, 54, 82);
-        c.fillStyle = hex(col[0]); c.fillRect(x0 + 36, 50, 46, 78);
-        c.fillStyle = "#ffffff"; c.fillRect(x0 + 108, 22, 124, 94);
-        c.fillStyle = "#bfe6ff"; c.fillRect(x0 + 114, 28, 112, 84);
-        c.fillStyle = hex(col[1]); c.fillRect(x0 + 114, 28, 26, 84); c.fillRect(x0 + 200, 28, 26, 84);
-        c.fillStyle = "rgba(255,255,255,0.5)"; c.fillRect(x0 + 150, 32, 8, 76);
-      }
-    }, [1, floors]);
+    }, [1, floors / rows]);
+  }
+
+  // Curtains drawn shut across a home's window (while the Mii is out): soft folds side
+  // by side, from the rod down to the sill.
+  function closedCurtains(p, wx, wy, ww, wh, color) {
+    const mat = toon(color), dark = toon(new THREE.Color(color).multiplyScalar(0.86).getHex());
+    const n = 12, span = ww + 0.7;
+    for (let k = 0; k < n; k++) {
+      const x = wx - span / 2 + (k + 0.5) * (span / n);
+      put(p, G.capsule(), k % 2 ? dark : mat, { x, y: wy - 0.03, z: 0.16 + (k % 2) * 0.03, sx: span / n * 1.35, sy: (wh + 0.36) / 2, sz: 0.12, shadow: false });
+    }
+  }
+
+  // RARE (well under 1% of the time, and only while you're visiting and the Mii is in):
+  // another Mii peeks in through the window from outside. Turn round and click it: it
+  // yells "BOO!", the Mii inside jumps out of its skin, the prankster runs off laughing,
+  // and what the Mii says then depends on how the two get on. (A sticker!)
+  //   outY = the ground outside the window (the walkway, or the courtyard on the ground floor)
+  function windowPrank(outY) {
+    const WX = WINDOW.x, WZ = -ROOM.z - 0.85; // where the prankster stands, just outside the glass
+    let ev = null, check = 5;
+    const shout = (w, text, secs) => { w.say(text, secs || 1.6); w.uiBubble.classList.add("shout"); };
+    // what the Mii says once it's got its breath back (n = the prankster's name)
+    function relief(rel, n) {
+      if (rel.couple) return [n + "! You scared me half to death! ...You're lucky you're cute. 💕", "cheer"];
+      if (rel.fight) return ["Hmph! As if we weren't fighting already, " + n + "!", "shout"];
+      if (rel.rival) return [n + "!! I'll get you back for this. Just you wait!", "punch"];
+      if (rel.points >= 16) return ["Hehe... classic " + n + "! Best friends forever... but I'll get you next time!", "cheer"];
+      if (rel.points >= 9) return [n + ", you goof! My heart's still racing!", "down"];
+      if (rel.points >= 4) return [n + "! You nearly gave me a heart attack!", "down"];
+      if (rel.points >= 1) return ["Was that... " + n + "? We barely even know each other!", "down"];
+      return ["Who WAS that?! I've never seen them before!", "down"];
+    }
+    function end(ctx, done) {
+      const e = ev;
+      ev = null;
+      check = 5;
+      if (!e) return;
+      if (e.g) ctx.dropGuest(e.g);
+      const h = e.host;
+      if (h && e.scared) { h.shake = 0; h.nod = 0; h.arms = "down"; if (h.state === "perform") h.timer = 0; }
+      if (done) ctx.event("boo");
+    }
+    const rare = {
+      update(dt, t, ctx) {
+        if (!ev) {
+          check -= dt;
+          if (check > 0) return;
+          check = 5;
+          if (Math.random() < 0.006) this.force(ctx);
+          return;
+        }
+        const e = ev, g = e.g, h = ctx.host();
+        if (!h || h !== e.host) { end(ctx, false); return; }
+        e.time += dt;
+        if (e.phase === "peek") {
+          // rises up from under the sill, then bobs about, ducking down now and then
+          const up = Math.min(1, e.time / 0.9);
+          e.duck = Math.max(0, e.duck - dt);
+          if (e.duck <= 0 && Math.random() < dt * 0.12) e.duck = 1.6;
+          const down = e.duck > 0 ? Math.sin(Math.min(1, (1.6 - e.duck) / 1.6) * Math.PI) : 0;
+          g.rareLift = outY - (1 - up) * 1.3 - down * 1.1 + Math.sin(e.time * 2.4) * 0.05;
+          g.x = WX + Math.sin(e.time * 0.7) * 0.25;
+          g.targetYaw = Math.sin(e.time * 0.9) * 0.3;
+          if (e.time > 45) { e.phase = "sneak"; e.time = 0; } // (nobody noticed: off it goes)
+        } else if (e.phase === "sneak") {
+          g.rareLift = outY - Math.min(1, e.time / 0.8) * 1.4;
+          if (e.time > 0.8) end(ctx, false);
+        } else if (e.phase === "boo") {
+          const turn = Math.atan2(g.x - h.x, g.z - h.z); // the Mii inside turns to the window
+          if (e.time > 0.35) h.targetYaw = turn;
+          if (!e.aah && e.time > 0.6) {
+            e.aah = true;
+            shout(h, "AAH!", 1.8);
+            h.arms = "up"; h.shake = 1; h.hop(6);
+          }
+          if (e.time > 1.6 && h.shake) { h.shake = 0; h.arms = "down"; }
+          if (!e.run && e.time > 1.3) { // the prankster runs off, laughing
+            e.run = true;
+            g.say("Hahaha! Gotcha!", 2.2);
+            g.laugh = true; g.arms = "down";
+          }
+          if (e.run) {
+            g.state = "walk"; g.curSpeed = 4.5; g.phase += dt * 13;
+            g.targetYaw = Math.PI / 2;
+            g.x += 4.5 * dt;
+            g.rareLift = outY;
+            if (g.x > WX + 9) { ctx.dropGuest(g); e.g = null; e.phase = "relief"; e.time = 0; }
+          }
+        } else if (e.phase === "relief") {
+          if (!e.sigh && e.time > 0.6) { e.sigh = true; h.say("*sigh*... Phew.", 2); h.nod = 0.35; }
+          if (!e.line && e.time > 2.8) {
+            e.line = true;
+            h.nod = 0;
+            const [text, arms] = relief(ctx.relation(h.record, e.who.record), e.who.look.name);
+            h.say(text, 3.6);
+            h.arms = arms;
+            if (arms === "shout" || arms === "punch") h.shake = 0.6;
+          }
+          if (e.time > 6.6) end(ctx, true);
+        }
+        if (e.host.state === "perform") e.host.timer = Math.max(e.host.timer, 1); // (stays put while this goes on)
+      },
+      pick(ray) {
+        const e = ev;
+        if (!e || e.phase !== "peek" || e.time < 0.6 || !e.g) return false;
+        const g = e.g, s = g.sizeScale || 1.3;
+        const p = g.inst.holder.position;
+        const c = new THREE.Vector3(p.x, p.y + 1.3 * s, p.z);
+        if (ray.distanceSqToPoint(c) > Math.pow(0.85 * s, 2)) return false;
+        this.boo(e.ctx);
+        return true;
+      },
+      boo(ctx) { // (also used for testing)
+        const e = ev;
+        if (!e || e.phase !== "peek") return;
+        const h = ctx.host();
+        if (!h) return;
+        e.phase = "boo"; e.time = 0; e.duck = 0;
+        e.g.rareLift = outY; e.g.x = WX; e.g.targetYaw = 0;
+        e.g.arms = "up"; e.g.liftVel = 3.5;
+        shout(e.g, "BOO!", 1.4);
+        ctx.perform(h, "startled", true);
+        h.timer = 30;
+        e.scared = true;
+      },
+      stop(ctx) { end(ctx, false); },
+      force(ctx) { // (also used for testing)
+        if (ev || !ctx.host()) return false;
+        const id = ctx.visitor();
+        const g = id && ctx.guest(id);
+        if (!g) return false;
+        g.x = WX; g.z = WZ; g.yaw = g.targetYaw = 0;
+        g.rareLift = outY - 1.3;
+        ev = { g, who: g, host: ctx.host(), phase: "peek", time: 0, duck: 0, ctx };
+        return true;
+      },
+      _state: () => ev, // (for testing)
+    };
+    return rare;
   }
 
   function buildHome(opts) {
@@ -3246,16 +3549,20 @@
     const BW = RX + 1.5;
     bx(rootG, 0xffe6c7, 0, (-drop - 0.02) / 2, (FACE + RZ + 0.6) / 2, BW * 2, drop - 0.02, RZ + 0.6 - FACE);
     bx(rootG, 0xff8a7a, 0, -0.12, FACE - 0.03, BW * 2, 0.2, 0.08);
+    // who's home in the flats below (their curtains are shut while they're out)
+    const homes = opts && Array.isArray(opts.homes) && opts.homes.length === floorNo ? opts.homes : null;
     if (floorNo > 0) {
-      const fac = facadeTexture(floorNo);
+      const fac = facadeTexture(floorNo, false, homes);
       fac.repeat.x = (BW * 2) / (APT.unitW * 2);
+      // (the flat right below this one sits under its window)
+      fac.offset.x = 170 / 512 - ((BW - WINDOW.x) / (BW * 2)) * fac.repeat.x;
       const fy = -drop + (floorNo * APT.floorH) / 2, fh = floorNo * APT.floorH;
       plane(rootG, BW * 2, fh, toon(0xffffff, { map: fac }), { y: fy, z: FACE - 0.01, ry: PI });
       // the back and the sides of the building, with their windows
-      const backTex = facadeTexture(floorNo, true);
+      const backTex = facadeTexture(floorNo, true, homes);
       backTex.repeat.x = (BW * 2) / 9;
       plane(rootG, BW * 2, fh, toon(0xffffff, { map: backTex }), { y: fy, z: RZ + 0.61 });
-      const sideTex = facadeTexture(floorNo, true);
+      const sideTex = facadeTexture(floorNo, true, homes);
       sideTex.repeat.x = (RZ + 0.6 - FACE) / 9;
       for (const sx of [-1, 1]) plane(rootG, RZ + 0.6 - FACE, fh, toon(0xffffff, { map: sideTex }), { x: sx * (BW + 0.01), y: fy, z: (FACE + RZ + 0.6) / 2, ry: sx * PI / 2 });
       // the walkway balconies (the top one runs right past the window), held up by pillars
@@ -3335,7 +3642,8 @@
       ball(backWall, 0xff6fa5, wx + 0.8, WINDOW.y0 + 0.3, 0.15, 0.13);
       cylinder(backWall, 0xb98a5e, wx, WINDOW.y1 + 0.25, 0.15, 0.03, ww + 1.2, { rz: PI / 2 });
       const curtainC = dark ? 0x7a5aff : fancy ? 0xd9a441 : 0xff9ec7;
-      for (const s of [-1, 1]) {
+      if (opts && opts.empty) closedCurtains(backWall, wx, wy, ww, wh, curtainC); // (nobody's home)
+      else for (const s of [-1, 1]) {
         put(backWall, G.capsule(), toon(curtainC), { x: wx + s * (ww / 2 + 0.25), y: wy - 0.05, z: 0.15, sx: 0.4, sy: (wh + 0.3) / 2, sz: 0.14 });
         put(backWall, G.torus(0.12, 0.025), toon(trimC), { x: wx + s * (ww / 2 + 0.25), y: wy - 0.3, z: 0.15 });
       }
@@ -3459,6 +3767,7 @@
       cameraTilt: 0.85,
       cameraTargetY: 1.9,
       isHome: true,
+      rare: opts && opts.empty ? null : windowPrank(floorNo > 0 ? 0 : -drop), // someone at the window...
       bounds: { minX: -RX, maxX: RX, minZ: -RZ, maxZ: RZ },
       water: [],
       obstacles,

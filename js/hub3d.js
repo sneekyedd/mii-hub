@@ -275,6 +275,8 @@
       this.onLeftHome = null;
       this.calls = new Map();     // id -> the phone call that Mii is on (both ends share one call)
       this.callHold = null;       // record -> false if the Mii can't stay on the phone (it set off somewhere)
+      this.miiInfo = null;        // id -> { record, template, look } (set by the app; for rare-event guests)
+      this.guests = [];           // Miis a rare event brought in for a moment (see addGuest)
 
       this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
       this.renderer.outputEncoding = THREE.sRGBEncoding;
@@ -308,14 +310,16 @@
     active() { return this.visiting ? (this.visiting.empty ? [] : [this.visiting.walker]) : this.walkers; }
 
     // ---------- setup ----------
-    resize() {
+    // keepView = just fit the new size (e.g. a side panel opened), don't move the camera
+    resize(keepView) {
       const rect = this.canvas.parentElement.getBoundingClientRect();
       const w = Math.max(200, rect.width), h = Math.max(200, rect.height);
+      if (keepView && w === this.W && h === this.H) return;
       this.W = w; this.H = h;
       this.renderer.setSize(w, h, false);
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
-      this.fitCamera();
+      if (!keepView) this.fitCamera();
     }
 
     // Move the camera back far enough that the whole area fits on screen.
@@ -330,9 +334,8 @@
       const dist = clamp((halfW / Math.tan(hfov / 2)) * (this.world.isHome ? 1.05 : 0.8), 17, 30);
       const ty = this.world.cameraTargetY || 1;
       const dir = new THREE.Vector3(0, this.world.cameraTilt || 0.55, 1).normalize();
-      // in a home, the decorating panel covers the left of the view, so look a bit
-      // further left (which moves the room to the right on screen)
-      const tx = this.world.isHome ? -2.6 : 0;
+      // (the decorating panel opens beside the view now, so the room stays centered)
+      const tx = 0;
       this.camera.position.copy(dir.multiplyScalar(dist)).add(new THREE.Vector3(tx, ty, 0));
       this.controls.target.set(tx, ty, 0);
       this.controls.minDistance = this.world.isHome ? 6 : 8;
@@ -365,6 +368,7 @@
     setScene(id) {
       if (this.visiting) this.leaveHome();
       if (this.world && this.world.id === id) return;
+      this.stopRare();
       for (const w of this.walkers.slice()) if (w.leaving) this.finishLeaving(w);
       // (phone calls carry on: they belong to both Miis, not to the place on screen)
       for (const w of this.walkers) { if (!this.calls.has(w.id)) this.endInteraction(w); w.remove(); }
@@ -471,6 +475,16 @@
       const i = this.residents.findIndex((r) => r.id === id);
       return i < 0 ? 1 : Math.floor(i / 4);
     }
+    // For the outside of a flat: who's home in the flats right below it (and beside them),
+    // floor by floor from the ground up: [{ here, next }] (true = home, false = out, null = empty flat).
+    homesBelow(id) {
+      const i = this.residents.findIndex((r) => r.id === id);
+      if (i < 0) return null;
+      const col = i % 4, out = [];
+      const at = (k) => (this.residents[k] ? !!this.residents[k].home : null);
+      for (let f = 0; f < Math.floor(i / 4); f++) out.push({ here: at(f * 4 + col), next: at(f * 4 + (col ^ 1)) });
+      return out;
+    }
 
     batteryOf(id) { return this.batteries.has(id) ? this.batteries.get(id) : 1; }
     setBattery(id, v) { this.batteries.set(id, Math.max(0, Math.min(1, v))); }
@@ -504,6 +518,7 @@
     growApartments(announce) {
       const before = this.world.capacity;
       const cam = { pos: this.camera.position.clone(), target: this.controls.target.clone() };
+      this.stopRare();
       this.scene.remove(this.world.group);
       window.World3D.dispose(this.world);
       this.useWorld(window.World3D.build("apartments", { residents: this.residents.length }));
@@ -724,6 +739,7 @@
       if (this.dragging) { this.dragging.held = false; this.dragging = null; }
       this.hover = null;
       if (!empty && this.calls.has(record.id)) this.endCall(this.calls.get(record.id), record.id); // you're here: they hang up
+      this.stopRare(); // (whatever rare thing was going on outside is over)
       this.mainWorld = this.world;
       this.mainNav = this.nav;
       this.mainCamera = { pos: this.camera.position.clone(), target: this.controls.target.clone() };
@@ -731,7 +747,7 @@
       this.clearWindowMiis();
       this.miiGroup.visible = false;
       for (const w of this.walkers) w.ui.style.display = "none";
-      this.useWorld(window.World3D.build("home", { record, floor: this.floorOf(record.id) }));
+      this.useWorld(window.World3D.build("home", { record, floor: this.floorOf(record.id), empty, homes: this.homesBelow(record.id) }));
       this.homeGroup = new THREE.Group();
       this.scene.add(this.homeGroup);
       const v = new Walker(this, record, template, look, this.homeGroup);
@@ -752,6 +768,7 @@
 
     leaveHome() {
       if (!this.visiting) return;
+      this.stopRare();
       const v = this.visiting.walker;
       v.remove();
       this.scene.remove(this.homeGroup);
@@ -781,9 +798,11 @@
       if (!this.visiting) return;
       const v = this.visiting.walker;
       const cam = { pos: this.camera.position.clone(), target: this.controls.target.clone() };
+      this.stopRare();
       this.scene.remove(this.world.group);
       window.World3D.dispose(this.world);
-      this.useWorld(window.World3D.build("home", { record: this.visiting.record, floor: this.floorOf(this.visiting.record.id) }));
+      const id = this.visiting.record.id;
+      this.useWorld(window.World3D.build("home", { record: this.visiting.record, floor: this.floorOf(id), empty: this.visiting.empty, homes: this.homesBelow(id) }));
       this.camera.position.copy(cam.pos);
       this.controls.target.copy(cam.target);
       this.controls.update();
@@ -914,7 +933,7 @@
     }
 
     isBusy(w) {
-      return this.calls.has(w.id) || w.held || w.leaving || w.state === "interact" || w.state === "approach" || w.state === "waiting" || w.state === "perform" || w.state === "playing";
+      return this.calls.has(w.id) || w.held || w.leaving || w.state === "interact" || w.state === "approach" || w.state === "waiting" || w.state === "perform" || w.state === "playing" || w.state === "photo";
     }
 
     // You started a mini-game with this Mii: it stops and faces you while you play.
@@ -1308,11 +1327,8 @@
       if (this.world.windowSpot || this.windowMiis.size) this.syncWindowMiis(dt);
       if (this.world.riders) this.syncRiders(dt);
       // rare events (world.rare): they only run while you're looking at the place
-      if (this.world.rare && !this.visiting) this.world.rare.update(dt, this.time, this.rareCtx || (this.rareCtx = {
-        miis: () => this.walkers.filter((w) => !w.held && !w.anchored && !w.leaving && w.vanish <= 0 && !this.calls.has(w.id)),
-        say: (w, text, secs) => w.say(text, secs || 2.5),
-        event: (id) => { if (this.onRareEvent) this.onRareEvent(id); },
-      }));
+      // (in a home: only while the Mii is in)
+      if (this.world.rare && (!this.visiting || !this.visiting.empty)) this.world.rare.update(dt, this.time, this.rareContext());
       this.runDirector(dt);
       this.tickCalls(dt);
       const floaty = this.world.floaty;
@@ -1378,6 +1394,82 @@
 
       this.separate(this.active(), dt);
       for (const w of this.active()) this.applyPose(w, dt);
+      if (this.guests.length) this.updateGuests(dt, gravity);
+    }
+
+    // ---------- rare events (see world.rare in the places) ----------
+    // What a place's rare event can use.
+    rareContext() {
+      return this.rareCtx || (this.rareCtx = {
+        miis: () => this.walkers.filter((w) => !w.held && !w.anchored && !w.leaving && w.vanish <= 0 && !this.calls.has(w.id)),
+        // everyone here, also the ones sitting down or busy
+        all: () => (this.visiting ? [] : this.walkers).filter((w) => !w.held && !w.leaving && w.vanish <= 0 && !this.calls.has(w.id)),
+        say: (w, text, secs) => w.say(text, secs || 2.5),
+        event: (id) => { if (this.onRareEvent) this.onRareEvent(id); },
+        // a move from the Mii's menu (quiet: without its usual line); kind can also be
+        // anything else: the Mii then just stands still for a moment (w.timer seconds)
+        perform: (w, kind, quiet) => {
+          const cb = this.onPerform;
+          this.onPerform = null; // (not a trick you asked for: no daily goal or wish for it)
+          this.perform(w, kind);
+          this.onPerform = cb;
+          if (quiet && w.bubble) { w.bubble = null; w.uiBubble.classList.remove("show"); }
+        },
+        // the dance moves a Mii knows: dancing, jumping, and the special moves it learned
+        moves: (w) => ["dance", "jump"].concat((w.record.moves || []).filter((k) => k !== "sing")),
+        // at home: the Mii whose home it is
+        host: () => (this.visiting && !this.visiting.empty ? this.visiting.walker : null),
+        // someone else who could drop by (not the host): a resident's id, or null
+        visitor: () => {
+          const host = this.visiting ? this.visiting.record.id : null;
+          const ok = this.residents.filter((r) => r.id !== host && this.miiInfo && this.miiInfo(r.id));
+          const out = ok.filter((r) => !r.home);
+          const list = out.length ? out : ok;
+          return list.length ? list[Math.floor(Math.random() * list.length)].id : null;
+        },
+        guest: (id) => this.addGuest(id),
+        dropGuest: (g) => this.removeGuest(g),
+        // how two Miis get on: { points, level, fight, rival, couple }
+        relation: (a, b) => {
+          const pts = this.points(a, b);
+          return Object.assign({ points: pts, level: D.levelFor ? D.levelFor(pts).name : "" }, this.relation ? this.relation(a, b) : {});
+        },
+      });
+    }
+
+    // Ends whatever rare event is going on here (you're leaving the place).
+    stopRare() {
+      if (this.world && this.world.rare && this.world.rare.stop) this.world.rare.stop(this.rareContext());
+      for (const g of this.guests.slice()) this.removeGuest(g);
+    }
+
+    // Brings in another Mii for a rare event (it isn't one of the walkers: the event moves it).
+    addGuest(id) {
+      const info = this.miiInfo && this.miiInfo(id);
+      if (!info || !info.template) return null;
+      const g = new Walker(this, info.record, info.template, info.look || {}, this.visiting ? this.homeGroup : this.miiGroup);
+      g.state = "guest";
+      g.appear = 1;
+      this.guests.push(g);
+      return g;
+    }
+    removeGuest(g) {
+      const i = this.guests.indexOf(g);
+      if (i < 0) return;
+      this.guests.splice(i, 1);
+      g.remove();
+    }
+    updateGuests(dt, gravity) {
+      for (const g of this.guests) {
+        if (g.bubble) { g.bubble.time += dt; if (g.bubble.time > g.bubble.dur) { g.bubble = null; g.uiBubble.classList.remove("show"); } }
+        if (g.emote) { g.emote.time += dt; if (g.emote.time > g.emote.dur) g.clearEmote(); }
+        if (g.liftVel !== 0 || g.lift > 0) {
+          g.liftVel -= gravity * dt;
+          g.lift += g.liftVel * dt;
+          if (g.lift <= 0 && g.liftVel <= 0) { g.lift = 0; g.liftVel = 0; }
+        }
+        this.applyPose(g, dt);
+      }
     }
 
     // Keeps Miis from walking through each other.
@@ -1560,6 +1652,9 @@
 
         case "playing": // playing a mini-game with you
           if (!w.anchored) w.targetYaw = this.viewYaw(w);
+          break;
+
+        case "photo": // standing still for a group picture (see takePhoto)
           break;
 
         case "perform": // something you asked for from the Mii's menu
@@ -1883,6 +1978,7 @@
       }
       holder.rotation.x = tip;
       holder.rotation.z = !rig.hasLegs ? Math.sin(w.phase) * 0.08 * w.walkAmt : 0;
+      if (w.state === "photo" && w.photo && w.photo.lean) holder.rotation.z -= w.photo.lean * 0.2; // leaning in for a picture
       const pop = w.appear < 1 ? 0.3 + 0.7 * (1 - Math.pow(1 - w.appear, 3)) : 1;
       const gone = w.vanish > 0 ? 1 - smooth(w.vanish) : 1;
       holder.scale.setScalar(w.sizeScale * pop * Math.max(0.01, gone));
@@ -1919,7 +2015,7 @@
       const v = new THREE.Vector3();
       const placed = [];
       // front-most Miis first, so bubbles behind them move up out of the way
-      const sorted = this.active().slice().sort((a, b) => b.z - a.z);
+      const sorted = this.active().concat(this.guests).sort((a, b) => b.z - a.z);
       for (const w of sorted) {
         const s = w.inst.holder.scale.y;
         const lying = w.lastAnchor && w.lastAnchor.kind === "lie" && w.seatBlend > 0.5;
@@ -2104,14 +2200,132 @@
       });
     }
 
+    // ---------- group photo ----------
+    // Lines the Miis up (left to right, in list order) in front of the camera, each in
+    // its pose, frames them and takes the picture. poses: id -> { arms, bow, lean, face }
+    // (lean / face: -1 = toward the Mii on the left, 1 = toward the one on the right).
+    // opts.jump = everyone jumps for the picture.
+    // Resolves with { url (PNG data URL), width, height, heads: [{ id, x, y }] (0..1 on the picture) }.
+    takePhoto(list, poses, opts) {
+      opts = opts || {};
+      const n = list.length;
+      const scale = Math.max(...list.map((w) => w.sizeScale || 1));
+      const gap = 1.3 * scale;
+      // flat directions from the camera: forward, and left-to-right
+      const fwd = new THREE.Vector3().subVectors(this.controls.target, this.camera.position);
+      fwd.y = 0;
+      if (fwd.lengthSq() < 1e-4) fwd.set(0, 0, -1);
+      fwd.normalize();
+      const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+      const slots = (c) => list.map((w, i) => ({ x: c.x + right.x * (i - (n - 1) / 2) * gap, z: c.z + right.z * (i - (n - 1) / 2) * gap }));
+      // how far back the camera goes to fit everyone in
+      const height = MII_HEIGHT * scale;
+      const vfov = (this.camera.fov * Math.PI) / 180;
+      const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
+      const halfW = ((n - 1) * gap) / 2 + 1.1 * scale;
+      const dist = Math.max(halfW / Math.tan(hfov / 2), (height * 0.72) / Math.tan(vfov / 2), 4) * 1.12;
+      // somewhere open: in the middle of the view if possible, with nothing (a tree, a lamp...)
+      // between the camera and anyone in the picture
+      const mid = { x: list.reduce((s, w) => s + w.x, 0) / n, z: list.reduce((s, w) => s + w.z, 0) / n };
+      const tries = [{ x: this.controls.target.x, z: this.controls.target.z }, mid];
+      for (let i = 0; i < 80; i++) tries.push(this.nav.randomFree());
+      const inView = (s) => s.every((p) => this.nav.clearLine(p.x, p.z, p.x - fwd.x * dist * 0.9, p.z - fwd.z * dist * 0.9, null, 0.5));
+      let spots = null, fallback = null;
+      for (const c of tries) {
+        const s = slots(c);
+        if (s.some((p) => this.nav.isBlocked(p.x, p.z, 0.45))) continue;
+        if (!fallback && this.nav.clearLine(c.x, c.z, c.x - fwd.x * 6, c.z - fwd.z * 6, null, 0.3)) fallback = s;
+        if (!inView(s)) continue;
+        spots = s;
+        break;
+      }
+      if (!spots) spots = fallback || slots(mid).map((p) => this.nav.nearestFree(p.x, p.z));
+      const center = { x: (spots[0].x + spots[n - 1].x) / 2, z: (spots[0].z + spots[n - 1].z) / 2 };
+
+      // the camera: low and close, the whole group in the picture
+      const saved = {
+        pos: this.camera.position.clone(), target: this.controls.target.clone(),
+        min: this.controls.minDistance, max: this.controls.maxDistance,
+        minAz: this.controls.minAzimuthAngle, maxAz: this.controls.maxAzimuthAngle, enabled: this.controls.enabled,
+        timeScale: this.timeScale,
+      };
+      this.timeScale = 1; // (normal speed while posing, so the jump is caught at the top)
+      const lift = this.baseLift({ x: center.x });
+      const target = new THREE.Vector3(center.x, lift + height * 0.5, center.z);
+      const el = 0.16;
+      Object.assign(this.controls, { minDistance: 0.5, maxDistance: 500, minAzimuthAngle: -Infinity, maxAzimuthAngle: Infinity, enabled: false });
+      this.controls.target.copy(target);
+      this.camera.position.set(target.x - fwd.x * dist * Math.cos(el), target.y + dist * Math.sin(el), target.z - fwd.z * dist * Math.cos(el));
+      this.controls.update();
+
+      // everyone into place, facing the camera
+      list.forEach((w, i) => {
+        const pose = poses[w.id] || {};
+        this.endInteraction(w);
+        if (this.dragging === w) this.dragging = null;
+        w.held = false; w.spot = null; w.anchor = null; w.lastAnchor = null; w.seatBlend = 0; w.path = null; w.target = null;
+        w.dance = false; w.sleep = false; w.laugh = false; w.nod = 0; w.shake = 0;
+        w.clearEmote();
+        w.x = spots[i].x; w.z = spots[i].z;
+        w.state = "photo";
+        w.photo = pose;
+        w.arms = pose.arms || "down";
+        w.bow = !!pose.bow;
+        w.yaw = w.targetYaw = this.viewYaw(w) + (pose.face || 0) * 0.65;
+      });
+      const release = () => {
+        for (const w of list) {
+          if (w.state !== "photo") continue;
+          w.state = "idle"; w.timer = rnd(1.5, 3); w.photo = null; w.arms = "down"; w.bow = false;
+        }
+        this.camera.position.copy(saved.pos);
+        this.timeScale = saved.timeScale;
+        Object.assign(this.controls, { minDistance: saved.min, maxDistance: saved.max, minAzimuthAngle: saved.minAz, maxAzimuthAngle: saved.maxAz, enabled: saved.enabled });
+        this.controls.target.copy(saved.target);
+        this.controls.update();
+      };
+      return new Promise((resolve, reject) => {
+        // give them a moment to settle (and jump, if they're jumping)
+        if (opts.jump) setTimeout(() => list.forEach((w) => w.hop(this.world.floaty ? 2.6 : 5.5)), 750);
+        setTimeout(() => {
+          try {
+            // a sharper picture than the screen: render it bigger for a moment
+            const pr = this.renderer.getPixelRatio();
+            const big = Math.max(pr, Math.min(2.5, 2400 / this.W));
+            this.renderer.setPixelRatio(big);
+            this.renderer.setSize(this.W, this.H, false);
+            // only the Miis in the picture (nobody wandering in front or photobombing)
+            const others = this.walkers.filter((w) => !list.includes(w) && w.inst.holder.visible);
+            for (const w of others) w.inst.holder.visible = false;
+            this.renderer.render(this.scene, this.camera);
+            for (const w of others) w.inst.holder.visible = true;
+            const url = this.canvas.toDataURL("image/png");
+            const width = this.canvas.width, height2 = this.canvas.height;
+            // where everyone's head and feet are in the picture (for framing, and little stickers on it)
+            const at = (x, y, z) => { const v = new THREE.Vector3(x, y, z).project(this.camera); return { x: (v.x + 1) / 2, y: (1 - v.y) / 2 }; };
+            const heads = list.map((w) => Object.assign({ id: w.id, feet: at(w.x, w.lift, w.z) }, at(w.x, w.lift + height * 1.02, w.z)));
+            this.renderer.setPixelRatio(pr);
+            this.renderer.setSize(this.W, this.H, false);
+            release();
+            resolve({ url, width, height: height2, heads });
+          } catch (err) {
+            release();
+            reject(err);
+          }
+        }, opts.jump ? 750 + Math.round((this.world.floaty ? 2.6 / 3 : 5.5 / 22) * 1000) : 1000);
+      });
+    }
+
     // ---------- main loop ----------
+    // timeScale (Settings: simulation speed) runs the world several steps per frame
     start() {
       let last = performance.now();
       const frame = (now) => {
         const dt = Math.min(0.05, (now - last) / 1000);
         last = now;
         if (!this.paused) { // (paused while you play Paintball)
-          this.update(dt);
+          const steps = Math.max(1, Math.round(this.timeScale || 1));
+          for (let i = 0; i < steps; i++) this.update(dt);
           this.controls.update();
           this.renderer.render(this.scene, this.camera);
           this.updateOverlay();

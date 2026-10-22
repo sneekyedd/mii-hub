@@ -753,7 +753,7 @@
       lie: { x: T.x, z: T.z, y: 0.03, yaw: PI / 2 }, lines,
     });
 
-    return {
+    const beach = {
       group: root,
       background: 0xcdeeff,
       fog: [0xd8f2ff, 90, 270],
@@ -813,6 +813,218 @@
         "Smell that sea air!", "Hot sand, hot sand!", "Is that a seagull? Hide your chips!",
       ],
       update(t) { anim.forEach((a) => a(t)); },
+    };
+    beach.rare = crabParty(root, shore, beach.obstacles); // (very rarely, the crabs throw a dance party)
+    return beach;
+  }
+
+  // ---------- RARE: the crab dance party ----------
+  // Well under 1% of the time (and only while you're watching), crabs come marching
+  // out of the sea, fill the beach and dance to their song for a minute (js/crabSong.js;
+  // the hub music fades out meanwhile). The Miis dance along with every move they know.
+  // Then the crabs scuttle back into the sea. Watch it all for a sticker (leave the
+  // beach before the end and it's just over).
+  function crabParty(root, shore, obstacles) {
+    const BEAT = 0.5;               // 120 beats a minute, like the song
+    const ARRIVE = 8, LEAVE = 7;    // seconds to march in / scuttle off
+    const COUNT = 26;               // crabs (plus the king)
+    const RED = 0xff5a3a;
+    const bodyGeo = bakeGeo((c) => {
+      ball(c, RED, 0, 0.12, 0, 0.16, { sx: 1.3, sy: 0.6 });
+      ball(c, 0xff8a6a, 0, 0.17, 0.04, 0.1, { sx: 1.3, sy: 0.4 }); // a lighter shell on top
+      for (const sx of [-1, 1]) {
+        cylinder(c, RED, sx * 0.06, 0.24, 0.08, 0.015, 0.12);          // eye stalks
+        ball(c, 0xffffff, sx * 0.06, 0.31, 0.08, 0.035);
+        ball(c, 0x222222, sx * 0.06, 0.31, 0.11, 0.018);
+        for (let k = 0; k < 3; k++) cylinder(c, 0xe0472a, sx * 0.22, 0.06, -0.06 + k * 0.07, 0.015, 0.16, { rz: sx * 1.1 });
+      }
+      ball(c, 0x6a1a10, 0, 0.12, 0.2, 0.025, { sx: 2 }); // a little smile
+    });
+    // the claws on their arms (they wave about, so they're their own shape)
+    const clawGeo = bakeGeo((c) => {
+      for (const sx of [-1, 1]) {
+        cylinder(c, RED, sx * 0.2, 0.16, 0.12, 0.022, 0.16, { rz: sx * 0.9, rx: 0.5 });
+        ball(c, RED, sx * 0.27, 0.22, 0.2, 0.08, { sx: 1.25, sy: 0.9 });
+        ball(c, 0xff7a5a, sx * 0.29, 0.29, 0.24, 0.045, { sx: 1.2 }); // the pincer's "thumb"
+      }
+    });
+    const crownGeo = bakeGeo((c) => {
+      cylinder(c, 0xffcf3a, 0, 0.3, 0, 0.09, 0.06);
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * TAU;
+        put(c, G.cone(), toon(0xffcf3a), { x: Math.cos(a) * 0.075, y: 0.37, z: Math.sin(a) * 0.075, s: 0.025, sy: 0.07, shadow: false });
+      }
+      ball(c, 0xff4fa0, 0, 0.31, 0.09, 0.022);
+    });
+    const N = COUNT + 1; // copy 0 is the king
+    const make = (geo) => {
+      const m = dynamic(new THREE.InstancedMesh(geo, paintedMat.clone(), N));
+      m.castShadow = true; m.frustumCulled = false; m.visible = false;
+      root.add(m);
+      return m;
+    };
+    const bodies = make(bodyGeo), claws = make(clawGeo);
+    const crown = dynamic(painted(root, crownGeo, { shadow: false }));
+    crown.visible = false;
+    const tmp = new THREE.Object3D();
+    tmp.rotation.order = "YXZ"; // turn first, then lift the claws, then wiggle
+
+    // a spot on the sand that isn't taken by a towel, chair, tower...
+    const free = (x, z) => z > shore(x) + 0.7 && !obstacles.some((o) => {
+      if (o.outside) return false;
+      if (o.r !== undefined) return Math.hypot(x - o.x, z - o.z) < o.r + 0.6;
+      if (o.rx !== undefined) return Math.hypot((x - o.x) / (o.rx + 0.6), (z - o.z) / (o.rz + 0.6)) < 1;
+      return Math.abs(x - o.x) < o.w / 2 + 0.55 && Math.abs(z - o.z) < o.d / 2 + 0.55;
+    });
+    let party = null, check = 4;
+    const crabs = [];
+    function setup() {
+      // where everyone dances: rows across the beach, the king in the front middle
+      const spots = [];
+      for (let z = -3.3; z < 8.5; z += 1.9) for (let x = -14.5; x <= 14.5; x += 2.1) {
+        const jx = x + (Math.random() - 0.5) * 0.6 + (Math.round(z) % 2 ? 0.9 : 0), jz = z + (Math.random() - 0.5) * 0.5;
+        if (free(jx, jz)) spots.push({ x: jx, z: jz });
+      }
+      spots.sort((a, b) => Math.hypot(a.x, a.z - 1) - Math.hypot(b.x, b.z - 1));
+      let king = { x: 0, z: -2.6 };
+      for (let k = 0; k < 40 && !free(king.x, king.z); k++) king = { x: (Math.random() - 0.5) * 8, z: -2.8 + Math.random() * 3 };
+      const chosen = [king].concat(spots.filter((p) => Math.hypot(p.x - king.x, p.z - king.z) > 1.4).slice(0, COUNT));
+      crabs.length = 0;
+      chosen.forEach((p, i) => {
+        const sx = p.x + (Math.random() - 0.5) * 3;
+        crabs.push({
+          x: p.x, z: p.z, hx: p.x, hz: p.z, s: i === 0 ? 3.0 : 1.55 + Math.random() * 0.35,
+          from: { x: sx, z: shore(sx) - 2.6 }, delay: i === 0 ? 2.2 : Math.random() * 3.2,
+          to: null, y: -1, ry: 0, row: Math.round(p.z / 1.9), seed: Math.random() * 10,
+        });
+      });
+      // (any copies left over stay out of sight)
+      for (let i = chosen.length; i < N; i++) { tmp.position.set(0, -50, 0); tmp.scale.setScalar(0.001); tmp.updateMatrix(); bodies.setMatrixAt(i, tmp.matrix); claws.setMatrixAt(i, tmp.matrix); }
+    }
+    // the sand slopes down into the sea: how high the ground is at (x, z)
+    const groundY = (x, z) => Math.max(-0.7, Math.min(0, (z - shore(x)) * 0.5));
+    function place(i, c, raise, wiggle, hop) {
+      tmp.position.set(c.x, c.y + hop, c.z);
+      tmp.rotation.set(0, c.ry, wiggle);
+      tmp.scale.setScalar(c.s);
+      tmp.updateMatrix();
+      bodies.setMatrixAt(i, tmp.matrix);
+      tmp.rotation.set(-raise * 1.15, c.ry, wiggle * 1.6);
+      tmp.updateMatrix();
+      claws.setMatrixAt(i, tmp.matrix);
+      if (i === 0) { crown.position.set(c.x, c.y + hop, c.z); crown.rotation.set(0, c.ry, wiggle); crown.scale.setScalar(c.s); }
+    }
+    const music = (fn) => { try { fn(); } catch (e) { /* no sound */ } };
+    const lines = ["Pinch pinch!", "Crab dance!", "Snip snap, snip snap!", "Everybody, sideways!", "♪ Pinch pinch shuffle ♪", "These crabs can MOVE!", "Claws up!"];
+    function finish(ctx, done) {
+      party = null;
+      check = 4;
+      bodies.visible = claws.visible = crown.visible = false;
+      if (window.MiiCrabSong && !done) music(() => window.MiiCrabSong.stop());
+      if (window.MiiMusic) music(() => window.MiiMusic.duck(false));
+      if (done) ctx.event("crabs");
+    }
+
+    return {
+      update(dt, t, ctx) {
+        if (!party) {
+          check -= dt;
+          if (check > 0) return;
+          check = 4;
+          if (Math.random() < 0.005) this.force(ctx);
+          return;
+        }
+        const P = party;
+        P.time += dt;
+        if (P.phase === "arrive") {
+          // marching out of the sea, sideways of course
+          crabs.forEach((c, i) => {
+            const k = Math.max(0, Math.min(1, (P.time - c.delay) / (ARRIVE - 1 - c.delay)));
+            const e = k * k * (3 - 2 * k);
+            c.x = c.from.x + (c.hx - c.from.x) * e;
+            c.z = c.from.z + (c.hz - c.from.z) * e;
+            c.y = groundY(c.x, c.z);
+            c.ry = k < 1 ? Math.PI / 2 * Math.min(1, (1 - k) * 6) : 0;
+            const walk = k > 0 && k < 1 ? 1 : 0;
+            place(i, c, 0.15, Math.sin(t * 18 + c.seed) * 0.12 * walk, Math.abs(Math.sin(t * 16 + c.seed)) * 0.04 * walk);
+          });
+          if (!P.oohs && P.time > 2.5) {
+            P.oohs = true;
+            ctx.all().slice(0, 3).forEach((w, i) => ctx.say(w, ["Crabs?!", "Whoa, so many crabs!", "Are they... lining up?"][i], 2.6));
+          }
+          if (P.time >= ARRIVE) {
+            P.phase = "dance"; P.time = 0;
+            P.length = (window.MiiCrabSong && window.MiiCrabSong.duration()) || 60;
+            if (window.MiiCrabSong) music(() => window.MiiCrabSong.play());
+          }
+        } else if (P.phase === "dance") {
+          const b = P.time / BEAT;                  // beats since the song began
+          const move = Math.floor(b / 8) % 5;       // a new move every 2 bars
+          const pulse = Math.pow(1 - (b % 1), 2.5); // a kick on every beat
+          const finale = P.time > P.length - 2.2;
+          crabs.forEach((c, i) => {
+            let raise = 0.3 + pulse * 0.4, wiggle = Math.sin(b * Math.PI) * 0.18, hop = 0, ry = 0;
+            c.x = c.hx; c.z = c.hz;
+            if (finale) { raise = 1; wiggle = Math.sin(t * 20) * 0.05; }
+            else if (move === 0) { hop = pulse * 0.06 * c.s; }                                   // bop
+            else if (move === 1) { c.x = c.hx + Math.sin(b * Math.PI / 2) * 0.5; raise = 0.6; }   // shuffle left, shuffle right
+            else if (move === 2) { raise = 0.5 + 0.5 * Math.sin(b * Math.PI - c.hx * 0.45); }    // the claw wave
+            else if (move === 3) { ry = (b % 4) < 2 ? Math.min(1, (b % 2) / 1.5) * TAU : 0; raise = 0.8; } // spin!
+            else { hop = ((Math.floor(b) + c.row + (i % 2)) % 2 ? pulse : 0) * 0.35; raise = hop > 0.05 ? 1 : 0.2; } // hop, hop
+            c.ry = ry;
+            c.y = 0;
+            place(i, c, raise, wiggle, hop);
+          });
+          // the Miis dance along, going through every move they know
+          if (!finale) for (const w of ctx.all()) {
+            if (w.state === "perform" && P.dancing.has(w.id)) continue;
+            const moves = ctx.moves(w);
+            const n = P.dancing.get(w.id) || 0;
+            P.dancing.set(w.id, n + 1);
+            ctx.perform(w, moves[n % moves.length], true);
+          }
+          P.chatter -= dt;
+          if (P.chatter <= 0) {
+            P.chatter = 4 + Math.random() * 4;
+            const all = ctx.all();
+            if (all.length) ctx.say(all[Math.floor(Math.random() * all.length)], lines[Math.floor(Math.random() * lines.length)], 2.2);
+          }
+          if (P.time >= P.length) {
+            P.phase = "leave"; P.time = 0;
+            crabs.forEach((c) => { const tx = c.x + (Math.random() - 0.5) * 4; c.from = { x: c.x, z: c.z }; c.to = { x: tx, z: shore(tx) - 2.8 }; c.delay = Math.random() * 1.8; });
+            ctx.all().slice(0, 2).forEach((w, i) => ctx.say(w, ["Bye, crabs!", "Come back soon!"][i], 2.4));
+          }
+        } else if (P.phase === "leave") {
+          if (!P.musicBack && P.time > 1.2) { P.musicBack = true; if (window.MiiMusic) music(() => window.MiiMusic.duck(false)); }
+          // and off they scuttle, back into the sea
+          crabs.forEach((c, i) => {
+            const k = Math.max(0, Math.min(1, (P.time - c.delay) / (LEAVE - 1.9)));
+            const e = k * k;
+            c.x = c.from.x + (c.to.x - c.from.x) * e;
+            c.z = c.from.z + (c.to.z - c.from.z) * e;
+            c.y = groundY(c.x, c.z) - (k > 0.85 ? (k - 0.85) * 3 : 0);
+            c.ry = k > 0 ? Math.PI / 2 * Math.min(1, k * 8) : 0;
+            const walk = k > 0 && k < 1 ? 1 : 0;
+            place(i, c, 0.15, Math.sin(t * 20 + c.seed) * 0.12 * walk, Math.abs(Math.sin(t * 18 + c.seed)) * 0.04 * walk);
+          });
+          if (P.time >= LEAVE) finish(ctx, true);
+        }
+        bodies.instanceMatrix.needsUpdate = true;
+        claws.instanceMatrix.needsUpdate = true;
+      },
+      stop(ctx) { if (party) finish(ctx, false); },
+      force(ctx) { // (also used for testing)
+        if (party) return;
+        setup();
+        party = { phase: "arrive", time: 0, dancing: new Map(), chatter: 3, length: 60 };
+        crabs.forEach((c, i) => { c.x = c.from.x; c.z = c.from.z; c.y = -1; place(i, c, 0, 0, 0); });
+        bodies.instanceMatrix.needsUpdate = true;
+        claws.instanceMatrix.needsUpdate = true;
+        bodies.visible = claws.visible = crown.visible = true;
+        if (window.MiiCrabSong) music(() => window.MiiCrabSong.prepare());
+        if (window.MiiMusic) music(() => window.MiiMusic.duck(true));
+      },
+      _state: () => party, _crabs: crabs, // (for testing)
     };
   }
 
@@ -1344,7 +1556,7 @@
     const BS = { x: 9.4, z: 7.6 };
     const bs = group(root, BS.x, 0, BS.z);
     for (const sx of [-1.6, 1.6]) cylinder(bs, 0x55606e, sx, 1.4, -0.45, 0.06, 2.8);
-    block(bs, toon(0xd8f2ff, { transparent: true, opacity: 0.45 }), 0, 1.55, -0.5, 3.2, 1.9, 0.04, 0.01);
+    block(bs, toon(0xd8f2ff, { transparent: true, opacity: 0.45, depthWrite: false }), 0, 1.55, -0.5, 3.2, 1.9, 0.04, 0.01);
     block(bs, 0x4a90e2, 0, 2.85, -0.1, 3.6, 0.12, 1.3, 0.04);
     block(bs, 0x4a90e2, 0, 0.47, -0.2, 2.4, 0.07, 0.5, 0.03);
     for (const sx of [-1.0, 1.0]) block(bs, 0x55606e, sx, 0.23, -0.2, 0.06, 0.46, 0.4, 0.02);

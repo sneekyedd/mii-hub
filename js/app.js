@@ -33,7 +33,13 @@
   const settings = S.loadSettings();
   hub.friendships = settings.friendships || {};
   hub.chattiness = settings.chattiness || 1;
-  $("chatty").value = hub.chattiness;
+  // Settings (⚙️): light/dark mode, sandbox mode, simulation speed
+  const prefs = {
+    theme: settings.theme === "light" || settings.theme === "dark" ? settings.theme : "system",
+    sandbox: !!settings.sandbox,
+    simSpeed: [1, 2, 4].includes(settings.simSpeed) ? settings.simSpeed : 1,
+  };
+  hub.timeScale = prefs.simSpeed;
   hub.setScene(settings.scene && window.World3D.list.some((l) => l.id === settings.scene) ? settings.scene : "park");
 
   // ---------- every Mii you have (out and about, or at home) ----------
@@ -106,8 +112,9 @@
     return hub.addWalker(record, template, lookFor(record, template), silent, opts);
   }
 
-  // ---------- scene buttons ----------
-  // (a drop-down so the places don't take up the whole top bar)
+  // ---------- places and residents (one drop-down in the top bar) ----------
+  // Every place, with the Miis who are there right now under it, then the Miis at
+  // home and on the way somewhere. Click a Mii to go to wherever it is.
   const tabs = $("sceneTabs");
   const placeBtn = document.createElement("button");
   placeBtn.className = "place-pick";
@@ -116,18 +123,36 @@
   const placeMenu = document.createElement("div");
   placeMenu.className = "place-menu";
   placeMenu.hidden = true;
+  const residentLists = new Map(); // place id ("home", "away" too) -> the list of Miis under it
   for (const scene of window.World3D.list) {
     const b = document.createElement("button");
     b.className = "place-item";
     b.innerHTML = '<span class="pi-icon">' + scene.icon + '</span><span class="pi-name">' + scene.name + '</span><span class="tab-count"></span>';
     b.dataset.scene = scene.id;
     b.addEventListener("click", () => { showPlaceMenu(false); goToScene(scene.id); });
-    placeMenu.appendChild(b);
+    const list = document.createElement("div");
+    list.className = "pm-miis";
+    residentLists.set(scene.id, list);
+    placeMenu.append(b, list);
   }
+  for (const [id, label] of [["home", "🏠 At home"], ["away", "🚶 On the way"]]) {
+    const h = document.createElement("div");
+    h.className = "pm-head";
+    h.dataset.group = id;
+    h.textContent = label;
+    const list = document.createElement("div");
+    list.className = "pm-miis";
+    residentLists.set(id, list);
+    placeMenu.append(h, list);
+  }
+  const pmFoot = document.createElement("div");
+  pmFoot.className = "pm-foot";
+  placeMenu.appendChild(pmFoot);
   tabs.append(placeBtn, placeMenu);
   function showPlaceMenu(show) {
     placeMenu.hidden = !show;
     placeBtn.setAttribute("aria-expanded", String(show));
+    if (show) renderPlaceMenu(true);
   }
   placeBtn.addEventListener("click", () => showPlaceMenu(placeMenu.hidden));
   document.addEventListener("pointerdown", (e) => { if (!placeMenu.hidden && !tabs.contains(e.target)) showPlaceMenu(false); });
@@ -161,7 +186,7 @@
 
   function saveSettings() {
     const scene = hub.visiting ? (hub.mainWorld && hub.mainWorld.id) : hub.world.id;
-    S.saveSettings({ scene, friendships: hub.friendships, chattiness: hub.chattiness });
+    S.saveSettings({ scene, friendships: hub.friendships, chattiness: hub.chattiness, theme: prefs.theme, sandbox: prefs.sandbox, simSpeed: prefs.simSpeed });
   }
 
   // ---------- a little pop-up with choices ----------
@@ -332,15 +357,15 @@
     return { template: tpl, look: lookFor(r, tpl) };
   };
 
-  $("chatty").addEventListener("input", (e) => { hub.chattiness = parseFloat(e.target.value); saveSettings(); });
-
-  $("clearBtn").addEventListener("click", async () => {
+  // (Settings: Remove all Miis)
+  async function removeAllMiis() {
     if (!records.size) return;
     const ok = await ask("Remove every Mii?", "All your Miis, their homes, coins and friendships will be gone for good.", [
       { label: "<b>Yes, remove everyone</b>", value: true, kind: "danger" },
       { label: "Cancel", value: false, kind: "plain" },
     ]);
     if (!ok) return;
+    closeMiiMenu();
     closeHomePanel();
     hub.clearAll();
     S.clearMiis();
@@ -348,7 +373,7 @@
     portraits.clear();
     saveSettings();
     refreshAll(true);
-  });
+  }
 
   // ---------- going places, home visits, moving away ----------
   // Miis decide for themselves where to go (see town.js); you can also send them.
@@ -427,6 +452,7 @@
 
   // Click an apartment in the Apartments to visit whoever lives there.
   hub.onRareEvent = (id) => progress.hiddenEvent(id); // a rare event was seen: its sticker
+  hub.miiInfo = (id) => { const r = records.get(id), t = r && loaded.get(id); return t ? { record: r, template: t, look: lookFor(r, t) } : null; }; // (for rare-event guests)
   hub.onApartmentClick = (id) => {
     const rec = records.get(id);
     if (rec) visit(rec, { empty: !isHome(rec) || town.isTravelling(rec) }); // (out? you can still look around)
@@ -457,65 +483,59 @@
     return Array.from(records.values()).sort((a, b) => (a.added || 0) - (b.added || 0));
   }
 
-  function renderRoster() {
-    const list = $("roster");
-    list.innerHTML = "";
+  // Goes to wherever the Mii is (or visits it at home) and opens its menu.
+  function goToMii(rec) {
+    // inside someone else's home: go out to where this Mii is
+    if (hub.visiting && hub.visiting.record.id !== rec.id) {
+      leaveHome();
+      if (isHome(rec) && !town.isTravelling(rec)) { visit(rec); return; }
+    }
+    if (town.isTravelling(rec)) { toast(nameOf(rec) + " is on the way somewhere. Try again in a moment!"); return; }
+    const ww = walkerOf(rec.id);
+    if (ww) { openMiiMenu(ww); return; }
+    if (isHome(rec)) { visit(rec); return; }
+    // somewhere else: go and look, then open its menu there
+    withWalker(rec, (w2) => openMiiMenu(w2));
+  }
+
+  // The residents under each place in the drop-down.
+  // force = rebuild even if nobody came or went (otherwise just the little details)
+  let placeMenuKey = "";
+  function renderPlaceMenu(force) {
+    if (placeMenu.hidden) return;
     const all = sortedRecords();
-    $("count").textContent = all.length;
-    if (!all.length) {
-      list.innerHTML = '<li class="empty">No Miis yet. Add some above!</li>';
+    const groupOf = (r) => (town.isTravelling(r) ? "away" : isHome(r) ? "home" : residentLists.has(r.place) ? r.place : "away");
+    const key = all.map((r) => r.id + groupOf(r) + nameOf(r) + (r.wish ? 1 : 0)).join(",");
+    if (!force && key === placeMenuKey) {
+      for (const el of placeMenu.querySelectorAll("[data-where]")) {
+        const rec = records.get(el.dataset.where);
+        if (rec) el.textContent = whereNow(rec);
+      }
       return;
     }
+    placeMenuKey = key;
+    for (const list of residentLists.values()) list.innerHTML = "";
     for (const rec of all) {
-      const w = hub.walkers.find((x) => x.id === rec.id);
-      const li = document.createElement("li");
-      if (isHome(rec)) li.className = "at-home";
+      const g = groupOf(rec);
       const row = document.createElement("div");
-      row.className = "row";
-
-      const img = document.createElement("img");
-      img.alt = "";
-      img.dataset.portrait = rec.id;
-      img.src = portraitFor(rec);
-
-      const info = document.createElement("div");
-      info.className = "info";
-      const name = document.createElement("div");
-      name.className = "name";
-      name.textContent = nameOf(rec);
-      const flag = document.createElement("button");
-      flag.className = "wish-flag";
-      flag.dataset.wishFlag = rec.id;
-      flag.hidden = true;
-      flag.textContent = "💭";
-      flag.addEventListener("click", (e) => {
-        e.stopPropagation();
-        // go to the Mii: you have to talk to it to find out what it wants
-        withWalker(rec, (ww) => { openMiiMenu(ww, e.clientX, e.clientY); });
-      });
-      name.appendChild(flag);
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      meta.innerHTML = '<span class="coins" data-coins="' + rec.id + '">🪙 ' + (rec.coins || 0) + "</span> · " +
-        escapeHtml(D.personalityLabel(rec.personality)) + '<div class="where" data-where="' + rec.id + '">' + escapeHtml(whereNow(rec)) + "</div>";
-      if (w && !w.inst.rig.canAnimate) {
-        // e.g. a "head only" export: it can't walk properly
-        const warn = document.createElement("div");
-        warn.className = "warn";
-        warn.textContent = "⚠ No skeleton found, so it can only hop. Export it from Mii Creator as \"Full body\".";
-        meta.appendChild(warn);
-      }
-      info.append(name, meta);
-
-      const actions = document.createElement("div");
-      actions.className = "actions";
+      row.className = "pm-mii" + (g === "home" ? " at-home" : "");
+      const who = document.createElement("button");
+      who.className = "pm-who";
+      who.title = g === "home" ? "Visit " + nameOf(rec) + " at home" : "Go to " + nameOf(rec);
+      who.innerHTML = '<img alt="" data-portrait="' + rec.id + '" src="' + portraitFor(rec) + '"><span class="pm-name">' + escapeHtml(nameOf(rec)) +
+        ' <span class="wish-flag" data-wish-flag="' + rec.id + '" hidden>💭</span></span>' +
+        '<span class="pm-meta"><span class="coins" data-coins="' + rec.id + '">🪙 ' + (rec.coins || 0) + "</span>" +
+        (g === "away" || hub.calls.has(rec.id) ? ' · <span class="where" data-where="' + rec.id + '">' + escapeHtml(whereNow(rec)) + "</span>" : "") + "</span>";
+      who.addEventListener("click", () => { showPlaceMenu(false); goToMii(rec); });
+      row.appendChild(who);
       const btn = (icon, title, fn) => {
         const b = document.createElement("button");
+        b.className = "pm-act";
         b.textContent = icon;
         b.title = title;
         b.setAttribute("aria-label", title);
-        b.addEventListener("click", fn);
-        actions.appendChild(b);
+        b.addEventListener("click", () => { showPlaceMenu(false); fn(); });
+        row.appendChild(b);
       };
       if (isHome(rec)) {
         btn("🏡", "Visit " + nameOf(rec) + " at home", () => visit(rec));
@@ -524,34 +544,12 @@
         btn("🏠", "Send " + nameOf(rec) + " home", () => sendHome(rec));
         btn("🔑", "Look around " + nameOf(rec) + "'s home (while they're out)", () => visit(rec, { empty: true }));
       }
-
-      row.append(img, info, actions);
-      // click the picture or name to open the Mii's menu (or visit, if they're home)
-      for (const el of [img, info]) {
-        el.style.cursor = "pointer";
-        el.addEventListener("click", (e) => {
-          // inside someone else's home: go out to where this Mii is
-          if (hub.visiting && hub.visiting.record.id !== rec.id) {
-            leaveHome();
-            if (isHome(rec)) { visit(rec); return; }
-            if (town.isTravelling(rec)) return;
-            if (rec.place !== viewedPlace()) goToScene(rec.place);
-            setTimeout(() => { const w2 = walkerOf(rec.id); if (w2) openMiiMenu(w2, e.clientX, e.clientY); }, 900);
-            return;
-          }
-          const ww = walkerOf(rec.id);
-          if (ww) openMiiMenu(ww, e.clientX, e.clientY);
-          else if (isHome(rec)) visit(rec);
-          else if (!town.isTravelling(rec)) {
-            // somewhere else: go and look, then open its menu there
-            goToScene(rec.place);
-            setTimeout(() => { const w2 = walkerOf(rec.id); if (w2) openMiiMenu(w2, e.clientX, e.clientY); }, 900);
-          }
-        });
-      }
-      li.appendChild(row);
-      list.appendChild(li);
+      residentLists.get(g).appendChild(row);
     }
+    // the "At home" / "On the way" headings only show when someone's there
+    for (const h of placeMenu.querySelectorAll(".pm-head")) h.hidden = !residentLists.get(h.dataset.group).children.length;
+    pmFoot.textContent = all.length ? all.length + " resident" + (all.length === 1 ? "" : "s") + " · click a Mii to go to them" : "No Miis yet: ➕ Add Miis!";
+    renderWishes(true);
   }
 
   // Updates just the coin numbers (cheap, so it can happen often).
@@ -593,20 +591,6 @@
     }
   }
 
-  function renderFeed() {
-    const list = $("feed");
-    list.innerHTML = "";
-    if (!hub.feed.length) {
-      list.innerHTML = '<li class="empty">Nothing yet…</li>';
-      return;
-    }
-    for (const item of hub.feed.slice(0, 12)) {
-      const li = document.createElement("li");
-      li.textContent = item.text;
-      list.appendChild(li);
-    }
-  }
-
   // who lives in which apartment (for the Apartments place)
   function updateResidents() {
     hub.setResidents(sortedRecords().map((r) => {
@@ -624,15 +608,15 @@
 
   let pending = false;
   let rosterKey = "";
+  let menu = null, menuWalker = null; // the Mii menu (made below) and whose it is
   // force = rebuild the roster even if nobody came or went
   function refreshAll(force) {
     const key = sortedRecords().map((r) => r.id + r.place + nameOf(r)).join(",");
-    if (force || key !== rosterKey) { rosterKey = key; renderRoster(); updateResidents(); if (typeof renderWishes === "function") renderWishes(true); }
+    if (force || key !== rosterKey) { rosterKey = key; renderPlaceMenu(true); updateResidents(); if (typeof renderWishes === "function") renderWishes(true); }
     renderFriends();
-    renderFeed();
     updateTabs();
   }
-  // where a Mii is, for the side panel (or who they're on the phone with)
+  // where a Mii is, for the places drop-down (or who they're on the phone with)
   function whereNow(rec) {
     const call = hub.calls && hub.calls.get(rec.id);
     if (call) {
@@ -648,8 +632,11 @@
       const rec = records.get(el.dataset.where);
       if (rec) el.textContent = whereNow(rec);
     }
+    renderPlaceMenu(false);
     updateResidents();
     updateTabs();
+    // the Mii whose menu is open went somewhere else: close it
+    if (menu && !menu.hidden && menuWalker && !hub.active().includes(menuWalker)) closeMiiMenu();
   }
 
   hub.onChange = () => {
@@ -698,17 +685,32 @@
     return rec.games[id];
   }
 
-  const menu = document.createElement("div");
+  // The Mii menu and the home panel open in the side panel, beside the 3D view
+  // (where the old right-hand menu was), so they don't cover the Miis.
+  const sidePanel = $("sidePanel");
+  menu = document.createElement("div");
   menu.className = "mii-menu";
   menu.hidden = true;
-  $("stage").appendChild(menu);
-
-  function closeMiiMenu() {
-    menu.hidden = true;
+  menu.setAttribute("role", "dialog");
+  menu.setAttribute("aria-label", "Mii menu");
+  sidePanel.appendChild(menu);
+  function updateSidePanel() {
+    const open = !menu.hidden || !panel.hidden;
+    sidePanel.hidden = !open;
+    document.querySelector(".layout").classList.toggle("has-side", open);
   }
 
-  function openMiiMenu(w, clientX, clientY) {
+  function closeMiiMenu() {
+    if (!menu) return;
+    menu.hidden = true;
+    menuWalker = null;
+    updateSidePanel();
+  }
+
+  // (clientX, clientY: where you clicked; not needed now the menu has its own place)
+  function openMiiMenu(w) {
     const rec = w.record;
+    menuWalker = w;
     rec.personality = Object.assign({}, D.DEFAULT_PERSONALITY, rec.personality || {});
     const p = rec.personality;
     const atHomeVisit = hub.visiting && hub.visiting.walker === w;
@@ -753,7 +755,24 @@
     close.textContent = "✕";
     close.setAttribute("aria-label", "Close");
     close.addEventListener("click", closeMiiMenu);
-    head.append(img, titles, close);
+    // 📷 group picture with the Miis here (not inside a home)
+    const cam = document.createElement("button");
+    cam.className = "mm-cam";
+    cam.textContent = "📷";
+    const posers = photoCandidates();
+    cam.hidden = !!hub.visiting;
+    cam.disabled = posers.length < 2 || !posers.includes(w);
+    cam.title = cam.disabled ? "Group picture: needs at least 2 Miis here" : "Take a group picture with the Miis here";
+    cam.setAttribute("aria-label", cam.title);
+    cam.addEventListener("click", () => openPhotoPicker(w));
+    head.append(img, titles, cam, close);
+    // e.g. a "head only" export: it can't walk properly
+    let warn = null;
+    if (w.inst && w.inst.rig && !w.inst.rig.canAnimate) {
+      warn = document.createElement("p");
+      warn.className = "mm-warn";
+      warn.textContent = "⚠ No skeleton found, so it can only hop. Export it from Mii Creator as \"Full body\".";
+    }
 
     // quick actions
     const acts = document.createElement("div");
@@ -856,7 +875,20 @@
       if (o === rec) continue;
       const pr = progress.state.pairs[rec.id < o.id ? rec.id + "|" + o.id : o.id + "|" + rec.id];
       if (!pr) continue;
-      if (pr.fight) { const li = document.createElement("li"); li.textContent = "💢 Not talking to " + nameOf(o); ul.appendChild(li); }
+      if (pr.fight) {
+        const li = document.createElement("li");
+        li.textContent = "💢 Not talking to " + nameOf(o) + " ";
+        if (pr.makeUp) li.append("(making up...)");
+        else {
+          const mb = document.createElement("button");
+          mb.className = "tb-btn mm-makeup";
+          mb.textContent = "🩹 Make up";
+          mb.title = "Send " + nameOf(rec) + " to apologize to " + nameOf(o);
+          mb.addEventListener("click", () => { progress.startMakeUp(rec, o); toast("🩹 " + nameOf(rec) + " is going to apologize to " + nameOf(o) + "..."); mb.replaceWith("(making up...)"); });
+          li.appendChild(mb);
+        }
+        ul.appendChild(li);
+      }
       else if (pr.rival) { const li = document.createElement("li"); li.textContent = "⚡ Rivals with " + nameOf(o); ul.appendChild(li); }
     }
     if (!pals.length) ul.innerHTML = '<li class="empty">No friends yet!</li>';
@@ -952,44 +984,37 @@
       for (const a of progress.wishActions(rec)) {
         const b = document.createElement("button");
         b.textContent = a.text;
-        b.addEventListener("click", (e) => { closeMiiMenu(); wishAction(rec, a.id, e); });
+        // (the menu stays open while you help; it just updates)
+        b.addEventListener("click", (e) => {
+          wishAction(rec, a.id, e);
+          setTimeout(() => { if (!menu.hidden && menuWalker && menuWalker.record === rec) openMiiMenu(menuWalker); }, 0);
+        });
         wa.appendChild(b);
       }
       wishSec.appendChild(wa);
       if (!rec.wish.heard) { rec.wish.heard = true; saveSoon(rec); renderWishes(true); }
     }
     menu.append(head);
+    if (warn) menu.append(warn);
     if (wishSec) menu.append(wishSec);
     menu.append(acts, places, games, pers, fr, foot);
     menu.hidden = false;
-
-    // place it next to where you clicked, but keep it inside the hub area
-    const st = $("stage").getBoundingClientRect();
-    const mw = menu.offsetWidth, mh = menu.offsetHeight;
-    let x = clientX - st.left + 16, y = clientY - st.top - mh / 2;
-    if (x + mw > st.width - 8) x = clientX - st.left - mw - 16;
-    x = Math.max(8, Math.min(x, st.width - mw - 8));
-    y = Math.max(8, Math.min(y, st.height - mh - 8));
-    menu.style.left = x + "px";
-    menu.style.top = y + "px";
+    // (a fresh menu starts at the top, above the home panel if that's open too)
+    sidePanel.insertBefore(menu, sidePanel.firstChild);
+    updateSidePanel();
+    sidePanel.scrollTop = 0;
   }
 
-  hub.onSelect = (w, x, y) => openMiiMenu(w, x, y);
-  // close the menu when clicking somewhere else or pressing Escape
-  document.addEventListener("pointerdown", (e) => {
-    if (!menu.hidden && !menu.contains(e.target) && e.target !== $("hub")) closeMiiMenu();
-  });
-  $("hub").addEventListener("pointerdown", (e) => {
-    if (!menu.hidden && e.button === 0) closeMiiMenu();
-  });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMiiMenu(); });
+  hub.onSelect = (w) => openMiiMenu(w);
+  // (the menu stays open while you watch; ✕ or Escape closes it)
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !document.querySelector(".choice-modal")) closeMiiMenu(); });
 
 
   // ---------- visiting a Mii's home: decorating and food ----------
   const panel = document.createElement("div");
   panel.className = "home-panel";
   panel.hidden = true;
-  $("stage").appendChild(panel);
+  sidePanel.appendChild(panel);
   let panelTab = "decorate";
   let panelSlot = "bed";
 
@@ -1010,10 +1035,12 @@
     panel.hidden = false;
     panel.dataset.id = rec.id;
     renderHomePanel();
+    updateSidePanel();
   }
   function closeHomePanel() {
     panel.hidden = true;
     delete panel.dataset.id;
+    updateSidePanel();
   }
 
   const EMOTE = { love: "😍", like: "😊", okay: "🙂", dislike: "😒" };
@@ -1071,19 +1098,21 @@
       // plus a peek at fancier things that a higher town level unlocks
       const forSale = progress.shopItems(panelSlot);
       const deals = progress.deals();
-      const list = H.ITEMS.filter((i) => i.slot === panelSlot && (forSale.includes(i) || rec.home.owned.includes(i.id) || progress.lockedTier(i)));
+      // (its favorite is always in stock for it, so every Mii's favorite can be found)
+      const favId = H.favoriteItem && H.favoriteItem(rec, panelSlot);
+      const list = H.ITEMS.filter((i) => i.slot === panelSlot && (forSale.includes(i) || i.id === favId || rec.home.owned.includes(i.id) || progress.lockedTier(i)));
       for (const it of list) {
         const owned = rec.home.owned.includes(it.id);
         const placed = rec.home.items[it.slot] === it.id;
         const locked = !owned && progress.lockedTier(it);
-        const price = progress.priceOf(it);
+        const price = costOf(progress.priceOf(it));
         const deal = !owned && deals.includes(it.id);
         const b = document.createElement("button");
         b.className = "hp-item" + (placed ? " placed" : "") + (deal ? " deal" : "") + (locked ? " locked" : "");
         // its one favorite in this category (you find out once it has it)
         const fav = owned && H.favoriteItem && H.favoriteItem(rec, it.slot) === it.id;
         b.innerHTML = "<span class=\"hp-icon\">" + (locked ? "🔒" : it.icon) + "</span><span class=\"hp-name\">" + escapeHtml(it.name) + (fav ? " ❤️" : "") + "</span><span class=\"hp-price\">" +
-          (placed ? "✓ In use" : owned ? "Owned" : locked ? "Town Lv " + progress.unlockLevelForTier(progress.tierOf(it)) : (deal ? "⭐ " : "") + "🪙 " + price) + "</span>";
+          (placed ? "✓ In use" : owned ? "Owned" : locked ? "Town Lv " + progress.unlockLevelForTier(progress.tierOf(it)) : prefs.sandbox ? "🧪 Free" : (deal ? "⭐ " : "") + "🪙 " + price) + "</span>";
         b.disabled = placed || locked || (!owned && (rec.coins || 0) < price);
         if (!owned && !locked && (rec.coins || 0) < price) b.title = nameOf(rec) + " needs " + (price - (rec.coins || 0)) + " more coins";
         if (fav) b.title = nameOf(rec) + "'s favorite " + it.slot + "!";
@@ -1121,7 +1150,7 @@
   function placeItem(rec, it) {
     const owned = rec.home.owned.includes(it.id);
     if (!owned) {
-      const price = progress.priceOf(it);
+      const price = costOf(progress.priceOf(it));
       if ((rec.coins || 0) < price || progress.lockedTier(it)) return;
       rec.coins -= price;
       rec.home.owned.push(it.id);
@@ -1147,18 +1176,21 @@
     for (const f of progress.shopFoods()) {
       const b = document.createElement("button");
       b.className = "hp-item";
-      b.innerHTML = "<span class=\"hp-icon\">" + f.icon + "</span><span class=\"hp-name\">" + escapeHtml(f.name) + "</span><span class=\"hp-price\">🪙 " + f.price + "</span>";
-      b.disabled = (rec.coins || 0) < f.price;
+      b.innerHTML = "<span class=\"hp-icon\">" + f.icon + "</span><span class=\"hp-name\">" + escapeHtml(f.name) + "</span><span class=\"hp-price\">" + (prefs.sandbox ? "🧪 Free" : "🪙 " + f.price) + "</span>";
+      b.disabled = (rec.coins || 0) < costOf(f.price);
       b.addEventListener("click", () => { giveFood(rec, f); if (after) after(); });
       grid.appendChild(b);
     }
   }
 
+  // What something costs right now (everything's free in sandbox mode).
+  function costOf(price) { return prefs.sandbox ? 0 : price; }
+
   // Feeds a Mii (paid with its own coins). It eats on screen if you can see it.
   function giveFood(rec, f) {
-    if ((rec.coins || 0) < f.price) return;
+    if ((rec.coins || 0) < costOf(f.price)) return;
     if (hub.visiting && hub.visiting.empty) return; // (they're not here to eat it)
-    rec.coins -= f.price;
+    rec.coins -= costOf(f.price);
     const p = D.traits(rec);
     const op = H.opinion(p, rec, f);
     rec.mood = Math.max(0, Math.min(100, (rec.mood || 60) + H.MOOD_CHANGE[op] * 0.6));
@@ -1180,11 +1212,12 @@
   let savedProgress = null;
   try { savedProgress = JSON.parse(localStorage.getItem(PROGRESS_KEY)); } catch (e) { /* none yet */ }
   let saveProgressTimer = null;
+  let resetting = false; // (Settings: reset all progress)
   const meetUps = []; // Miis you brought together, waiting to meet: { a, b, until }
 
   progress = window.MiiProgress.create({
     records, D, H, hub, saved: savedProgress,
-    saveState: (st) => { clearTimeout(saveProgressTimer); saveProgressTimer = setTimeout(() => { try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(st)); } catch (e) { /* ignore */ } }, 500); },
+    saveState: (st) => { if (resetting) return; clearTimeout(saveProgressTimer); saveProgressTimer = setTimeout(() => { try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(st)); } catch (e) { /* ignore */ } }, 500); },
     saveMii: (rec) => saveSoon(rec),
     town: () => town,
     meetUp: (a, b) => meetUps.push({ a: a.id, b: b.id, until: Date.now() + 120000 }),
@@ -1203,6 +1236,8 @@
     },
   });
   for (const r of records.values()) progress.ensure(r);
+  progress.setSandbox(prefs.sandbox);
+  progress.setStickerLock(prefs.sandbox || prefs.simSpeed > 1);
   hub.relation = (a, b) => progress.context(a, b);
   // Miis on the phone stay where they are until they hang up; one that sets off anyway (or is gone) ends the call
   hub.callHold = (rec) => {
@@ -1273,7 +1308,9 @@
     '<button class="tb-btn" id="musicBtn" title="Music on/off">🎵</button>' +
     '<div class="play-wrap"><button class="tb-btn play" id="playBtn" aria-haspopup="true" aria-expanded="false">🎮 Play ▾</button><div class="play-menu" id="playMenu" hidden>' +
     '<button class="tb-btn pb" id="paintballBtn" title="Paintball: first-person, against a Mii or online">🎯 Paintball</button>' +
-    '<button class="tb-btn chess" id="chessBtn" title="Chess: play one of your Miis, or someone online">♟️ Chess</button></div></div>';
+    '<button class="tb-btn chess" id="chessBtn" title="Chess: play one of your Miis, or someone online">♟️ Chess</button></div></div>' +
+    '<button class="tb-btn mode-badge" id="modeBadge" hidden></button>' +
+    '<button class="tb-btn gear" id="settingsBtn" title="Settings" aria-label="Settings">⚙️<span class="dot-badge" id="settingsDot" hidden></span></button>';
   document.querySelector(".topbar").appendChild(townBar);
   $("dailyBtn").addEventListener("click", openDaily);
   townBar.querySelector(".town-level").addEventListener("click", openTownLevels);
@@ -1300,7 +1337,7 @@
     $("townLv").textContent = st.level;
     $("townXp").style.width = Math.min(100, (st.xp / progress.xpNeeded(st.level)) * 100) + "%";
     $("townXp").parentElement.title = st.xp + " / " + progress.xpNeeded(st.level) + " XP to town level " + (st.level + 1);
-    $("weatherText").textContent = progress.weatherText();
+    $("weatherText").textContent = $("weatherText").title = progress.weatherText();
     const d = st.daily;
     if (d) {
       const done = d.goals.filter((g) => g.count >= g.n).length;
@@ -1425,7 +1462,7 @@
     back.className = "choice-modal";
     const card = document.createElement("div");
     card.className = "choice-card big";
-    card.innerHTML = "<h3>🍙 Food for " + escapeHtml(nameOf(rec)) + "</h3><p>Paid with " + escapeHtml(nameOf(rec)) + "'s coins: <b>🪙 " + (rec.coins || 0) + "</b>. Today's menu:</p>";
+    card.innerHTML = "<h3>🍙 Food for " + escapeHtml(nameOf(rec)) + "</h3><p>" + (prefs.sandbox ? "🧪 Sandbox mode: everything's free!" : "Paid with " + escapeHtml(nameOf(rec)) + "'s coins: <b>🪙 " + (rec.coins || 0) + "</b>.") + " Today's menu:</p>";
     const grid = document.createElement("div");
     grid.className = "hp-grid wide";
     const close = () => back.remove();
@@ -1590,34 +1627,6 @@
     $("stage").appendChild(back);
   }
 
-  // ---------- side panels fold up (click a heading), remembered between visits ----------
-  const PANELS_KEY = "mii-hub-panels";
-  let foldedPanels = {};
-  try { foldedPanels = JSON.parse(localStorage.getItem(PANELS_KEY) || "{}") || {}; } catch (e) { foldedPanels = {}; }
-  const panelKey = (panel) => { const h = panel.querySelector("h2"); return h ? (h.firstChild && h.firstChild.textContent || h.textContent).trim().toLowerCase() : ""; };
-  function setupPanels() {
-    for (const panel of document.querySelectorAll(".sidebar .panel")) {
-      const h = panel.querySelector("h2");
-      if (!h || h.dataset.fold) continue;
-      h.dataset.fold = "1";
-      h.classList.add("fold-head");
-      h.setAttribute("role", "button");
-      h.tabIndex = 0;
-      const key = panelKey(panel);
-      const set = (folded) => {
-        panel.classList.toggle("folded", folded);
-        h.setAttribute("aria-expanded", String(!folded));
-        foldedPanels[key] = folded;
-        try { localStorage.setItem(PANELS_KEY, JSON.stringify(foldedPanels)); } catch (e) { /* private window */ }
-      };
-      panel.classList.toggle("folded", !!foldedPanels[key]);
-      h.setAttribute("aria-expanded", String(!foldedPanels[key]));
-      h.addEventListener("click", (e) => { if (e.target.closest("button, a, input")) return; set(!panel.classList.contains("folded")); });
-      h.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); set(!panel.classList.contains("folded")); } });
-    }
-  }
-  setupPanels();
-  new MutationObserver(setupPanels).observe(document.querySelector(".sidebar"), { childList: true });
   townBar.querySelector(".town-level").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openTownLevels(); } });
 
   // ---------- town levels: what you've got so far, and what's next ----------
@@ -1672,7 +1681,8 @@
     if (id.startsWith("t-wish")) return "Grant your Miis' wishes.";
     if (id.startsWith("t-lv")) return "Grow your town by granting wishes and finishing daily goals.";
     if (id.startsWith("t-mii")) return "Help a Mii level up by keeping it happy.";
-    if (id.startsWith("t-daily")) return "Finish your daily goals (📅 Daily).";
+    if (id === "t-daily") return "Finish all three of today's goals (📅 Daily).";
+    if (id === "t-daily7") return "Finish all your daily goals on 7 different days (📅 Daily).";
     if (id.startsWith("h-")) return st.hint || "Something rare happens somewhere, but only while you're watching...";
     // anything else: just the vaguest version of what it is
     return "Something to do with: " + String(st.desc).split(" ").slice(0, 3).join(" ") + "…";
@@ -1685,9 +1695,17 @@
     const card = document.createElement("div");
     card.className = "choice-card book";
     const close = () => back.remove();
+    // (in sandbox mode / at a faster speed nothing new sticks; a milestone reached then never counts)
+    const locked = progress.stickersLocked();
+    const earned = progress.state.stickers;
+    for (const p of pages) for (const s of p.stickers) {
+      s.voided = !earned[s.id] && progress.isVoided(s.id);
+      s.got = !!earned[s.id] || (s.got && !locked && !s.voided);
+    }
     function draw() {
       const all = pages.flatMap((p) => p.stickers);
-      card.innerHTML = "<h3>📖 Sticker book <small>" + all.filter((s) => s.got).length + " / " + all.length + "</small></h3>";
+      card.innerHTML = "<h3>📖 Sticker book <small>" + all.filter((s) => s.got).length + " / " + all.length + "</small></h3>" +
+        (locked ? '<p class="book-locked">⏸️ Stickers are paused while ' + modeText() + " (⚙️ Settings).</p>" : "");
       const tabsEl = document.createElement("div");
       tabsEl.className = "book-tabs";
       pages.forEach((p, i) => {
@@ -1702,7 +1720,7 @@
       for (const st of pages[page].stickers) {
         const d = document.createElement("div");
         d.className = "sticker" + (st.got ? " got" : "");
-        d.dataset.tip = st.got ? "✔ " + st.desc : "Hint: " + stickerHint(st);
+        d.dataset.tip = st.got ? "✔ " + st.desc : st.voided ? "🚫 This happened while sandbox mode or a faster speed was on, so it doesn't count." : "Hint: " + stickerHint(st);
         d.innerHTML = "<span>" + (st.got ? st.icon : "❔") + "</span><small>" + escapeHtml(st.got ? st.name : "???") + "</small>";
         grid.appendChild(d);
       }
@@ -1729,13 +1747,14 @@
   setInterval(() => { renderWishes(false); renderTownBar(); applyWeather(); }, 1000);
   renderWishes(true); renderTownBar(); applyWeather();
 
-  // ---------- full screen (just the 3D scene) ----------
+  // ---------- full screen (the 3D scene, and the side panel if it's open) ----------
   const stageEl = $("stage");
+  const layoutEl = document.querySelector(".layout");
   const fsBtn = $("fullscreenBtn");
-  const isFull = () => document.fullscreenElement === stageEl || document.webkitFullscreenElement === stageEl;
+  const isFull = () => document.fullscreenElement === layoutEl || document.webkitFullscreenElement === layoutEl;
   function toggleFullscreen() {
     if (isFull()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-    else (stageEl.requestFullscreen || stageEl.webkitRequestFullscreen).call(stageEl).catch(() => {});
+    else (layoutEl.requestFullscreen || layoutEl.webkitRequestFullscreen).call(layoutEl).catch(() => {});
   }
   fsBtn.addEventListener("click", toggleFullscreen);
   for (const ev of ["fullscreenchange", "webkitfullscreenchange"]) {
@@ -1744,6 +1763,7 @@
       fsBtn.textContent = on ? "✕" : "⛶";
       fsBtn.title = on ? "Exit full screen (F or Esc)" : "Full screen (F)";
       stageEl.classList.toggle("is-full", on);
+      layoutEl.classList.toggle("is-full", on);
       // let the browser finish resizing, then fit the 3D view to the new size
       requestAnimationFrame(() => hub.resize());
     });
@@ -1752,6 +1772,9 @@
     const typing = /^(input|textarea|select)$/i.test((e.target && e.target.tagName) || "");
     if (!typing && (e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !e.altKey) toggleFullscreen();
   });
+  // the side panel opening/closing (or a smaller window) changes the 3D view's size:
+  // fit it without moving the camera
+  if (window.ResizeObserver) new ResizeObserver(() => hub.resize(true)).observe(stageEl);
 
   // little place buttons on the scene itself (handy in full screen)
   const stageScenes = $("stageScenes");
@@ -1766,48 +1789,518 @@
     stageScenes.appendChild(b);
   }
 
+  // ---------- ➕ Add Miis (top bar) ----------
+  const addMenu = $("addMenu"), addBtn = $("addBtn");
+  const showAdd = (on) => { addMenu.hidden = !on; addBtn.setAttribute("aria-expanded", String(on)); };
+  addBtn.addEventListener("click", () => showAdd(addMenu.hidden));
+  $("demoBtn").addEventListener("click", () => showAdd(false));
+  $("fileInput").addEventListener("change", () => showAdd(false));
+  document.addEventListener("pointerdown", (e) => { if (!addMenu.hidden && !e.target.closest(".add-wrap")) showAdd(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") showAdd(false); });
+  // (errors from adding files show up even with the menu closed)
+  new MutationObserver(() => { if (errorMsg.textContent) toast("⚠ " + errorMsg.textContent); }).observe(errorMsg, { childList: true, characterData: true, subtree: true });
+
+  // ---------- sandbox mode / simulation speed: a badge in the top bar while on ----------
+  function modeText() {
+    const on = [];
+    if (prefs.sandbox) on.push("sandbox mode");
+    if (prefs.simSpeed > 1) on.push(prefs.simSpeed + "× speed");
+    return on.join(" and ") + (on.length > 1 ? " are on" : " is on");
+  }
+  function renderModeBadge() {
+    const b = $("modeBadge");
+    b.hidden = !prefs.sandbox && prefs.simSpeed <= 1;
+    b.textContent = (prefs.sandbox ? "🧪 Sandbox" : "") + (prefs.sandbox && prefs.simSpeed > 1 ? " · " : "") + (prefs.simSpeed > 1 ? "⏩ " + prefs.simSpeed + "×" : "");
+    b.title = "Stickers are paused while " + modeText() + ". Click to change it in Settings.";
+  }
+  $("modeBadge").addEventListener("click", () => openSettings());
+  renderModeBadge();
+
+  // Turns sandbox mode / a faster speed on or off (asks first: no stickers while either is on).
+  async function setMode(kind, value) {
+    const was = prefs.sandbox || prefs.simSpeed > 1;
+    const turningOn = kind === "sandbox" ? value && !prefs.sandbox : value > 1 && prefs.simSpeed <= 1;
+    if (turningOn && !was) {
+      const what = kind === "sandbox"
+        ? "🧪 Sandbox mode makes everything free and unlocks everything in the shop (whatever the town level), so you can try things out."
+        : "⏩ " + value + "× speed makes everything in town happen " + value + " times faster: walking, chatting, friendships, wishes...";
+      const ok = await ask(kind === "sandbox" ? "Turn on sandbox mode?" : "Speed things up?",
+        what + " While it's on, you can't earn any stickers. Things you see or do meanwhile won't count for stickers later, and milestones reached meanwhile (like a new couple or town level) never give their sticker.", [
+          { label: "<b>Yes, turn it on</b><small>No stickers until I turn it off again</small>", value: true, kind: "primary" },
+          { label: "Cancel", value: false, kind: "plain" },
+        ]);
+      if (!ok) return false;
+    }
+    if (kind === "sandbox") prefs.sandbox = !!value;
+    else prefs.simSpeed = value;
+    hub.timeScale = prefs.simSpeed;
+    progress.setSandbox(prefs.sandbox);
+    progress.setStickerLock(prefs.sandbox || prefs.simSpeed > 1);
+    if (was && !(prefs.sandbox || prefs.simSpeed > 1)) toast("🏷️ Stickers are back on!");
+    saveSettings();
+    renderModeBadge();
+    if (!panel.hidden) renderHomePanel();
+    return true;
+  }
+
+  // ---------- light / dark mode ----------
+  function applyTheme() {
+    if (prefs.theme === "system") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = prefs.theme;
+  }
+  applyTheme();
+
+  // ---------- reset all progress (keeps the Miis themselves) ----------
+  async function resetProgress() {
+    const ok = await ask("Reset all progress?", "This starts your town over: the town level, sticker book, daily goals, every friendship, couple and fight, and each Mii's level, hearts, coins, wishes, special moves, songs, game skills and furniture. Your Miis stay (names, looks and personalities).", [
+      { label: "🔄 <b>Reset everything</b>", value: true, kind: "danger" },
+      { label: "Cancel", value: false, kind: "plain" },
+    ]);
+    if (!ok) return;
+    const sure = await ask("Are you really sure?", "There's no undo. Everything your town has earned so far will be gone for good.", [
+      { label: "Cancel", value: false, kind: "primary" },
+      { label: "⚠️ <b>Yes, reset all progress</b>", value: true, kind: "danger" },
+    ]);
+    if (!sure) return;
+    closeMiiMenu();
+    if (hub.visiting) leaveHome();
+    resetting = true; // (nothing more gets saved from the old progress)
+    clearTimeout(saveProgressTimer);
+    for (const rec of records.values()) {
+      for (const k of ["level", "happy", "moves", "songs", "foods", "wish", "games", "sweetheart", "home", "mood"]) delete rec[k];
+      rec.coins = undefined;
+      H.ensureHome(rec);
+    }
+    await Promise.all(Array.from(records.values()).map((r) => S.putMii(r)));
+    hub.friendships = {};
+    prefs.sandbox = false;
+    prefs.simSpeed = 1;
+    saveSettings();
+    try { localStorage.removeItem(PROGRESS_KEY); } catch (e) { /* private window */ }
+    location.reload();
+  }
+
   // ---------- desktop app: version and updates ----------
   const desktop = window.miiHubDesktop;
+  let appVersion = null;
+  let updateState = null;
   if (desktop) {
-    $("desktopPanel").hidden = false;
-    const statusEl = $("updateStatus");
-    const btn = $("checkUpdatesBtn");
-    const show = (st) => {
-      if (!st) return;
-      $("appVersion").textContent = "v" + st.version;
-      btn.disabled = st.state === "checking" || st.state === "downloading";
-      statusEl.textContent = {
-        idle: "Updates are checked automatically.",
-        dev: "Running from source code: updates are off.",
-        checking: "Checking for updates…",
-        latest: "You have the latest version. ✓",
-        available: "Version " + st.latest + " is available!",
-        downloading: "Downloading update… " + (st.percent || 0) + "%",
-        ready: "Update ready: it installs when you restart Mii Hub.",
-        error: "Couldn't check for updates right now.",
-      }[st.state] || "";
-    };
-    desktop.onUpdateStatus(show);
-    desktop.getStatus().then(show);
-    btn.addEventListener("click", () => desktop.checkForUpdates());
-    // patch notes: what's new in this update + every update before it
-    const notesBtn = $("patchNotesBtn"), notesNew = $("patchNotesNew");
-    let version = null;
-    if (window.PatchNotes) {
-      notesNew.hidden = !PatchNotes.unseen();
-      notesBtn.addEventListener("click", () => { PatchNotes.open(version); notesNew.hidden = true; });
-    } else notesBtn.hidden = true;
+    desktop.onUpdateStatus((st) => { updateState = st; renderUpdateStatus(); });
     desktop.getStatus().then((st) => {
+      updateState = st;
+      renderUpdateStatus();
       if (!st || !st.version) return;
-      version = st.version;
+      appVersion = st.version;
       // the first time Mii Hub opens after an update, show what's new
       let seen = null;
-      try { seen = localStorage.getItem("mii-hub-notes-version"); localStorage.setItem("mii-hub-notes-version", version); } catch (e) { return; }
-      if (seen !== version && window.PatchNotes) setTimeout(() => { PatchNotes.open(version); notesNew.hidden = true; }, 800);
+      try { seen = localStorage.getItem("mii-hub-notes-version"); localStorage.setItem("mii-hub-notes-version", appVersion); } catch (e) { return; }
+      if (seen !== appVersion && window.PatchNotes) setTimeout(() => { PatchNotes.open(appVersion); renderNotesBadge(); }, 800);
+    });
+  }
+  function updateText(st) {
+    if (!st) return "Updates are checked automatically.";
+    return {
+      idle: "Updates are checked automatically.",
+      dev: "Running from source code: updates are off.",
+      checking: "Checking for updates…",
+      latest: "You have the latest version. ✓",
+      available: "Version " + st.latest + " is available!",
+      downloading: "Downloading update… " + (st.percent || 0) + "%",
+      ready: "Update ready: it installs when you restart Mii Hub.",
+      error: "Couldn't check for updates right now.",
+    }[st.state] || "";
+  }
+  function renderUpdateStatus() {
+    const el = $("updateStatus"), btn = $("checkUpdatesBtn");
+    if (el) el.textContent = updateText(updateState);
+    if (btn) btn.disabled = !!updateState && (updateState.state === "checking" || updateState.state === "downloading");
+    const v = $("appVersion");
+    if (v && updateState && updateState.version) v.textContent = "v" + updateState.version;
+  }
+  // a dot on ⚙️ while there are patch notes you haven't read
+  function renderNotesBadge() {
+    const unseen = !!(window.PatchNotes && PatchNotes.unseen());
+    $("settingsDot").hidden = !unseen;
+    const nb = $("patchNotesNew");
+    if (nb) nb.hidden = !unseen;
+  }
+  renderNotesBadge();
+
+  // ---------- ⚙️ Settings ----------
+  $("settingsBtn").addEventListener("click", () => openSettings());
+  function openSettings() {
+    closeSettings();
+    const back = document.createElement("div");
+    back.className = "choice-modal settings-modal";
+    back.id = "settings";
+    const card = document.createElement("div");
+    card.className = "choice-card settings-card";
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "true");
+    card.setAttribute("aria-label", "Settings");
+    const seg = (name, options, value, onPick) =>
+      '<div class="seg" role="radiogroup" aria-label="' + name + '">' + options.map(([v, text]) =>
+        '<button role="radio" data-seg="' + name + '" data-v="' + v + '" aria-checked="' + String(String(v) === String(value)) + '">' + text + "</button>").join("") + "</div>";
+    card.innerHTML =
+      '<div class="set-head"><h3>⚙️ Settings</h3><button class="mm-close" id="setClose" aria-label="Close">✕</button></div>' +
+      '<section class="set-sec"><h4>Look</h4>' +
+        '<div class="set-row"><span>🌙 Dark mode</span>' + seg("theme", [["system", "Auto"], ["light", "☀️ Light"], ["dark", "🌙 Dark"]], prefs.theme) + "</div>" +
+        (desktop ? '<div class="set-row"><span>🌐 Show as tab in browser<small>Opens Mii Hub in your web browser too. (Its Miis are saved separately from the app\'s.)</small></span><button class="tb-btn" id="openBrowserBtn">Open</button></div>' : "") +
+      "</section>" +
+      '<section class="set-sec"><h4>Your Miis</h4>' +
+        '<label class="set-row"><span>💬 How chatty?<small>How often Miis start chatting</small></span><input type="range" id="chatty" min="0.3" max="2.5" step="0.1" value="' + hub.chattiness + '" /></label>' +
+        '<div class="set-row"><span>⏩ Simulation speed<small>Faster = no stickers while it\'s on</small></span>' + seg("speed", [[1, "1×"], [2, "2×"], [4, "4×"]], prefs.simSpeed) + "</div>" +
+        '<div class="set-row"><span>🧪 Sandbox mode<small>Everything free and unlocked. No stickers while it\'s on</small></span>' + seg("sandbox", [["off", "Off"], ["on", "On"]], prefs.sandbox ? "on" : "off") + "</div>" +
+        (prefs.sandbox || prefs.simSpeed > 1 ? '<p class="set-warn">⏸️ Stickers are paused while ' + modeText() + ".</p>" : "") +
+      "</section>" +
+      '<section class="set-sec"><h4>Updates</h4>' +
+        (desktop ? '<div class="set-row"><span>Mii Hub <b id="appVersion"></b><small id="updateStatus"></small></span><button class="tb-btn" id="checkUpdatesBtn">Check for updates</button></div>' : "") +
+        '<div class="set-row"><span>📜 Patch notes<small>What\'s new in every update</small></span><button class="tb-btn" id="patchNotesBtn">Open<span class="pn-badge" id="patchNotesNew" hidden>NEW</span></button></div>' +
+      "</section>" +
+      '<section class="set-sec danger"><h4>Start over</h4>' +
+        '<div class="set-row"><span>🔄 Reset all progress<small>Town level, stickers, friendships, levels, coins and furniture. Your Miis stay.</small></span><button class="tb-btn danger" id="resetBtn">Reset…</button></div>' +
+        '<div class="set-row"><span>📦 Remove all Miis<small>Everyone moves away, with their homes</small></span><button class="tb-btn danger" id="clearBtn">Remove…</button></div>' +
+      "</section>";
+    back.appendChild(card);
+    document.body.appendChild(back);
+    const close = () => closeSettings();
+    back.addEventListener("pointerdown", (e) => { if (e.target === back) close(); });
+    card.querySelector("#setClose").addEventListener("click", close);
+    // the segmented buttons
+    for (const b of card.querySelectorAll("[data-seg]")) {
+      b.addEventListener("click", async () => {
+        const v = b.dataset.v;
+        if (b.dataset.seg === "theme") { prefs.theme = v; applyTheme(); saveSettings(); }
+        else {
+          closeSettings(); // (so the "are you sure?" question isn't hidden behind it)
+          if (b.dataset.seg === "speed") await setMode("speed", Number(v));
+          else await setMode("sandbox", v === "on");
+        }
+        openSettings(); // (redraw)
+      });
+    }
+    $("chatty").addEventListener("input", (e) => { hub.chattiness = parseFloat(e.target.value); saveSettings(); });
+    if (desktop) {
+      $("openBrowserBtn").addEventListener("click", async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try {
+          const r = await desktop.openInBrowser();
+          toast(r && r.ok ? "🌐 Opened Mii Hub in your browser" : "Couldn't open the browser" + (r && r.error ? ": " + r.error : ""));
+        } catch (err) { toast("Couldn't open the browser: " + err.message); }
+        btn.disabled = false;
+      });
+      $("checkUpdatesBtn").addEventListener("click", () => desktop.checkForUpdates());
+      renderUpdateStatus();
+    }
+    if (window.PatchNotes) $("patchNotesBtn").addEventListener("click", () => { PatchNotes.open(appVersion); renderNotesBadge(); });
+    else $("patchNotesBtn").closest(".set-row").hidden = true;
+    renderNotesBadge();
+    $("resetBtn").addEventListener("click", () => { close(); resetProgress(); });
+    $("clearBtn").addEventListener("click", () => { close(); removeAllMiis(); });
+    document.addEventListener("keydown", settingsKey);
+    const first = card.querySelector("[aria-checked=true]");
+    if (first) first.focus();
+  }
+  function settingsKey(e) { if (e.key === "Escape") closeSettings(); }
+  function closeSettings() {
+    const m = document.getElementById("settings");
+    if (m) m.remove();
+    document.removeEventListener("keydown", settingsKey);
+  }
+
+  // =====================================================================
+  // 📷 Group picture: pick poses for the Miis here, then take a picture of the 3D view
+  // =====================================================================
+  // Poses: some need a friend standing next to them (the closer, the fancier).
+  const POSES = [
+    { id: "stand", icon: "🧍", name: "Stand", pose: { arms: "down" } },
+    { id: "wave", icon: "👋", name: "Wave", pose: { arms: "wave" } },
+    { id: "cheer", icon: "🙌", name: "Hands up", pose: { arms: "cheer" } },
+    { id: "flex", icon: "💪", name: "Flex", pose: { arms: "flex" } },
+    { id: "bow", icon: "🙇", name: "Bow", pose: { bow: true } },
+    { id: "lean", icon: "🤗", name: "Lean in", need: 4, pose: { lean: 1 } },
+    { id: "highfive", icon: "✋", name: "High five", need: 9, pose: { arms: "up", face: 1 } },
+    { id: "heart", icon: "💕", name: "Heart", need: 16, love: true, pose: { lean: 1, face: 0.5 }, mark: "💕" },
+  ];
+  const JUMP_NEED = 4; // everyone jumps: all of them at least Friends
+  const pairKey = (a, b) => (a < b ? a + "|" + b : b + "|" + a);
+  const ptsOf = (a, b) => hub.friendships[pairKey(a.id, b.id)] || 0;
+  const fighting = (a, b) => { const p = progress.state.pairs[pairKey(a.id, b.id)]; return !!(p && p.fight); };
+  const sweethearts = (a, b) => a.sweetheart === b.id || b.sweetheart === a.id || !!(progress.state.pairs[pairKey(a.id, b.id)] || {}).couple;
+  const levelName = (pts) => { const l = D.levelFor(pts); return l.emoji + " " + l.name; };
+  const needName = (n) => levelName(n);
+
+  // the Miis who can be in a picture right now (here, not busy leaving or on the phone)
+  function photoCandidates() {
+    if (hub.visiting) return [];
+    return hub.walkers.filter((w) => !w.leaving && w.vanish <= 0 && w.appear >= 0.5 && !hub.calls.has(w.id) && w.state !== "playing");
+  }
+
+  function openPhotoPicker(firstW) {
+    const here = photoCandidates();
+    if (here.length < 2 || !here.includes(firstW)) { toast("📷 A group picture needs at least 2 Miis here"); return; }
+    const first = firstW.record;
+    const recs = here.map((w) => w.record);
+    // who's in it: everyone who isn't fighting with someone already in (best friends of the first Mii first)
+    const inPic = new Set([first.id]);
+    for (const r of recs.filter((r) => r !== first).sort((a, b) => ptsOf(first, b) - ptsOf(first, a))) {
+      if (!recs.some((o) => inPic.has(o.id) && fighting(o, r))) inPic.add(r.id);
+    }
+    const pose = new Map(recs.map((r) => [r.id, "wave"]));
+    let jump = false;
+
+    const back = document.createElement("div");
+    back.className = "choice-modal";
+    const card = document.createElement("div");
+    card.className = "choice-card big photo-card";
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-label", "Group picture");
+    back.appendChild(card);
+    $("stage").appendChild(back);
+    const close = () => { back.remove(); document.removeEventListener("keydown", onKey); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    back.addEventListener("pointerdown", (e) => { if (e.target === back) close(); });
+
+    // left to right: start with the first Mii, then always its closest friend next to the last one
+    function lineUp() {
+      const left = recs.filter((r) => inPic.has(r.id) && r !== first);
+      const order = [first];
+      while (left.length) {
+        const last = order[order.length - 1];
+        left.sort((a, b) => ptsOf(last, b) - ptsOf(last, a));
+        order.push(left.shift());
+      }
+      return order;
+    }
+    // the friend next to them (left or right) they're closest to
+    function bestNeighbor(order, i) {
+      const ns = [order[i - 1], order[i + 1]].filter(Boolean);
+      ns.sort((a, b) => ptsOf(order[i], b) - ptsOf(order[i], a));
+      return ns[0] || null;
+    }
+    // can this Mii do this pose here? (null = yes, or why not)
+    function whyNot(P, order, i) {
+      if (!P.need) return null;
+      const me = order[i];
+      const ok = [order[i - 1], order[i + 1]].filter(Boolean).some((o) => ptsOf(me, o) >= P.need || (P.love && sweethearts(me, o)));
+      return ok ? null : "Needs someone next to them who's " + needName(P.need) + (P.love ? " (or their sweetheart)" : "") + " in the picture";
+    }
+    const allFriends = (order) => order.every((a) => order.every((b) => a === b || ptsOf(a, b) >= JUMP_NEED));
+
+    function draw() {
+      const order = lineUp();
+      // (a pose that isn't possible any more falls back to waving)
+      order.forEach((r, i) => { const P = POSES.find((x) => x.id === pose.get(r.id)); if (whyNot(P, order, i)) pose.set(r.id, "wave"); });
+      if (jump && !allFriends(order)) jump = false;
+      const place = T.placeInfo(viewedPlace());
+      card.innerHTML = "<h3>📷 Group picture at " + escapeHtml(place.name) + "</h3><p>Pick who's in it and how they pose. The picture is saved to your Downloads folder.</p>";
+
+      // who's in it
+      const who = document.createElement("div");
+      who.className = "ph-who";
+      const fights = [];
+      for (const r of recs) {
+        const foe = recs.find((o) => o !== r && inPic.has(o.id) && fighting(o, r));
+        const b = document.createElement("button");
+        b.className = "ph-mii";
+        b.setAttribute("aria-pressed", String(inPic.has(r.id)));
+        b.innerHTML = '<img alt="" data-portrait="' + r.id + '" src="' + portraitFor(r) + '"><span>' + escapeHtml(nameOf(r)) + "</span>" + (foe && !inPic.has(r.id) ? '<small>💢</small>' : "");
+        if (r === first) { b.disabled = true; b.title = nameOf(r) + " is taking the picture with everyone"; }
+        else if (foe && !inPic.has(r.id)) {
+          b.disabled = true;
+          b.title = nameOf(r) + " and " + nameOf(foe) + " are fighting, so they won't be in the same picture";
+        }
+        b.addEventListener("click", () => { if (inPic.has(r.id)) inPic.delete(r.id); else inPic.add(r.id); draw(); });
+        who.appendChild(b);
+      }
+      // explain fights (among everyone here)
+      for (let i = 0; i < recs.length; i++) for (let j = i + 1; j < recs.length; j++) if (fighting(recs[i], recs[j])) fights.push([recs[i], recs[j]]);
+      card.appendChild(who);
+      for (const [a, b] of fights) {
+        const p = document.createElement("p");
+        p.className = "ph-fight";
+        p.textContent = "💢 " + nameOf(a) + " and " + nameOf(b) + " had a fight and aren't talking to each other, so they won't be in the same picture. Take one of them out to add the other, or help them make up first (🩹 Make up in a Mii's menu)!";
+        card.appendChild(p);
+      }
+
+      // poses, left to right
+      const list = document.createElement("div");
+      list.className = "ph-poses";
+      order.forEach((r, i) => {
+        const row = document.createElement("div");
+        row.className = "ph-row";
+        const nb = bestNeighbor(order, i);
+        row.innerHTML = '<div class="ph-name"><img alt="" data-portrait="' + r.id + '" src="' + portraitFor(r) + '"><span><b>' + escapeHtml(nameOf(r)) + "</b>" +
+          (nb ? "<small>next to " + escapeHtml(nameOf(nb)) + ": " + (sweethearts(r, nb) ? "💑 Sweethearts" : levelName(ptsOf(r, nb))) + "</small>" : "") + "</span></div>";
+        const btns = document.createElement("div");
+        btns.className = "ph-pose-btns";
+        for (const P of POSES) {
+          const why = whyNot(P, order, i);
+          const b = document.createElement("button");
+          b.textContent = why ? "🔒" : P.icon;
+          b.title = P.name + (why ? ": " + why : "");
+          b.setAttribute("aria-label", b.title);
+          b.setAttribute("aria-pressed", String(pose.get(r.id) === P.id));
+          b.disabled = !!why;
+          b.addEventListener("click", () => { pose.set(r.id, P.id); draw(); });
+          btns.appendChild(b);
+        }
+        row.appendChild(btns);
+        list.appendChild(row);
+      });
+      card.appendChild(list);
+      const key = document.createElement("p");
+      key.className = "ph-key";
+      key.textContent = "🤗 Lean in needs a " + needName(4) + " next to them, ✋ High five needs " + needName(9) + ", 💕 Heart needs " + needName(16) + " or sweethearts. The closer they are, the more poses they can do!";
+      card.appendChild(key);
+
+      // everyone jumps (only if they're all friends)
+      const jumpOk = allFriends(order);
+      const jb = document.createElement("label");
+      jb.className = "ph-jump" + (jumpOk ? "" : " off");
+      jb.innerHTML = '<input type="checkbox"' + (jump ? " checked" : "") + (jumpOk ? "" : " disabled") + "> 🦘 Everyone jumps!" +
+        (jumpOk ? "" : "<small>🔒 Only if everyone in the picture is at least " + escapeHtml(needName(JUMP_NEED)) + " with each other</small>");
+      jb.querySelector("input").addEventListener("change", (e) => { jump = e.target.checked; });
+      card.appendChild(jb);
+
+      const go = document.createElement("button");
+      go.className = "choice-btn primary ph-go";
+      go.innerHTML = "📸 <b>Take the picture</b>";
+      go.addEventListener("click", () => {
+        close();
+        const poses = {};
+        order.forEach((r, i) => {
+          const P = POSES.find((x) => x.id === pose.get(r.id));
+          const p = Object.assign({}, P.pose);
+          // lean / turn toward the friend next to them
+          const nbr = bestNeighbor(order, i);
+          const side = nbr ? (order.indexOf(nbr) > i ? 1 : -1) : 0;
+          if (p.lean) p.lean *= side;
+          if (p.face) p.face *= side;
+          if (P.mark) p.mark = P.mark;
+          poses[r.id] = p;
+        });
+        takeGroupPhoto(order, poses, jump);
+      });
+      const cancel = document.createElement("button");
+      cancel.className = "choice-btn plain";
+      cancel.textContent = "Cancel";
+      cancel.addEventListener("click", close);
+      card.append(go, cancel);
+    }
+    draw();
+  }
+
+  // Takes the picture (with the screen tidied away), frames it like a photo and saves it.
+  let photoBusy = false;
+  async function takeGroupPhoto(order, poses, jump) {
+    const list = order.map((r) => walkerOf(r.id)).filter(Boolean);
+    if (list.length < 2 || photoBusy) return;
+    photoBusy = true;
+    closeMiiMenu();
+    const say = pick(list);
+    say.say(pick(["Say cheese!", "Everybody smile!", "1, 2, 3... cheese!"]), 1.2);
+    stageEl.classList.add("photo-mode");
+    let shot = null;
+    try {
+      shot = await hub.takePhoto(list, poses, { jump });
+    } catch (err) {
+      toast("📷 Couldn't take the picture: " + err.message);
+    }
+    // the flash
+    const flash = document.createElement("div");
+    flash.className = "photo-flash";
+    stageEl.appendChild(flash);
+    setTimeout(() => flash.remove(), 700);
+    stageEl.classList.remove("photo-mode");
+    photoBusy = false;
+    if (!shot) return;
+    const r = pick(list);
+    hub.later(r, 0.6, () => r.say(pick(["Let me see!", "I hope my eyes were open!", "That's a keeper!", "Can I get a copy?"]), 2));
+    const url = await framePhoto(shot, order, poses);
+    const place = T.placeInfo(viewedPlace());
+    const d = new Date();
+    const stamp = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + " " +
+      String(d.getHours()).padStart(2, "0") + "." + String(d.getMinutes()).padStart(2, "0") + "." + String(d.getSeconds()).padStart(2, "0");
+    const fileName = "Mii Hub - " + place.name.replace(/^the /, "").replace(/^./, (c) => c.toUpperCase()) + " " + stamp + ".png";
+    await savePhoto(url, fileName);
+  }
+
+  // A white border with the place and date written under the picture, like a real photo
+  // (with a 💕 over anyone doing the heart pose).
+  function framePhoto(shot, order, poses) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        // crop around the group (a 3:2 picture with a little room around everyone)
+        const W = shot.width, Hh = shot.height;
+        const xs = shot.heads.map((p) => p.x * W), tops = shot.heads.map((p) => p.y * Hh), feet = shot.heads.map((p) => p.feet.y * Hh);
+        const tall = Math.max(...feet.map((f, i) => f - tops[i]), 40);
+        let x0 = Math.min(...xs) - tall * 0.75, x1 = Math.max(...xs) + tall * 0.75;
+        let y0 = Math.min(...tops) - tall * 0.45, y1 = Math.max(...feet) + tall * 0.3;
+        const grow = (a, b, size, max) => { const c = (a + b) / 2, s = Math.min(size, max); let lo = c - s / 2; lo = Math.max(0, Math.min(lo, max - s)); return [lo, lo + s]; };
+        if ((x1 - x0) / (y1 - y0) < 1.5) [x0, x1] = grow(x0, x1, (y1 - y0) * 1.5, W);
+        else [y0, y1] = grow(y0, y1, (x1 - x0) / 1.5, Hh);
+        [x0, x1] = grow(x0, x1, x1 - x0, W);
+        [y0, y1] = grow(y0, y1, y1 - y0, Hh);
+        const w = Math.round(x1 - x0), h = Math.round(y1 - y0);
+        for (const p of shot.heads) { p.x = (p.x * W - x0) / w; p.y = (p.y * Hh - y0) / h; }
+        const pad = Math.round(w * 0.03), bottom = Math.round(w * 0.085);
+        const c = document.createElement("canvas");
+        c.width = w + pad * 2;
+        c.height = h + pad + bottom;
+        const g = c.getContext("2d");
+        g.fillStyle = "#fdfcf8";
+        g.fillRect(0, 0, c.width, c.height);
+        g.drawImage(img, x0, y0, w, h, pad, pad, w, h);
+        g.strokeStyle = "rgba(0,0,0,0.12)";
+        g.lineWidth = Math.max(1, w / 900);
+        g.strokeRect(pad, pad, w, h);
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        for (const hd of shot.heads) {
+          const p = poses[hd.id];
+          if (!p || !p.mark) continue;
+          g.font = Math.round(w * 0.035) + "px sans-serif";
+          g.fillText(p.mark, pad + hd.x * w, pad + hd.y * h);
+        }
+        const place = T.placeInfo(viewedPlace());
+        g.fillStyle = "#3a3f55";
+        g.font = "800 " + Math.round(bottom * 0.34) + "px Nunito, sans-serif";
+        g.fillText(place.icon + " " + order.map(nameOf).join(", "), c.width / 2, h + pad + bottom * 0.4, w);
+        g.fillStyle = "#8a90a6";
+        g.font = "700 " + Math.round(bottom * 0.22) + "px Nunito, sans-serif";
+        g.fillText(place.name.replace(/^./, (ch) => ch.toUpperCase()) + " · " + new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }), c.width / 2, h + pad + bottom * 0.75, w);
+        resolve(c.toDataURL("image/png"));
+      };
+      img.onerror = () => resolve(shot.url);
+      img.src = shot.url;
     });
   }
 
+  // Saves to the Downloads folder (the desktop app does it itself; a browser downloads it).
+  async function savePhoto(url, fileName) {
+    if (desktop && desktop.savePhoto) {
+      try {
+        const r = await desktop.savePhoto(url, fileName);
+        if (r && r.ok) { toast("📷 Saved to Downloads: " + r.name); return; }
+        toast("📷 Couldn't save the picture" + (r && r.error ? ": " + r.error : ""));
+      } catch (err) { toast("📷 Couldn't save the picture: " + err.message); }
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast("📷 Picture saved to your Downloads!");
+  }
+
   window.hub = hub; // handy for poking around in the browser console
-  window.miiApp = { records, openPaintball, visit, sendHome, sendTo, inviteOut, moveAway, forgetMii, loadFiles, leaveHome, town, get prog() { return progress; } }; // for tests
+  window.miiApp = { records, openPaintball, visit, sendHome, sendTo, inviteOut, moveAway, forgetMii, loadFiles, leaveHome, town, get prog() { return progress; },
+    prefs, openSettings, setMode, openMiiMenu, openPhotoPicker, takeGroupPhoto, goToMii, costOf }; // for tests (and other parts of the app)
   splash.done();
 })();

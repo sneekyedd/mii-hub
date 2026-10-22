@@ -107,19 +107,21 @@ assert(Object.keys(prog.state.stickers).length > 0, "some stickers are earned by
     const w = prog.makeWish(sam);
     assert(!w || (w.type !== "furniture" && w.type !== "style"), "impossible furniture wish: " + (w && w.text));
   }
-  // one plant left to buy (and in the shop today): furniture wishes are only for plants
-  const plant = prog.shopItems("plant").find((it) => !it.starter);
-  assert(plant, "some plant is for sale today");
+  // one thing left to buy (and in the shop today): furniture wishes are only for that kind of thing
+  // (which kinds are in stock changes every day, so pick one that is today)
+  const slot = H.SLOTS.map((s) => s.id).find((id) => !["wallpaper", "floor"].includes(id) && prog.shopItems(id).some((it) => !it.starter));
+  const plant = slot && prog.shopItems(slot).find((it) => !it.starter);
+  assert(plant, "something is for sale today");
   sam.home.owned = sam.home.owned.filter((id) => id !== plant.id);
   let furn = 0;
   for (let i = 0; i < 600; i++) {
     const w = prog.makeWish(sam);
-    if (w && w.type === "furniture") { furn++; assert.strictEqual(w.slot, "plant", "only the plant slot has something new"); }
+    if (w && w.type === "furniture") { furn++; assert.strictEqual(w.slot, slot, "only that slot has something new"); }
     assert(!w || w.type !== "style", "walls and floor are all owned");
   }
   assert(furn > 0, "a furniture wish can still happen when there's something new");
   // ...and the wish goes away by itself if the Mii gets the last one some other way
-  sam.wish = { type: "furniture", slot: "plant", icon: "🪴", text: "I want a new plant!", left: 480 };
+  sam.wish = { type: "furniture", slot, icon: "🪴", text: "I want something new!", left: 480 };
   sam.home.owned.push(plant.id);
   prog.tick(0.1);
   assert(!sam.wish || sam.wish.type !== "furniture", "an impossible furniture wish is dropped");
@@ -128,5 +130,37 @@ assert(Object.keys(prog.state.stickers).length > 0, "some stickers are earned by
   H.ensureHome(fresh);
   assert(H.SLOTS.every((s) => prog.newFor(fresh, s.id).every((it) => !fresh.home.owned.includes(it.id))));
 }
+// rare events: each one has its own hidden sticker (the page is "???" until you've seen one)
+{
+  const ids = prog.HIDDEN_EVENTS.map((e) => e.id);
+  for (const id of ["mustang", "ufo", "crabs", "boo", "ducks", "printer", "koi", "plane", "cat"]) assert(ids.includes(id), "hidden event " + id);
+  assert.strictEqual(new Set(ids).size, ids.length, "hidden event ids are unique");
+  assert(prog.HIDDEN_EVENTS.every((e) => e.icon && e.name && e.desc && e.hint), "every hidden event has an icon, name, description and hint");
+  const hiddenPage = () => prog.stickerPages().find((p) => p.hidden);
+  const before = hiddenPage().stickers.filter((s) => s.got).length;
+  let got = [];
+  prog.on("sticker", (s) => got.push(s.id));
+  prog.hiddenEvent("not-a-real-event");
+  assert.strictEqual(got.length, 0, "unknown rare events give nothing");
+  prog.hiddenEvent("crabs");
+  prog.hiddenEvent("crabs"); // (seeing it again gives nothing new)
+  assert.deepStrictEqual(got, ["h-crabs"], "the crab dance gives its sticker once");
+  for (const id of ["boo", "ducks", "printer", "koi", "plane", "cat"]) prog.hiddenEvent(id);
+  assert.strictEqual(hiddenPage().stickers.filter((s) => s.got).length, before + 7, "all the new rare events give stickers");
+  assert.strictEqual(hiddenPage().name, "Hidden Events");
+}
+
+// the crabs' song: 30 full bars (60 seconds at 120 bpm), every bar of the tune adds up
+{
+  require("../js/crabSong.js");
+  const S = global.MiiCrabSong;
+  assert.strictEqual(S.SONG_URL, null, "the made-up song plays unless a file is set");
+  assert.strictEqual(S.duration(), 60);
+  const { TUNE, CHORDS, BARS } = S._score;
+  assert.strictEqual(CHORDS.length, BARS);
+  assert.strictEqual(TUNE.length, BARS);
+  TUNE.forEach((bar, i) => { if (bar) assert.strictEqual(bar.reduce((n, [, len]) => n + len, 0), 8, "bar " + (i + 1) + " is 8 eighths long"); });
+}
+
 assert(saved, "progress is saved");
 console.log("All progress tests passed. Town level " + prog.state.level + ", " + Object.keys(prog.state.stickers).length + " stickers, " + wishing.length + " wishes after 600 s.");
