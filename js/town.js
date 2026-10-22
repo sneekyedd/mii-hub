@@ -27,9 +27,10 @@
     { id: "school", name: "college", icon: "🎓" }, // (the id stays "school" so saved games still work)
     { id: "stage", name: "the concert stage", icon: "🎤" },
     { id: "home", name: "home", icon: "🏠" },
+    { id: "away", name: "vacation", icon: "✈️" }, // away on vacation (see life.js): not a real place
   ];
   // only places that exist in this version of the game (and home)
-  const available = () => PLACES.filter((p) => p.id === "home" || !root.World3D || root.World3D.list.some((l) => l.id === p.id));
+  const available = () => PLACES.filter((p) => p.id !== "away" && (p.id === "home" || !root.World3D || root.World3D.list.some((l) => l.id === p.id)));
   const placeInfo = (id) => PLACES.find((p) => p.id === id) || PLACES[0];
 
   const rnd = (a, b) => a + Math.random() * (b - a);
@@ -71,6 +72,7 @@
    */
   function create(opts) {
     const { hub, records, D } = opts;
+    const L = root.MiiLife; // jobs (life.js)
     const rt = new Map(); // id -> { stay, travel, homeAct, homeActIn, hold }
     let socialIn = 6, phoneIn = 12, refreshIn = 1;
 
@@ -134,6 +136,7 @@
         if (rec.place !== to || walkerOf(rec.id) || !records.has(rec.id)) return; // changed its mind meanwhile
         hub.arrive(rec, template, opts.lookFor(rec, template), from);
       }
+      if (opts.arrived) opts.arrived(rec, from, to); // (e.g. back from a vacation)
       opts.changed();
     }
 
@@ -142,6 +145,8 @@
     function go(rec, to, how) {
       how = how || {};
       const r = info(rec);
+      // sent somewhere else in the middle of a shift: no pay this time
+      if (r.shift && L && to !== L.job(r.shift.job).place) { r.shift = null; r.jobIn = L.shiftGap(); }
       if (r.travel) { r.travel.to = to; if (how.quick) r.travel.left = Math.min(r.travel.left, 0.3); if (how.then) r.then = how.then; return; }
       if (rec.place === to) { if (how.then) how.then(); return; }
       if (how.stay) r.sentStay = how.stay;
@@ -183,12 +188,79 @@
       opts.changed();
     }
 
+    // ---------- jobs ----------
+    // Every so often a Mii goes to work (a "shift"), wears its uniform there, and
+    // gets paid when the shift is over. A teacher's class brings the students along.
+    function workingAs(rec) {
+      const r = info(rec);
+      return r.shift && !r.travel && L && rec.place === L.job(r.shift.job).place ? r.shift.job : null;
+    }
+    function startShift(rec, jobId, length) {
+      if (!L || rec.place === "away") return false;
+      const j = L.job(jobId || L.ensureJob(rec));
+      if (!j || !available().some((p) => p.id === j.place)) return false;
+      const r = info(rec);
+      const len = length || L.shiftLength();
+      if (rec.id === visitingId()) return false;
+      r.shift = { job: j.id, left: len };
+      r.jobIn = L.shiftGap();
+      if (rec.place === j.place && !r.travel) {
+        r.stay = Math.max(r.stay, len + 5);
+        if (opts.restyle) opts.restyle(rec, "work");
+      } else go(rec, j.place, { stay: len + 5 });
+      if (j.id === "teacher") callStudents(rec, len);
+      opts.changed();
+      return true;
+    }
+    function callStudents(teacher, len) {
+      const free = (x) => x !== teacher && x.place !== "away" && !info(x).shift && !info(x).travel && x.id !== visitingId();
+      let kids = Array.from(records.values()).filter((x) => free(x) && x.job === "student");
+      // nobody studying? a couple of Miis sit in on the class
+      if (!kids.length) kids = Array.from(records.values()).filter(free).sort(() => Math.random() - 0.5).slice(0, 2);
+      for (const k of kids.slice(0, 3)) startShift(k, "student", len);
+    }
+    function endShift(rec) {
+      const r = info(rec);
+      const j = L.job(r.shift.job);
+      r.shift = null;
+      r.jobIn = L.shiftGap();
+      const pay = L.jobPay(j.id, rec.level);
+      rec.coins = (rec.coins || 0) + pay;
+      rec.shifts = (rec.shifts || 0) + 1;
+      r.stay = rnd(4, 10); // then off somewhere else
+      opts.save(rec);
+      if (opts.restyle) opts.restyle(rec, "home");
+      if (opts.onShift) opts.onShift(rec, j, pay);
+      opts.changed();
+      return pay;
+    }
+    // (called every frame for each Mii that isn't travelling)
+    function tickJob(rec, r, dt) {
+      if (!L) return;
+      if (r.shift) {
+        const j = L.job(r.shift.job);
+        if (rec.place !== j.place) { r.shift = null; r.jobIn = L.shiftGap(); return; } // went somewhere else
+        r.shift.left -= dt;
+        r.stay = Math.max(r.stay, 3);
+        if (r.shift.left <= 0) endShift(rec);
+        return;
+      }
+      if (r.jobIn === undefined) r.jobIn = rnd(90, 420);
+      r.jobIn -= dt;
+      if (r.jobIn > 0) return;
+      const w = walkerOf(rec.id);
+      if (w && (hub.isBusy(w) || w.state === "playing")) { r.jobIn = 15; return; }
+      if (rec.wish && rec.wish.type === "goPlace") { r.jobIn = 60; return; } // (it'd rather go there first)
+      startShift(rec);
+    }
+
     // ---------- the clock ----------
     function tick(dt) {
       const view = viewed();
       const visitId = visitingId();
       for (const rec of records.values()) {
         const r = info(rec);
+        if (rec.place === "away" && !r.travel) continue; // on vacation (life.js brings it back)
         if (rec.id === visitId) { r.stay = Math.max(r.stay, 30); continue; } // you're visiting: they stay home
         // social energy comes back with time alone (Miis on screen do this in hub3d.js)
         if (!walkerOf(rec.id)) hub.setBattery(rec.id, Math.min(1, hub.batteryOf(rec.id) + dt * 0.008 * (0.6 + D.traits(rec).social / 100)));
@@ -206,6 +278,7 @@
         }
         const w = walkerOf(rec.id);
         if (w && w.leaving) continue;
+        tickJob(rec, r, dt);
         r.stay -= dt;
         if (r.stay > 0) continue;
         // time to go somewhere else (unless it's busy with something)
@@ -239,7 +312,7 @@
     }
 
     function tryPhoneCall() {
-      const all = Array.from(records.values()).filter((r) => !info(r).travel && r.id !== visitingId());
+      const all = Array.from(records.values()).filter((r) => !info(r).travel && r.id !== visitingId() && r.place !== "away");
       if (all.length < 2) return;
       // chatty, outgoing Miis call more
       const A = D.weighted(all.map((r) => { const p = D.traits(r); return [r, 0.4 + p.chatty / 60 + p.social / 100]; }));
@@ -272,8 +345,12 @@
     // What the side panel says about where a Mii is.
     function whereText(rec) {
       const r = info(rec);
+      if (r.travel && r.travel.to === "away") return "Off on vacation ✈️";
       if (r.travel) return "On the way to " + placeInfo(r.travel.to).name + " " + placeInfo(r.travel.to).icon;
       const pl = placeInfo(rec.place);
+      if (rec.place === "away" && L && rec.vacation) { const d = L.destination(rec.vacation.dest); return "On vacation in " + d.name + " " + d.icon + " (" + L.backIn(rec) + ")"; }
+      const job = workingAs(rec);
+      if (job) return "At work: " + L.job(job).name + " " + L.job(job).icon;
       if (rec.place === "home") return "At home 🏠";
       return "At " + pl.name + " " + pl.icon;
     }
@@ -282,7 +359,7 @@
     function homeActivity(rec) { return rec.place === "home" && !info(rec).travel ? info(rec).homeAct : null; }
     function forget(id) { rt.delete(id); }
 
-    return { tick, go, sendTo, populate, choosePlace, whereText, isTravelling, homeActivity, forget, info };
+    return { tick, go, sendTo, populate, choosePlace, whereText, isTravelling, homeActivity, forget, info, workingAs, startShift, endShift };
   }
 
   root.MiiTown = { create, PLACES, placeInfo, placeLikes, guessFavorite, available };

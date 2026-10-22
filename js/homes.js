@@ -199,7 +199,85 @@
     { id: "cheese", name: "Fancy cheese", icon: "🧀", price: 5, tags: ["fancy"] },
   ];
 
-  const byId = new Map(ITEMS.concat(FOODS).map((i) => [i.id, i]));
+  // ---------- extra rooms ----------
+  // You can buy a Mii more rooms. Each one has its own kinds of furniture
+  // (rooms3d.js builds them). The main room is "main" (always there).
+  const ROOMS = [
+    { id: "kitchen", name: "Kitchen", icon: "🍳", price: 120, slots: ["stove", "counter", "dining"] },
+    { id: "bathroom", name: "Bathroom", icon: "🛁", price: 100, slots: ["bath", "vanity", "bathdecor"] },
+    { id: "gameroom", name: "Game room", icon: "🎱", price: 150, slots: ["gametable", "arcade", "music"] },
+  ];
+  const ROOM_SLOTS = [
+    { id: "stove", name: "Stove", icon: "🔥", room: "kitchen" },
+    { id: "counter", name: "Counter", icon: "🚰", room: "kitchen" },
+    { id: "dining", name: "Dining", icon: "🍽️", room: "kitchen" },
+    { id: "bath", name: "Bath", icon: "🛁", room: "bathroom" },
+    { id: "vanity", name: "Sink", icon: "🪞", room: "bathroom" },
+    { id: "bathdecor", name: "Decor", icon: "🧴", room: "bathroom" },
+    { id: "gametable", name: "Game table", icon: "🎱", room: "gameroom" },
+    { id: "arcade", name: "Arcade", icon: "🕹️", room: "gameroom" },
+    { id: "music", name: "Music", icon: "🎶", room: "gameroom" },
+  ];
+  const ROOM_ITEMS = [
+    // kitchen
+    { id: "stove-basic", slot: "stove", name: "Little stove", icon: "🍳", price: 0, tags: [], starter: true,
+      use: { activity: "cooking", emoji: "🍳", arms: "type", lines: ["Something smells good!", "A pinch of salt...", "Don't burn it!"] } },
+    { id: "stove-range", slot: "stove", name: "Chef's range", icon: "👨‍🍳", price: 48, tags: ["fancy", "cozy"],
+      use: { activity: "cooking like a chef", emoji: "👨‍🍳", arms: "type", lines: ["Bon appétit!", "Five-star dinner tonight!", "Oui, chef!"] } },
+    { id: "stove-grill", slot: "stove", name: "Indoor grill", icon: "🍖", price: 36, tags: ["sporty", "silly"],
+      use: { activity: "grilling", emoji: "🍖", arms: "type", lines: ["Sizzle sizzle!", "Who wants a burger?", "Flip time!"] } },
+    { id: "counter-basic", slot: "counter", name: "Sink counter", icon: "🚰", price: 0, tags: [], starter: true,
+      use: { activity: "doing the dishes", emoji: "🫧", arms: "type", lines: ["Scrub scrub...", "So many dishes!", "Sparkly clean!"] } },
+    { id: "counter-espresso", slot: "counter", name: "Espresso bar", icon: "☕", price: 40, tags: ["fancy", "techy"],
+      use: { activity: "making espresso", emoji: "☕", arms: "type", lines: ["*whirrr* Espresso time!", "Extra foam, please.", "I need my coffee!"] } },
+    { id: "counter-bakery", slot: "counter", name: "Baking station", icon: "🧁", price: 34, tags: ["cute", "cozy"],
+      use: { activity: "baking cupcakes", emoji: "🧁", arms: "type", lines: ["Sprinkles on everything!", "The oven is ready!", "Taste test!"] } },
+    { id: "dining-basic", slot: "dining", name: "Kitchen table", icon: "🍽️", price: 0, tags: [], starter: true,
+      use: { activity: "having a snack", emoji: "🍽️", arms: "eat", lines: ["Snack time!", "*munch munch*", "Yum!"] } },
+    { id: "dining-booth", slot: "dining", name: "Diner booth", icon: "🍔", price: 42, tags: ["silly", "cozy"],
+      use: { activity: "eating in the diner booth", emoji: "🍔", arms: "eat", lines: ["One milkshake, please!", "Just like a real diner!", "Mmm, fries!"] } },
+    { id: "dining-sushi", slot: "dining", name: "Sushi bar", icon: "🍣", price: 50, tags: ["fancy", "nature"],
+      use: { activity: "eating sushi", emoji: "🍣", arms: "eat", lines: ["Itadakimasu!", "So fresh!", "One more salmon!"] } },
+    // bathroom
+    { id: "bath-basic", slot: "bath", name: "Bathtub", icon: "🛁", price: 0, tags: [], starter: true,
+      use: { activity: "having a bath", emoji: "🛁", lines: ["Ahh, nice and warm.", "Rub-a-dub-dub!", "Bubbles!"] } },
+    { id: "bath-hottub", slot: "bath", name: "Hot tub", icon: "♨️", price: 58, tags: ["fancy", "cozy"],
+      use: { activity: "relaxing in the hot tub", emoji: "♨️", lines: ["So bubbly!", "I could stay here forever.", "Pure luxury!"] } },
+    { id: "bath-duck", slot: "bath", name: "Rubber duck tub", icon: "🦆", price: 30, tags: ["silly", "cute"],
+      use: { activity: "playing with rubber ducks", emoji: "🦆", lines: ["Quack quack!", "Duck armada, attack!", "Squeak!"] } },
+    { id: "vanity-basic", slot: "vanity", name: "Sink & mirror", icon: "🪞", price: 0, tags: [], starter: true,
+      use: { activity: "brushing their teeth", emoji: "🪥", arms: "eat", lines: ["*brush brush*", "Minty fresh!", "Looking good!"] } },
+    { id: "vanity-star", slot: "vanity", name: "Star mirror", icon: "🌟", price: 42, tags: ["fancy", "silly"],
+      use: { activity: "posing in the star mirror", emoji: "🌟", arms: "flex", lines: ["Who's a star? Me!", "Ready for my close-up!", "Fabulous!"] } },
+    { id: "vanity-shell", slot: "vanity", name: "Seashell sink", icon: "🐚", price: 32, tags: ["nature", "cute"],
+      use: { activity: "washing up at the seashell sink", emoji: "🐚", arms: "type", lines: ["I can hear the sea!", "So pretty!", "Splish splash."] } },
+    { id: "bathdecor-none", slot: "bathdecor", name: "Nothing", icon: "⬜", price: 0, tags: [], starter: true },
+    { id: "bathdecor-plants", slot: "bathdecor", name: "Fern shelf", icon: "🌿", price: 16, tags: ["nature"],
+      use: { activity: "misting the ferns", emoji: "🌿", lines: ["Ferns love steam!", "So green!", "Grow, grow!"] } },
+    { id: "bathdecor-towels", slot: "bathdecor", name: "Fluffy towels", icon: "🧺", price: 20, tags: ["cozy", "cute"],
+      use: { activity: "folding fluffy towels", emoji: "🧺", arms: "type", lines: ["So soft!", "Fold, fold, fold.", "Warm towels are the best."] } },
+    // game room
+    { id: "gametable-basic", slot: "gametable", name: "Card table", icon: "🃏", price: 0, tags: [], starter: true,
+      use: { activity: "playing cards", emoji: "🃏", arms: "type", lines: ["Go fish!", "Shuffle shuffle...", "Solitaire again..."] } },
+    { id: "gametable-pool", slot: "gametable", name: "Pool table", icon: "🎱", price: 60, tags: ["sporty", "fancy"],
+      use: { activity: "playing pool", emoji: "🎱", arms: "punch", lines: ["Eight ball, corner pocket!", "Nice shot!", "Oops, scratch!"] } },
+    { id: "gametable-hockey", slot: "gametable", name: "Air hockey", icon: "🏒", price: 46, tags: ["sporty", "silly"],
+      use: { activity: "playing air hockey", emoji: "🏒", arms: "punch", lines: ["Clack! Goal!", "Too fast!", "Defense!"] } },
+    { id: "arcade-none", slot: "arcade", name: "Nothing", icon: "⬜", price: 0, tags: [], starter: true },
+    { id: "arcade-pinball", slot: "arcade", name: "Pinball machine", icon: "🪀", price: 48, tags: ["techy", "silly"],
+      use: { activity: "playing pinball", emoji: "🪀", arms: "type", lines: ["Multiball!", "Tilt! Oh no!", "Ding ding ding!"] } },
+    { id: "arcade-dance", slot: "arcade", name: "Dance machine", icon: "💃", price: 55, tags: ["sporty", "techy"],
+      use: { activity: "playing the dance machine", emoji: "💃", arms: "cheer", lines: ["Left, right, up!", "Perfect combo!", "Feel the beat!"] } },
+    { id: "arcade-claw", slot: "arcade", name: "Claw machine", icon: "🧸", price: 40, tags: ["cute", "silly"],
+      use: { activity: "trying the claw machine", emoji: "🧸", arms: "type", lines: ["Almost got it!", "So close!", "This one's rigged!"] } },
+    { id: "music-none", slot: "music", name: "Nothing", icon: "⬜", price: 0, tags: [], starter: true },
+    { id: "music-jukebox", slot: "music", name: "Jukebox", icon: "📻", price: 45, tags: ["fancy", "cozy"],
+      use: { activity: "picking a song on the jukebox", emoji: "🎶", arms: "type", lines: ["A golden oldie!", "This one's a classic!", "*hums along*"] } },
+    { id: "music-dj", slot: "music", name: "DJ decks", icon: "🎧", price: 52, tags: ["techy", "silly"],
+      use: { activity: "DJing", emoji: "🎧", arms: "type", lines: ["Drop the beat!", "*wicka wicka*", "Hands in the air!"] } },
+  ];
+
+  const byId = new Map(ITEMS.concat(ROOM_ITEMS, FOODS).map((i) => [i.id, i]));
   const item = (id) => byId.get(id) || null;
 
   // The furniture every Mii starts with.
@@ -213,12 +291,40 @@
   function ensureHome(record) {
     if (!record.home || !record.home.items) record.home = starterHome();
     const start = starterHome();
+    // extra rooms it owns get their starter furniture too
+    record.home.rooms = (record.home.rooms || []).filter((id) => ROOMS.some((r) => r.id === id));
+    for (const it of ROOM_ITEMS) if (it.starter && record.home.rooms.includes(roomOf(it.slot))) start.items[it.slot] = it.id;
     for (const slot of Object.keys(start.items)) if (!record.home.items[slot]) record.home.items[slot] = start.items[slot];
     record.home.owned = Array.from(new Set((record.home.owned || []).concat(Object.values(start.items))));
     if (typeof record.coins !== "number") record.coins = 10; // a little pocket money to start
     if (typeof record.mood !== "number") record.mood = 60;
     if (!record.tastes) record.tastes = randomTastes(record);
     return record;
+  }
+
+  // Which room a furniture slot belongs to ("main" for the main room's slots).
+  function roomOf(slot) {
+    const s = ROOM_SLOTS.find((x) => x.id === slot);
+    return s ? s.room : "main";
+  }
+  const room = (id) => ROOMS.find((r) => r.id === id) || null;
+  // Every item for a slot (main room or extra room).
+  const itemsFor = (slot) => ITEMS.concat(ROOM_ITEMS).filter((it) => it.slot === slot);
+  // The slots a room has (the main room's are SLOTS).
+  const slotsOfRoom = (id) => (id === "main" || !id ? SLOTS : ROOM_SLOTS.filter((s) => s.room === id));
+  // Every furniture slot a Mii can use (main room + the extra rooms it owns).
+  function slotsFor(record) {
+    const rooms = (record && record.home && record.home.rooms) || [];
+    return SLOTS.concat(ROOM_SLOTS.filter((s) => rooms.includes(s.room)));
+  }
+  // Gives a Mii a new room (with its starter furniture).
+  function addRoom(record, id) {
+    if (!room(id)) return false;
+    ensureHome(record);
+    if (record.home.rooms.includes(id)) return false;
+    record.home.rooms.push(id);
+    ensureHome(record);
+    return true;
   }
 
   // A number that's always the same for the same text (so tastes don't change).
@@ -261,16 +367,21 @@
   // picked from its id). Its personality decides how much it likes everything else.
   function favoriteItem(record, slot) {
     if (!record || !record.id) return null;
-    const pool = ITEMS.filter((it) => it.slot === slot && !/-none$/.test(it.id) && !it.starter);
+    const pool = itemsFor(slot).filter((it) => !/-none$/.test(it.id) && !it.starter);
     if (!pool.length) return null;
     return pool[hash(record.id + "|fav|" + slot) % pool.length].id;
+  }
+  // Its favorite things it doesn't own yet (in the rooms it has): it hints at these when chatting.
+  function unownedFavorites(record) {
+    const owned = (record && record.home && record.home.owned) || [];
+    return slotsFor(record).map((s) => favoriteItem(record, s.id)).filter((id) => id && !owned.includes(id)).map(item);
   }
   function opinion(personality, record, thing) {
     if (record && record.tastes) {
       if (thing.id === record.tastes.favorite) return "love";
       if (thing.id === record.tastes.hate) return "dislike";
     }
-    const furniture = thing.slot && ITEMS.indexOf(thing) >= 0;
+    const furniture = thing.slot && (ITEMS.indexOf(thing) >= 0 || ROOM_ITEMS.indexOf(thing) >= 0);
     if (furniture && thing.id === favoriteItem(record, thing.slot)) return "love";
     const likes = tagLikes(personality);
     const tags = thing.tags || [];
@@ -333,5 +444,6 @@
 
   root.MiiHomes = {
     SLOTS, ITEMS, FOODS, item, starterHome, ensureHome, opinion, favoriteItem, reaction, MOOD_CHANGE, moodFace, homeLine, hash,
+    ROOMS, ROOM_SLOTS, ROOM_ITEMS, room, roomOf, itemsFor, slotsOfRoom, slotsFor, addRoom, unownedFavorites,
   };
 })(typeof self !== "undefined" ? self : this);

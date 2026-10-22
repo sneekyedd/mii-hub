@@ -416,6 +416,8 @@
       const footY = ankle ? wp(ankle).y : Math.max(0, hipY - 2 * (hipY - wp(kneeBone).y));
       if (hipY - footY > 0.1) rig.legLen = hipY - footY + 0.05;
     }
+    // outfit extras (hats, glasses...: see lifeModels.js)
+    if (look && look.extras && root.MiiLifeModels) root.MiiLifeModels.dress({ holder, bones: found }, look.extras);
     return { holder, inner, object, rig };
   }
 
@@ -688,6 +690,23 @@
           const sw = p.swing || 0;
           aR = { x: -0.95 - Math.sin(sw * Math.PI) * 0.6, z: -0.3 + Math.sin(sw * Math.PI) * 0.6 }; elbowR = -0.7 + sw * 0.5;
           aL = { x: -0.5, z: 0.25 }; elbowL = -0.9;
+          break;
+        }
+        case "strum": { // playing a guitar: one hand on the neck, the other strumming
+          aL = { x: -0.75, z: 0.55 }; elbowL = -0.9; elbowLz = -0.2;
+          aR = { x: -0.45, z: -0.15 }; elbowR = -0.9 + Math.sin(t * 16) * 0.3; elbowRz = 0.5;
+          headX += Math.sin(t * 8) * 0.06; // head bobbing to the beat
+          break;
+        }
+        case "sing": { // microphone in one hand, the other arm out
+          aR = { x: -0.5, z: -0.35 }; elbowR = -1.45; elbowRz = 0.6;
+          aL = { x: -0.2 + Math.sin(t * 3) * 0.2, z: 0.9 + Math.sin(t * 3) * 0.3 };
+          break;
+        }
+        case "clap": { // clapping
+          const b = Math.abs(Math.sin(t * 9));
+          aL = { x: -0.95, z: 0.1 + b * 0.35 }; aR = { x: -0.95, z: -0.1 - b * 0.35 };
+          elbowL = elbowR = -0.7; elbowLz = -0.5; elbowRz = 0.5;
           break;
         }
         case "punch": { // left, right, left, right...

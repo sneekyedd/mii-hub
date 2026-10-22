@@ -1,0 +1,25 @@
+/* life.css: clothes, rooms, jobs, vacations and bands (life.js, lifeHub.js) */
+
+/* a little note floating up from a Mii playing on stage */
+.note-pop {
+  position: absolute;
+  z-index: 5;
+  translate: -50% 0;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #ff4fd8;
+  text-shadow: 0 1px 0 #fff, 0 0 6px rgba(255, 255, 255, 0.8);
+  pointer-events: none;
+  animation: floatUp 1.6s ease-out forwards;
+}
+
+.mm-life .mm-actions { margin-bottom: 6px; }
+.mm-life-notes { font-size: 0.8rem; opacity: 0.8; margin-top: 4px; }
+.mm-life select { max-width: 70%; }
+
+/* the room buttons while visiting a home */
+.hp-rooms { flex-wrap: wrap; }
+.hp-rooms button { flex: 1 1 auto; font-size: 0.8rem; }
+
+/* Miis away on vacation (bottom of the Residents list) */
+.away-note { font-size: 0.8rem; opacity: 0.75; padding: 6px 4px; }

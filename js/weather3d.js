@@ -45,7 +45,7 @@
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
   // Places with a roof: no rain or snow inside (only far away, outside the walls).
-  const INDOOR = { office: true, school: true, home: true };
+  const INDOOR = { office: true, school: true, home: true, room: true }; // (room: a home's extra rooms, rooms3d.js)
   // Places with no weather at all (festivals can still happen there).
   const NO_WEATHER = { space: true };
 
