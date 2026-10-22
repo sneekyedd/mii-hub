@@ -428,6 +428,224 @@
   // =====================================================================
   // PARK — a sunny little island
   // =====================================================================
+  // A quick sound made from notes (for the rare events): kind = "quack" | "brrr" | "ding"
+  let sfxCtx = null;
+  function sfx(kind) {
+    try {
+      sfxCtx = sfxCtx || new (root.AudioContext || root.webkitAudioContext)();
+      const ac = sfxCtx, t0 = ac.currentTime, g = ac.createGain();
+      g.connect(ac.destination);
+      const o = ac.createOscillator();
+      if (kind === "quack") {
+        // a nasal "quack": a buzzy note that drops, through a narrow filter
+        const f = ac.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 1100; f.Q.value = 3;
+        o.type = "sawtooth"; o.frequency.setValueAtTime(520, t0); o.frequency.exponentialRampToValueAtTime(330, t0 + 0.16);
+        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.18, t0 + 0.02); g.gain.linearRampToValueAtTime(0, t0 + 0.18);
+        o.connect(f).connect(g); o.start(t0); o.stop(t0 + 0.2);
+      } else if (kind === "brrr") {
+        // the printer churning away
+        o.type = "square"; o.frequency.value = 70;
+        const lfo = ac.createOscillator(), lg = ac.createGain();
+        lfo.frequency.value = 23; lg.gain.value = 25; lfo.connect(lg).connect(o.frequency);
+        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.05, t0 + 0.05); g.gain.setValueAtTime(0.05, t0 + 0.6); g.gain.linearRampToValueAtTime(0, t0 + 0.7);
+        o.connect(g); o.start(t0); o.stop(t0 + 0.72); lfo.start(t0); lfo.stop(t0 + 0.72);
+      } else {
+        o.type = "sine"; o.frequency.value = 1320;
+        g.gain.setValueAtTime(0.12, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.9);
+        o.connect(g); o.start(t0); o.stop(t0 + 0.95);
+      }
+    } catch (e) { /* no sound */ }
+  }
+
+  // RARE (park): a mother duck leads her ducklings on a parade right across the island,
+  // from the sea on one side to the sea on the other. Click them and they quack. Watch
+  // them all the way across for a sticker.
+  //   height(x, z) = the ground there (grass, sand or sea)
+  function duckParade(root, height) {
+    const path = new THREE.CatmullRomCurve3([
+      [-27, -1.2], [-21.5, -1.6], [-16, -1.2], [-10, -0.9], [-4, 0.1], [1.5, 1.0], [6, 1.3], [11, 0.9], [16, 0.2], [21.5, -0.4], [27.5, -0.6],
+    ].map(([x, z]) => new THREE.Vector3(x, 0, z)), false, "catmullrom", 0.5);
+    const LEN = path.getLength(), SPEED = 1.5, GAP = 0.75;
+    const ducks = [];
+    for (let i = 0; i < 7; i++) {
+      const mum = i === 0, s = mum ? 1.1 : 0.55;
+      const d = dynamic(group(root, 0, -5, 0, 0, s));
+      ball(d, mum ? 0xffffff : 0xffe46b, 0, 0.2, 0, 0.32, { sx: 1.25 });
+      ball(d, mum ? 0xffffff : 0xffe46b, 0.3, 0.48, 0, 0.2);
+      put(d, G.sphere(), toon(0xffa22b), { x: 0.52, y: 0.45, s: 0.1, sx: 1.6, sy: 0.5 });
+      ball(d, 0x222222, 0.42, 0.55, 0.12, 0.035);
+      ball(d, 0x222222, 0.42, 0.55, -0.12, 0.035);
+      if (mum) put(d, G.cone(), toon(0xff7aa8), { x: 0.2, y: 0.72, s: 0.09, sy: 0.12, rz: -0.4 }); // a little bow on her head
+      for (const sz of [-0.12, 0.12]) put(d, G.cone(), toon(0xffa22b), { x: 0, y: 0.03, z: sz, s: 0.08, sy: 0.04 }); // feet
+      d.visible = false;
+      ducks.push({ d, s, behind: mum ? 0 : 1.1 + (i - 1) * GAP, hop: 0, hopV: 0 });
+    }
+    let ev = null, check = 5;
+    const p = new THREE.Vector3(), tan = new THREE.Vector3();
+    const aww = ["Aww, ducklings!", "A duck parade!", "So cute! Look at them go!", "Hello, little ducks!", "One, two, three... six babies!", "Quack quack!"];
+    function end(ctx, done) {
+      ev = null; check = 5;
+      ducks.forEach((q) => { q.d.visible = false; });
+      if (done) ctx.event("ducks");
+    }
+    return {
+      update(dt, t, ctx) {
+        if (!ev) {
+          check -= dt;
+          if (check > 0) return;
+          check = 5;
+          if (Math.random() < 0.006) this.force(ctx);
+          return;
+        }
+        ev.s += SPEED * dt;
+        let all = true;
+        ducks.forEach((q, i) => {
+          const s = ev.s - q.behind;
+          const u = Math.max(0, Math.min(1, s / LEN));
+          if (s < LEN) all = false;
+          path.getPointAt(u, p); path.getTangentAt(u, tan);
+          const ground = height(p.x, p.z), swim = ground < -0.5;
+          q.hopV -= 20 * dt; q.hop = Math.max(0, q.hop + q.hopV * dt);
+          if (q.hop === 0) q.hopV = 0;
+          q.d.visible = s > -1;
+          q.d.position.set(p.x, ground + (swim ? 0.05 : Math.abs(Math.sin(t * 9 + i)) * 0.05) + q.hop, p.z);
+          q.d.rotation.set(0, -Math.atan2(tan.z, tan.x), swim ? 0 : Math.sin(t * 9 + i) * 0.14); // waddle
+        });
+        // the Miis it passes go "aww"
+        const mum = ducks[0].d.position;
+        for (const w of ctx.all()) {
+          if (ev.seen.has(w.id) || Math.hypot(w.x - mum.x, w.z - mum.z) > 4) continue;
+          ev.seen.add(w.id);
+          if (!w.anchored && w.state !== "perform") w.targetYaw = Math.atan2(mum.x - w.x, mum.z - w.z);
+          ctx.say(w, aww[Math.floor(Math.random() * aww.length)], 2.4);
+        }
+        if (all) end(ctx, true);
+      },
+      pick(ray) {
+        if (!ev) return false;
+        const hit = ducks.some((q) => q.d.visible && ray.distanceSqToPoint(p.copy(q.d.position).setY(q.d.position.y + 0.35 * q.s)) < Math.pow(0.6 * q.s + 0.15, 2));
+        if (!hit) return false;
+        // everyone quacks and jumps
+        ducks.forEach((q, i) => setTimeout(() => { q.hopV = 3.2; sfx("quack"); }, i * 90));
+        return true;
+      },
+      stop(ctx) { if (ev) end(ctx, false); },
+      force() { if (!ev) ev = { s: 0, seen: new Set() }; }, // (also used for testing)
+      _state: () => ev, _ducks: ducks, // (for testing)
+    };
+  }
+
+  // RARE (office): the printer that's always out of order suddenly springs to life and
+  // spits paper everywhere. Click it to pull the plug (have you tried turning it off and
+  // on again?) for a sticker. Leave it and it runs out of paper by itself.
+  function printerFrenzy(root, printer) {
+    const home = printer.position.clone();
+    const MAX = 48;
+    const paperGeo = new THREE.PlaneGeometry(0.42, 0.56);
+    paperGeo.rotateX(-Math.PI / 2);
+    const sheets = dynamic(new THREE.InstancedMesh(paperGeo, toon(0xffffff, { side: THREE.DoubleSide }), MAX));
+    sheets.frustumCulled = false; sheets.castShadow = false; sheets.visible = false;
+    root.add(sheets);
+    const tmp = new THREE.Object3D();
+    const list = [];
+    let ev = null, check = 5;
+    const box = new THREE.Box3();
+    const oops = ["The printer's gone crazy!", "Who's printing all that?!", "Is it... alive?!", "Paper everywhere!", "Somebody stop it!"];
+    function draw(fade) {
+      list.forEach((q, i) => {
+        tmp.position.set(q.x, q.y, q.z);
+        tmp.rotation.set(q.rx, q.ry, q.rz);
+        tmp.scale.setScalar(Math.max(0.001, fade));
+        tmp.updateMatrix();
+        sheets.setMatrixAt(i, tmp.matrix);
+      });
+      sheets.count = list.length;
+      sheets.instanceMatrix.needsUpdate = true;
+    }
+    function end(ctx, done) {
+      ev = null; check = 5;
+      list.length = 0;
+      sheets.visible = false;
+      printer.position.copy(home); printer.rotation.set(0, 0, 0);
+      if (done) ctx.event("printer");
+    }
+    return {
+      update(dt, t, ctx) {
+        if (!ev) {
+          check -= dt;
+          if (check > 0) return;
+          check = 5;
+          if (Math.random() < 0.006) this.force(ctx);
+          return;
+        }
+        ev.time += dt;
+        if (ev.phase === "go") {
+          // shaking and churning, shooting out sheets of paper
+          printer.position.set(home.x + Math.sin(t * 61) * 0.03, Math.abs(Math.sin(t * 37)) * 0.04, home.z + Math.cos(t * 53) * 0.02);
+          printer.rotation.set(0, Math.sin(t * 29) * 0.04, Math.sin(t * 47) * 0.02);
+          ev.next -= dt;
+          if (ev.next <= 0 && list.length < MAX) {
+            ev.next = 0.22;
+            const a = Math.random() * Math.PI - Math.PI; // (out to the front and sides)
+            const sp = 2 + Math.random() * 2.5;
+            list.push({ x: home.x, y: 1.4, z: home.z + 0.1, vx: Math.cos(a) * sp * 0.6, vy: 3.5 + Math.random() * 2, vz: -Math.sin(a) * sp, rx: 0, ry: Math.random() * TAU, rz: 0, spin: (Math.random() - 0.5) * 9, down: false });
+          }
+          ev.brrr -= dt;
+          if (ev.brrr <= 0) { ev.brrr = 0.75; sfx("brrr"); }
+          if (ev.time > 2 && !ev.panic) {
+            ev.panic = true;
+            ctx.all().slice(0, 3).forEach((w, i) => setTimeout(() => { if (ev) ctx.say(w, oops[(i + Math.floor(Math.random() * 2)) % oops.length], 2.4); }, i * 900));
+          }
+          if (ev.time > 25) { // out of paper (no sticker: nobody turned it off)
+            ev.phase = "settle"; ev.time = 0; ev.done = false;
+            printer.position.copy(home); printer.rotation.set(0, 0, 0);
+            const w = ctx.all()[0];
+            if (w) ctx.say(w, "Phew... it ran out of paper.", 2.6);
+          }
+        } else if (ev.phase === "settle" && ev.time > 4.5) {
+          end(ctx, ev.done);
+          return;
+        }
+        // the sheets flutter down and lie flat on the floor
+        for (const q of list) {
+          if (q.down) continue;
+          q.vy -= 9 * dt;
+          q.vy = Math.max(q.vy, -1.6); // (paper floats down slowly)
+          q.vx *= 1 - dt * 0.8; q.vz *= 1 - dt * 0.8;
+          q.x += (q.vx + Math.sin(t * 4 + q.ry) * 0.6) * dt;
+          q.z += q.vz * dt;
+          q.y += q.vy * dt;
+          q.x = Math.max(-16.5, Math.min(16.5, q.x)); q.z = Math.max(-10.7, Math.min(10.5, q.z));
+          q.ry += q.spin * dt;
+          q.rx = Math.sin(t * 6 + q.ry) * 0.6; q.rz = Math.cos(t * 5 + q.ry) * 0.5;
+          if (q.y <= 0.02) { q.y = 0.02 + Math.random() * 0.01; q.rx = q.rz = 0; q.down = true; }
+        }
+        draw(ev.phase === "settle" ? Math.min(1, (4.5 - ev.time) / 1.5) : 1);
+      },
+      pick(ray) {
+        if (!ev || ev.phase !== "go") return false;
+        box.setFromObject(printer).expandByScalar(0.15);
+        if (!ray.intersectsBox(box)) return false;
+        // you pulled the plug: one last "ding", and peace at last
+        ev.phase = "settle"; ev.time = 0; ev.done = true;
+        printer.position.copy(home); printer.rotation.set(0, 0, 0);
+        sfx("ding");
+        const ctx = ev.ctx;
+        const w = ctx.all().sort((a, b) => Math.hypot(a.x - home.x, a.z - home.z) - Math.hypot(b.x - home.x, b.z - home.z))[0];
+        if (w) ctx.say(w, "Have you tried turning it off and on again?", 3);
+        return true;
+      },
+      stop(ctx) { if (ev) end(ctx, false); },
+      force(ctx) { // (also used for testing)
+        if (ev) return;
+        ev = { phase: "go", time: 0, next: 0.3, brrr: 0, ctx };
+        list.length = 0;
+        sheets.visible = true;
+      },
+      _state: () => ev, _printer: printer, // (for testing)
+    };
+  }
+
   function buildPark() {
     const root = new THREE.Group();
     const anim = [];
@@ -949,11 +1167,15 @@
 
     mergeStatic(root);
 
+    // (very rarely, a duck family parades right across the island)
+    const ducksRare = duckParade(root, (x, z) => (Math.hypot(x / RX, z / RZ) <= 1 ? 0 : Math.hypot(x / (RX + 3), z / (RZ + 3)) <= 1 ? -0.15 : -0.9));
+
     return {
       group: root,
       background: 0xcdeeff,
       fog: [0xd8f2ff, 80, 260],
       cameraTilt: 0.44,
+      rare: ducksRare,
       bounds: { minX: -RX, maxX: RX, minZ: -RZ, maxZ: RZ },
       water: [{ x: POND.x, z: POND.z, rx: POND.rx, rz: POND.rz }, { x: 0, z: 0, rx: RX - 0.4, rz: RZ - 0.4, outside: true }],
       obstacles: [
@@ -1710,6 +1932,8 @@
       ctx.fillText("OUT OF", w / 2, 26); ctx.fillText("ORDER :(", w / 2, 50);
     });
     put(pr, new THREE.PlaneGeometry(0.6, 0.3), toon(0xffffff, { map: oooTex }), { y: 0.75, z: 0.51, rz: 0.06, shadow: false });
+    dynamic(pr); // (it can come to life: see printerFrenzy)
+    const printerRare = printerFrenzy(root, pr);
     const bin = (x, z, color, label) => {
       const b = group(root, x, 0, z);
       block(b, color, 0, 0.5, 0, 0.7, 1.0, 0.7, 0.08);
@@ -1809,6 +2033,7 @@
       background: 0xd8efff,
       fog: [0xd8efff, 90, 340],
       cameraTilt: 0.5,
+      rare: printerRare, // the printer goes haywire
       bounds: { minX: -17, maxX: 17, minZ: -10.4, maxZ: 10 },
       water: [],
       // each desk pod's zone also covers the chairs behind it

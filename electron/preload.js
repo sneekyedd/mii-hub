@@ -11,4 +11,8 @@ contextBridge.exposeInMainWorld("miiHubDesktop", {
   checkForUpdates: () => ipcRenderer.invoke("update-check"),
   openReleases: () => ipcRenderer.invoke("update-open-releases"),
   onUpdateStatus: (callback) => ipcRenderer.on("update-status", (_e, status) => callback(status)),
+  // Settings: open the hub in the normal web browser too
+  openInBrowser: () => ipcRenderer.invoke("open-in-browser"),
+  // 📷 group pictures: saved in the Downloads folder
+  savePhoto: (dataUrl, fileName) => ipcRenderer.invoke("save-photo", dataUrl, fileName),
 });

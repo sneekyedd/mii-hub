@@ -6,6 +6,13 @@
   <title>Mii Hub</title>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/life.css" />
+  <script>
+    // light / dark mode from Settings, set before anything draws (no flash of the wrong colors)
+    try {
+      var theme = (JSON.parse(localStorage.getItem("mii-hub-3d-settings")) || {}).theme;
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+    } catch (e) { /* private window */ }
+  </script>
 </head>
 <body>
   <!-- the splash screen while Mii Hub starts up -->
@@ -43,7 +50,19 @@
   </script>
   <header class="topbar">
     <h1>Mii Hub</h1>
-    <nav class="scene-tabs" id="sceneTabs" aria-label="Choose a place"></nav>
+    <nav class="scene-tabs" id="sceneTabs" aria-label="Places and residents"></nav>
+    <div class="add-wrap">
+      <button class="tb-btn add" id="addBtn" aria-haspopup="true" aria-expanded="false">➕ Add Miis</button>
+      <div class="add-menu" id="addMenu" hidden>
+        <label class="btn primary file-btn">
+          Choose Mii .glb files…
+          <input type="file" id="fileInput" multiple accept=".glb,model/gltf-binary" />
+        </label>
+        <button class="btn" id="demoBtn">Add random Miis</button>
+        <p class="hint">Use full-body 3D Mii models (<b>.glb</b>) exported from Mii Creator. You can also drag files onto the hub.</p>
+        <p class="error" id="errorMsg" role="alert"></p>
+      </div>
+    </div>
   </header>
 
   <main class="layout">
@@ -58,45 +77,8 @@
       <p class="tip">Right-click a Mii for its menu · click a Mii to make it jump · drag a Mii to pick it up · drag the background to spin the camera · scroll to zoom</p>
     </section>
 
-    <aside class="sidebar">
-      <div class="panel">
-        <h2>Add Miis</h2>
-        <label class="btn primary file-btn">
-          Choose Mii .glb files…
-          <input type="file" id="fileInput" multiple accept=".glb,model/gltf-binary" />
-        </label>
-        <button class="btn" id="demoBtn">Add random Miis</button>
-        <p class="hint">Use full-body 3D Mii models (<b>.glb</b>) exported from Mii Creator. You can also drag files onto the hub.</p>
-        <p class="error" id="errorMsg" role="alert"></p>
-        <label class="slider">
-          <span>How chatty?</span>
-          <input type="range" id="chatty" min="0.3" max="2.5" step="0.1" value="1" />
-        </label>
-      </div>
-
-      <div class="panel">
-        <div class="panel-head">
-          <h2>Residents <span class="count" id="count">0</span></h2>
-          <button class="link-btn" id="clearBtn">Remove all</button>
-        </div>
-        <ul class="roster" id="roster"></ul>
-      </div>
-
-      <div class="panel">
-        <h2>What's happening</h2>
-        <ul class="feed" id="feed"></ul>
-      </div>
-
-      <!-- only shown in the installed desktop app -->
-      <div class="panel" id="desktopPanel" hidden>
-        <h2>Mii Hub <span id="appVersion"></span></h2>
-        <p class="hint" id="updateStatus">Updates are checked automatically.</p>
-        <div class="update-btns">
-          <button class="btn" id="checkUpdatesBtn">Check for updates</button>
-          <button class="btn" id="patchNotesBtn">📜 Patch notes<span class="pn-badge" id="patchNotesNew" hidden>NEW</span></button>
-        </div>
-      </div>
-    </aside>
+    <!-- a Mii's menu and the home (decorating) panel open here, beside the 3D view -->
+    <aside class="side-panel" id="sidePanel" hidden></aside>
   </main>
 
   <!-- Three.js (3D library), stored in the project so it works offline -->
@@ -134,6 +116,7 @@
   <script src="js/lifeHub.js"></script>
   <script src="js/hubMusic.js"></script>
   <script src="js/music.js"></script>
+  <script src="js/crabSong.js"></script>
   <script src="js/patchNotes.js"></script>
   <script src="js/app.js"></script>
 </body>

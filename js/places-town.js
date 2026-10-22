@@ -746,6 +746,258 @@
     return d;
   }
 
+  // A quick sound made from notes (for the rare events): "meow" | "meowLong" | "whoosh"
+  let sfxCtx = null;
+  function sfx(kind) {
+    try {
+      sfxCtx = sfxCtx || new (root.AudioContext || root.webkitAudioContext)();
+      const ac = sfxCtx, t0 = ac.currentTime, g = ac.createGain();
+      g.connect(ac.destination);
+      if (kind === "whoosh") {
+        const n = ac.createBuffer(1, ac.sampleRate * 0.5, ac.sampleRate), d = n.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(), f = ac.createBiquadFilter();
+        s.buffer = n; f.type = "bandpass"; f.Q.value = 2;
+        f.frequency.setValueAtTime(600, t0); f.frequency.exponentialRampToValueAtTime(2400, t0 + 0.4);
+        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.08, t0 + 0.15); g.gain.linearRampToValueAtTime(0, t0 + 0.45);
+        s.connect(f).connect(g); s.start(t0); s.stop(t0 + 0.5);
+        return;
+      }
+      // a cat: a buzzy note that rises and falls, shaped like "mi-AA-ow"
+      const long = kind === "meowLong", len = long ? 1.3 : 0.55;
+      const o = ac.createOscillator(), f = ac.createBiquadFilter();
+      o.type = "sawtooth"; f.type = "bandpass"; f.Q.value = 4;
+      o.frequency.setValueAtTime(480, t0);
+      o.frequency.linearRampToValueAtTime(long ? 820 : 720, t0 + len * 0.35);
+      if (long) { const v = ac.createOscillator(), vg = ac.createGain(); v.frequency.value = 6; vg.gain.value = 22; v.connect(vg).connect(o.frequency); v.start(t0 + 0.4); v.stop(t0 + len); }
+      o.frequency.linearRampToValueAtTime(420, t0 + len);
+      f.frequency.setValueAtTime(900, t0); f.frequency.linearRampToValueAtTime(1600, t0 + len * 0.35); f.frequency.linearRampToValueAtTime(700, t0 + len);
+      g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.16, t0 + 0.06); g.gain.setValueAtTime(0.16, t0 + len * 0.7); g.gain.linearRampToValueAtTime(0, t0 + len);
+      o.connect(f).connect(g); o.start(t0); o.stop(t0 + len + 0.02);
+    } catch (e) { /* no sound */ }
+  }
+  const nearest = (list, x, z) => list.slice().sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
+
+  // RARE (college): a paper airplane glides round and round the lecture hall. Click it
+  // and it swoops down to a Mii, who unfolds it and reads the note. (A sticker!)
+  // Nobody catches it? It bonks into the wall after a while.
+  function paperPlane(root) {
+    const plane = dynamic(group(root, 0, -5, 0));
+    const paper = toon(0xffffff, { side: THREE.DoubleSide });
+    // a folded dart pointing along +x: two wings and a keel
+    put(plane, triangleGeo([0.55, 0, 0, -0.45, 0, 0.32, -0.45, 0, 0]), paper, { shadow: false });
+    put(plane, triangleGeo([0.55, 0, 0, -0.45, 0, -0.32, -0.45, 0, 0]), paper, { shadow: false });
+    put(plane, triangleGeo([0.55, 0, 0, -0.45, -0.14, 0, -0.45, 0, 0]), toon(0xdfe8f2, { side: THREE.DoubleSide }), { shadow: false });
+    put(plane, triangleGeo([0.2, 0.001, 0.02, -0.3, 0.001, 0.22, -0.3, 0.001, 0.04]), toon(0xff7aa8, { side: THREE.DoubleSide }), { shadow: false }); // a doodled heart-ish stripe
+    plane.scale.setScalar(1.4);
+    plane.visible = false;
+    let ev = null, check = 5;
+    const tmpV = new THREE.Vector3();
+    const notes = [
+      "It says... 'Will you be my study buddy?' Aww!",
+      "A note! 'Pop quiz tomorrow!' ...Oh no.",
+      "'You're my favorite classmate!' 💌",
+      "It's a doodle of the professor! Hehe!",
+      "'Meet me at the lockers after class!' Ooh!",
+      "It's the answers to the homework! ...No, it's a grocery list.",
+    ];
+    const loop = (a) => ({ x: Math.cos(a) * 12, y: 3.3 + Math.sin(a * 3) * 0.45, z: Math.sin(a) * 6.2 - 1.2 });
+    function end(ctx, done) {
+      ev = null; check = 5;
+      plane.visible = false;
+      if (done) ctx.event("plane");
+    }
+    return {
+      update(dt, t, ctx) {
+        if (!ev) {
+          check -= dt;
+          if (check > 0) return;
+          check = 5;
+          if (Math.random() < 0.006) this.force(ctx);
+          return;
+        }
+        ev.time += dt;
+        if (ev.phase === "fly") {
+          ev.a += dt * 0.42;
+          const p = loop(ev.a), q = loop(ev.a + 0.02);
+          plane.position.set(p.x, p.y, p.z);
+          plane.rotation.set(0, -Math.atan2(q.z - p.z, q.x - p.x), 0);
+          plane.rotateX(-0.45 + Math.sin(ev.a * 3) * 0.1); // banking into the turn
+          plane.rotateZ((q.y - p.y) * 8);
+          if (!ev.seen && ev.time > 3) {
+            ev.seen = true;
+            const w = ctx.all()[0];
+            if (w) ctx.say(w, "Hey! Who threw that?", 2.4);
+          }
+          if (ev.time > 35) { // nobody caught it: bonk!
+            ev.phase = "bonk"; ev.time = 0; ev.from = plane.position.clone();
+          }
+        } else if (ev.phase === "bonk") {
+          plane.position.y = Math.max(0.05, ev.from.y - ev.time * ev.time * 4);
+          plane.rotation.z += dt * 6;
+          if (ev.time > 1.6) end(ctx, false);
+        } else if (ev.phase === "swoop") {
+          // down to the Mii's feet in a gentle curve
+          const w = ev.w, k = Math.min(1, ev.time / 1.8);
+          const tx = w.x + 0.7, tz = w.z + 0.6;
+          const x = ev.from.x + (tx - ev.from.x) * k, z = ev.from.z + (tz - ev.from.z) * k;
+          plane.position.set(x, ev.from.y + (0.08 - ev.from.y) * (1 - Math.cos(k * PI / 2)) + Math.sin(k * PI) * 0.6, z);
+          plane.rotation.set(0, -Math.atan2(tz - ev.from.z, tx - ev.from.x), 0);
+          plane.rotateZ(-0.3 * (1 - k));
+          if (k >= 1) {
+            ev.phase = "read"; ev.time = 0;
+            ctx.perform(w, "reading", true);
+            w.timer = 4.5;
+            w.targetYaw = Math.atan2(plane.position.x - w.x, plane.position.z - w.z);
+            ctx.say(w, "Ooh, a paper plane!", 1.6);
+          }
+        } else if (ev.phase === "read") {
+          const w = ev.w;
+          if (ev.time > 0.7) { plane.visible = false; w.arms = "type"; } // (picked up and unfolded)
+          if (!ev.read && ev.time > 1.6) { ev.read = true; ctx.say(w, notes[Math.floor(Math.random() * notes.length)], 3.4); }
+          if (ev.time > 5) { w.arms = "down"; end(ctx, true); }
+        }
+      },
+      pick(ray) {
+        if (!ev || ev.phase !== "fly") return false;
+        tmpV.copy(plane.position);
+        if (ray.distanceSqToPoint(tmpV) > 0.8 * 0.8) return false;
+        this.catch(ev.ctx);
+        return true;
+      },
+      catch(ctx) { // (also used for testing)
+        if (!ev || ev.phase !== "fly") return;
+        const ws = nearest(ctx.all(), plane.position.x, plane.position.z);
+        if (!ws.length) { ev.phase = "bonk"; ev.time = 0; ev.from = plane.position.clone(); return; }
+        sfx("whoosh");
+        Object.assign(ev, { phase: "swoop", time: 0, w: ws[0], from: plane.position.clone() });
+      },
+      stop(ctx) { if (ev) end(ctx, false); },
+      force(ctx) { // (also used for testing)
+        if (ev) return;
+        ev = { phase: "fly", time: 0, a: Math.random() * TAU, ctx };
+        plane.visible = true;
+      },
+      _state: () => ev, _plane: plane, // (for testing)
+    };
+  }
+
+  // RARE (concert stage): a little cat strolls out from backstage, right up to the
+  // microphone, and sings ("Meow!") under a spotlight. The crowd goes wild, it takes a
+  // bow and wanders off again. Watch the whole show for a sticker.
+  function stageCat(root, ST) {
+    const cat = dynamic(group(root, 0, -5, 0));
+    const fur = 0xffa94d, dark = 0x3a2a1a;
+    ball(cat, fur, 0, 0.3, 0, 0.26, { sx: 1.4, sy: 0.75 });
+    ball(cat, 0xffe2c2, 0.12, 0.25, 0, 0.17, { sx: 1.1, sy: 0.7 }); // a pale tummy
+    const head = group(cat, 0.36, 0.48, 0);
+    ball(head, fur, 0, 0, 0, 0.19);
+    for (const sz of [-0.09, 0.09]) {
+      put(head, G.cone(), toon(fur), { y: 0.17, z: sz, s: 0.07, sy: 0.12 });
+      ball(head, dark, 0.15, 0.04, sz * 0.7, 0.025);
+    }
+    ball(head, 0xff8fa8, 0.18, -0.02, 0, 0.022); // nose
+    const mouth = ball(head, 0x7a2a2a, 0.16, -0.08, 0, 0.001); // (opens to sing)
+    for (const s of [-1, 1]) for (const dy of [-0.02, 0.02]) cylinder(head, 0xffffff, 0.17, -0.03 + dy, s * 0.1, 0.004, 0.16, { rx: PI / 2 + s * 0.2 });
+    const tail = group(cat, -0.35, 0.36, 0);
+    put(tail, G.capsule(), toon(fur), { y: 0.22, sx: 0.07, sy: 0.22, sz: 0.07 });
+    const legs = [];
+    for (const [lx, lz] of [[0.2, 0.12], [0.2, -0.12], [-0.2, 0.12], [-0.2, -0.12]]) {
+      const l = group(cat, lx, 0.18, lz);
+      put(l, G.capsule(), toon(fur), { y: -0.08, sx: 0.07, sy: 0.09, sz: 0.07 });
+      legs.push(l);
+    }
+    cat.scale.setScalar(1.9);
+    cat.visible = false;
+    // the spotlight on it
+    const beam = dynamic(put(root, new THREE.CylinderGeometry(0.25, 1.1, 1, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false }), { shadow: false }));
+    const pool = dynamic(put(root, new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.3, depthWrite: false, toneMapped: false }), { rx: -PI / 2, shadow: false }));
+    beam.visible = pool.visible = false;
+    const BACK = { x: 1.2, z: ST.z0 + 0.3 }, MIC = { x: 0.85, z: -6.25 };
+    let ev = null, check = 5;
+    const tmpV = new THREE.Vector3();
+    function end(ctx, done) {
+      ev = null; check = 5;
+      cat.visible = beam.visible = pool.visible = false;
+      if (done) ctx.event("cat");
+    }
+    // walks from a to b (k = 0..1), legs going, facing the way it walks
+    function walk(a, b, k, t) {
+      cat.position.set(a.x + (b.x - a.x) * k, ST.h, a.z + (b.z - a.z) * k);
+      cat.rotation.set(0, -Math.atan2(b.z - a.z, b.x - a.x), 0);
+      legs.forEach((l, i) => { l.rotation.z = Math.sin(t * 11 + (i % 3 ? PI : 0)) * 0.5; });
+      cat.position.y += Math.abs(Math.sin(t * 11)) * 0.03;
+    }
+    const sing = (long) => { sfx(long ? "meowLong" : "meow"); ev.sing = long ? 1.3 : 0.55; };
+    return {
+      update(dt, t, ctx) {
+        if (!ev) {
+          check -= dt;
+          if (check > 0) return;
+          check = 5;
+          if (Math.random() < 0.006) this.force(ctx);
+          return;
+        }
+        ev.time += dt;
+        tail.rotation.x = Math.sin(t * 3) * 0.4;
+        legs.forEach((l) => { l.rotation.z *= 0.8; });
+        ev.sing = Math.max(0, (ev.sing || 0) - dt);
+        mouth.scale.setScalar(ev.sing > 0 ? 40 + Math.sin(t * 20) * 8 : 1);
+        head.rotation.z = ev.sing > 0 ? 0.35 : 0; // (head up to sing)
+        const all = ctx.all();
+        if (ev.phase === "in") {
+          const k = Math.min(1, ev.time / 3.5);
+          cat.scale.setScalar(1.9 * Math.min(1, ev.time * 2));
+          walk(BACK, MIC, k, t);
+          if (k >= 1) { ev.phase = "show"; ev.time = 0; }
+        } else if (ev.phase === "show") {
+          // turn to the crowd, the spotlight comes on... and it sings!
+          cat.rotation.y += (-PI / 2 - cat.rotation.y) * Math.min(1, dt * 5);
+          beam.visible = pool.visible = true;
+          const on = Math.min(1, ev.time * 2);
+          beam.material.opacity = 0.22 * on; pool.material.opacity = 0.3 * on;
+          if (!ev.m1 && ev.time > 1) { ev.m1 = true; sing(false); }
+          if (!ev.r1 && ev.time > 1.6) { ev.r1 = true; nearest(all, MIC.x, MIC.z).slice(0, 2).forEach((w, i) => ctx.say(w, ["A cat?!", "Is it going to sing?"][i], 2.2)); }
+          if (!ev.m2 && ev.time > 3) { ev.m2 = true; sing(true); }
+          if (!ev.r2 && ev.time > 4.6) {
+            ev.r2 = true;
+            const cheers = ["Encore! Encore!", "Bravo, kitty!", "What a voice!", "Best concert ever!"];
+            all.slice(0, 4).forEach((w, i) => { ctx.say(w, cheers[i], 2.4); if (w.state !== "perform") ctx.perform(w, "jump", true); });
+          }
+          if (ev.time > 6.2) { ev.phase = "bow"; ev.time = 0; }
+        } else if (ev.phase === "bow") {
+          cat.rotation.z = -Math.sin(Math.min(1, ev.time / 1.4) * PI) * 0.45; // a little bow
+          if (ev.time > 1.6) { cat.rotation.z = 0; ev.phase = "out"; ev.time = 0; }
+        } else if (ev.phase === "out") {
+          const k = Math.min(1, ev.time / 3.5);
+          walk(MIC, BACK, k, t);
+          const fade = Math.max(0, 1 - ev.time * 1.5);
+          beam.material.opacity = 0.22 * fade; pool.material.opacity = 0.3 * fade;
+          if (k > 0.85) cat.scale.setScalar(1.9 * Math.max(0.01, (1 - k) / 0.15));
+          if (k >= 1) { end(ctx, true); return; }
+        }
+        beam.scale.set(1, 7, 1);
+        beam.position.set(cat.position.x, ST.h + 3.5, cat.position.z);
+        pool.position.set(cat.position.x, ST.h + 0.025, cat.position.z);
+      },
+      pick(ray) {
+        if (!ev || !cat.visible) return false;
+        tmpV.copy(cat.position).setY(ST.h + 0.6);
+        if (ray.distanceSqToPoint(tmpV) > 0.9 * 0.9) return false;
+        if (!ev.sing) sing(false); // it meows at you
+        return true;
+      },
+      stop(ctx) { if (ev) end(ctx, false); },
+      force() { // (also used for testing)
+        if (ev) return;
+        ev = { phase: "in", time: 0, sing: 0 };
+        cat.visible = true;
+        cat.scale.setScalar(0.01);
+      },
+      _state: () => ev, _cat: cat, // (for testing)
+    };
+  }
+
   function buildSchool() {
     const root = new THREE.Group();
     const anim = [];
@@ -1214,6 +1466,7 @@
     return {
       group: root,
       background: 0xd6efff,
+      rare: paperPlane(root), // a paper airplane goes round the lecture hall
       fog: [0xd6efff, 90, 300],
       cameraTilt: 0.5,
       // zoomed right out, the camera stays inside the ring of trees round the campus
@@ -2206,6 +2459,7 @@
     return {
       group: root,
       background: 0xffb88a,
+      rare: stageCat(root, ST), // a cat takes the stage
       fog: [0xffc8a0, 95, 320],
       cameraTilt: 0.44,
       cameraMaxDistance: 27, // (stays inside the ring of park trees)

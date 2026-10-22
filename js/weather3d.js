@@ -1,7 +1,8 @@
 /*
  * weather3d.js
  * Weather, seasons and festivals for the 3D hub: rain, storms with lightning,
- * snow, windy days with blowing leaves, cherry petals in spring, falling
+ * snow, windy days with blowing leaves (and now and then a gust that sends a
+ * swirl of them right through the scene), cherry petals in spring, falling
  * leaves in autumn, butterflies in summer... and festivals with fireworks,
  * floating paper lanterns, spooky ghosts, shooting stars and fairy lights.
  *
@@ -399,7 +400,7 @@
   const K = {
     // normal sprites
     RAIN: 1, SPLASH: 2, SNOW: 3, PETAL: 4, LEAF: 5, BLOWN: 6, GUST: 7, BUTTERFLY: 8,
-    LANTERN: 9, HANG: 10, PUMPKIN: 11, BAT: 12, GHOST: 13,
+    LANTERN: 9, HANG: 10, PUMPKIN: 11, BAT: 12, GHOST: 13, SWIRL: 23,
     // glowing sprites
     SHELL: 14, SPARK: 15, TRAIL: 16, SHOOT: 17, TWINKLE: 18, SPARKLE: 19, HALO: 20, BOLT: 21, STAR: 22,
   };
@@ -483,7 +484,7 @@
     let splashChance = 0.3;
 
     // timers for things that happen now and then
-    const timers = { firework: 1, shooting: 0.5, lightning: 3, gust: 0 };
+    const timers = { firework: 1, shooting: 0.5, lightning: 3, gust: 4 };
 
     // ---------- the mood (lights, sky, background, fog) ----------
     const saved = { lights: [], domes: [], bg: null, bgObj: null, fog: null };
@@ -995,6 +996,31 @@
       }
     }
 
+    // ---------- a gust of wind (windy days) ----------
+    // A swirl of leaves (petals in spring, bits of snow in winter) blows right through
+    // the scene you're looking at, from one side to the other, close to the Miis.
+    // Indoors it goes past behind the room, where you see it through the windows.
+    function leafGust() {
+      const tgt = hub.controls && hub.controls.target;
+      const tx = tgt ? tgt.x : F.cx, tz = F.indoor ? F.ez0 - 3 : (tgt ? tgt.z : F.cz);
+      const span = (F.bx1 - F.bx0) / 2 + 8;
+      const s = state.season, n = Math.round(rnd(34, 46));
+      const speed = wind * rnd(1.4, 1.7);
+      for (let k = 0; k < n; k++) {
+        const i = N.spawn(K.SWIRL);
+        if (i < 0) return;
+        // a loose cloud of leaves that starts just off to the side
+        N.setPos(i, tx - span - rnd(0, 9), (F.indoor ? F.y0 + 14 : F.ground) + rnd(0.3, 3.6), tz + rnd(-5, 7));
+        if (s === "spring") { N.setLook(i, TILE.PETAL, rnd(0.3, 0.45)); N.setColor(i, pick(PAL.petals), 1); }
+        else if (s === "autumn") { N.setLook(i, Math.random() < 0.6 ? TILE.MAPLE : TILE.LEAF, rnd(0.45, 0.65)); N.setColor(i, pick(PAL.autumn), 1); }
+        else if (s === "winter") { N.setLook(i, TILE.DOT, rnd(0.18, 0.3)); N.setColor(i, pick(PAL.winterBits), 0.9); }
+        else { N.setLook(i, TILE.LEAF, rnd(0.4, 0.55)); N.setColor(i, pick(PAL.summerLeaves), 1); }
+        N.setVel(i, speed * rnd(0.85, 1.15), rnd(-0.2, 0.6), rnd(-1, 1));
+        N.spin[i] = rnd(4, 9) * (Math.random() < 0.5 ? -1 : 1);
+        N.life[i] = (span * 2 + 12) / speed + rnd(0, 1);
+      }
+    }
+
     // ---------- fireworks ----------
     const burstPos = new THREE.Vector3();
     function launchFirework() {
@@ -1170,6 +1196,17 @@
               pos[j] = F.x0; pos[j + 1] = rnd(0.3, 8);
             }
             if (pos[j + 1] < 0.1) pos[j + 1] = 0.1;
+            break;
+          }
+          case K.SWIRL: {
+            // tumbling along in the gust, looping up and down
+            pos[j] += vel[j] * dt;
+            pos[j + 1] += (vel[j + 1] + Math.sin(t * 3.4 + ph) * 2.4) * dt;
+            pos[j + 2] += (vel[j + 2] + Math.cos(t * 2.7 + ph) * 1.6) * dt;
+            info[i * 4 + 1] += P.spin[i] * dt;
+            info[i * 4 + 3] = 0.25 + 0.75 * Math.abs(Math.cos(t * 4 + ph));
+            const floor = F.indoor ? F.y0 + 12 : F.ground + 0.15;
+            if (pos[j + 1] < floor) { pos[j + 1] = floor; vel[j + 1] = Math.abs(vel[j + 1]) + 0.5; }
             break;
           }
           case K.GUST:
@@ -1357,6 +1394,10 @@
         timers.shooting -= dt;
         if (timers.shooting <= 0) { launchShootingStar(); timers.shooting = rnd(0.2, 0.7); }
       }
+      if (state.weather === "windy" && !F.nowx) {
+        timers.gust -= dt;
+        if (timers.gust <= 0) { leafGust(); timers.gust = rnd(8, 18); }
+      }
       if (state.weather === "storm" && !F.nowx) {
         timers.lightning -= dt;
         if (timers.lightning <= 0) { lightning(); timers.lightning = rnd(3, 8); }
@@ -1464,7 +1505,8 @@
       dispose,
       get state() { return Object.assign({}, state); },
       // (for testing) how many sprites are alive
-      stats() { return { normal: N.alive, glow: G.alive }; },
+      stats() { return { normal: N.alive, glow: G.alive, swirl: count[K.SWIRL] }; },
+      gust: () => leafGust(), // (for testing)
     };
   }
 

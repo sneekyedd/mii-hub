@@ -16,16 +16,28 @@
   --shadow: 0 4px 18px rgba(30, 50, 90, 0.08);
 }
 
+/* dark mode: follows the computer unless Settings picks light or dark (html[data-theme]) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #161a26;
     --panel: #20263a;
     --text: #e8ebf5;
     --muted: #9aa3bf;
     --border: #2f3752;
     --shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+    color-scheme: dark;
   }
 }
+:root[data-theme="dark"] {
+  --bg: #161a26;
+  --panel: #20263a;
+  --text: #e8ebf5;
+  --muted: #9aa3bf;
+  --border: #2f3752;
+  --shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 
@@ -88,14 +100,18 @@ body {
 }
 
 /* ---------- main layout ---------- */
+/* the 3D view gets the whole width; a Mii's menu or the home panel opens in a column on the right */
 .layout {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 16px;
-  padding: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 14px;
+  padding: 12px 16px 16px;
   min-height: 0;
 }
+.layout.has-side { grid-template-columns: minmax(0, 1fr) 330px; }
+@media (max-width: 1000px) { .layout.has-side { grid-template-columns: minmax(0, 1fr) 300px; } }
 
 .stage {
   position: relative;
@@ -259,14 +275,16 @@ body {
 
 .stage.dragover .drop-hint { display: flex; }
 
-/* ---------- sidebar ---------- */
-.sidebar {
+/* ---------- side panel (a Mii's menu, the home panel) ---------- */
+.side-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
   overflow-y: auto;
-  max-height: calc(100vh - 90px);
+  overscroll-behavior: contain;
 }
+.side-panel[hidden] { display: none; }
 
 .panel {
   background: var(--panel);
@@ -360,101 +378,36 @@ body {
 
 .slider input { flex: 1; }
 
-/* ---------- roster ---------- */
-.roster, .friends, .feed {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.roster li {
-  border-top: 1px solid var(--border);
-  padding: 8px 0;
-}
-
-.roster li:first-child { border-top: none; }
-
-.roster .row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.roster img {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: #dff0ff;
-  flex-shrink: 0;
-  object-fit: cover;
-}
-
-.roster .info { flex: 1; min-width: 0; }
-
-.roster .name { font-weight: 800; }
-
-.roster .meta {
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-
-.badge {
-  display: inline-block;
-  margin-left: 4px;
-  padding: 0 6px;
-  border-radius: 6px;
-  background: #fff1c2;
-  color: #7a5a00;
-  font-size: 0.7rem;
-  font-weight: 700;
-}
-
-.roster .actions button {
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 4px;
-  color: var(--text);
-}
-
-/* ---------- friendships & feed ---------- */
-.friends li, .feed li {
-  font-size: 0.85rem;
-  padding: 4px 0;
-  border-top: 1px dashed var(--border);
-}
-
-.friends li:first-child, .feed li:first-child { border-top: none; }
-
-.friends .level { float: right; color: var(--muted); font-weight: 700; }
-
 .empty { color: var(--muted); font-style: italic; }
 
-/* ---------- small screens ---------- */
-@media (max-width: 820px) {
-  .layout {
-    grid-template-columns: 1fr;
-    padding: 10px 16px;
-  }
-  .stage { min-height: 62vh; }
-  .sidebar { max-height: none; }
+/* ---------- small screens: the side panel goes under the 3D view ---------- */
+@media (max-width: 700px) {
+  .layout { padding: 8px 16px 12px; gap: 10px; }
+  .tip { display: none; }
+  .layout.has-side { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(260px, 1fr) minmax(0, 42vh); }
+  .stage { min-height: 260px; }
+}
+@media (max-height: 560px) {
+  .stage { min-height: 220px; }
 }
 
-/* ---------- the Mii menu (click a Mii) ---------- */
+/* ---------- the Mii menu (right-click a Mii): in the side panel ---------- */
 .mii-menu {
-  position: absolute;
-  z-index: 20;
-  width: 290px;
-  max-height: calc(100% - 16px);
-  overflow-y: auto;
+  position: relative;
+  flex: none;
   padding: 12px;
   border-radius: 18px;
   background: var(--panel);
   color: var(--text);
   border: 1px solid var(--border);
-  box-shadow: 0 12px 32px rgba(20, 40, 80, 0.25);
-  animation: menuPop 0.15s ease-out;
+  box-shadow: var(--shadow);
+  animation: sideIn 0.15s ease-out;
+}
+.mii-menu[hidden] { display: none; }
+
+@keyframes sideIn {
+  from { transform: translateX(12px); opacity: 0; }
+  to { transform: none; opacity: 1; }
 }
 
 @keyframes menuPop {
@@ -948,18 +901,13 @@ body {
 
 /* ---------- home visit panel ---------- */
 .home-panel {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 14;
-  width: min(300px, calc(100% - 20px));
-  max-height: calc(100% - 20px);
-  overflow-y: auto;
+  flex: none;
   padding: 10px 12px 12px;
   border-radius: 16px;
+  border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow);
 }
 
 .home-panel[hidden] { display: none; }
@@ -1207,7 +1155,8 @@ body {
 .sticker small { font-size: 0.68rem; font-weight: 700; line-height: 1.1; }
 .sticker.got { opacity: 1; background: #fff6cf; box-shadow: inset 0 0 0 2px #ffd966; }
 .sticker.got span { filter: none; }
-@media (prefers-color-scheme: dark) { .sticker.got { background: #4a4220; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sticker.got { background: #4a4220; } }
+:root[data-theme="dark"] .sticker.got { background: #4a4220; }
 
 .mm-level { padding-left: 6px; font-size: 0.75rem; letter-spacing: 1px; }
 
@@ -1239,11 +1188,16 @@ body {
   --cb-shadow: 0 6px 18px rgba(60, 40, 20, 0.25);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --cb-light: #d9c4a1;
     --cb-dark: #9c7553;
     --cb-shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
   }
+}
+:root[data-theme="dark"] {
+  --cb-light: #d9c4a1;
+  --cb-dark: #9c7553;
+  --cb-shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
 }
 
 .tb-btn.chess { background: linear-gradient(#fffaf0, #f0d9b5); border-color: #b58863; color: #3a2610; }
@@ -1471,3 +1425,117 @@ body {
 .mm-wish-acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .mm-wish-acts button { padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font: inherit; font-weight: 700; cursor: pointer; }
 .mm-wish-acts button:hover { border-color: var(--accent); }
+
+/* ---------- residents in the places drop-down ---------- */
+.place-menu { max-height: calc(100vh - 80px); overflow-y: auto; min-width: 280px; overscroll-behavior: contain; }
+.pm-miis { display: flex; flex-direction: column; padding-left: 18px; }
+.pm-miis:empty { display: none; }
+.pm-head { margin-top: 6px; padding: 6px 10px 2px; border-top: 1px solid var(--border); font-size: 0.8rem; font-weight: 800; color: var(--muted); }
+.pm-head[hidden] { display: none; }
+.pm-mii { display: flex; align-items: center; gap: 2px; border-radius: 10px; }
+.pm-mii:hover { background: var(--bg); }
+.pm-who { flex: 1; min-width: 0; display: grid; grid-template-columns: 30px 1fr; grid-template-rows: auto auto; column-gap: 8px; align-items: center; padding: 3px 6px; border: none; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; border-radius: 10px; }
+.pm-who img { grid-row: span 2; width: 30px; height: 30px; border-radius: 50%; background: #dff0ff; object-fit: cover; }
+.pm-mii.at-home .pm-who img { filter: saturate(0.6); opacity: 0.85; }
+.pm-name { font-size: 0.86rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-meta { font-size: 0.7rem; font-weight: 700; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-meta .coins { color: #a07800; }
+.pm-meta .where { color: var(--accent); }
+.pm-act { flex: none; width: 30px; height: 30px; border: none; border-radius: 8px; background: none; font-size: 0.95rem; cursor: pointer; }
+.pm-act:hover { background: var(--panel); box-shadow: inset 0 0 0 2px var(--accent); }
+.pm-foot { margin-top: 6px; padding: 6px 10px 2px; border-top: 1px solid var(--border); font-size: 0.75rem; font-weight: 700; color: var(--muted); }
+.pm-name .wish-flag { margin-left: 2px; font-size: 0.8rem; }
+
+/* ---------- ➕ Add Miis (top bar) ---------- */
+.add-wrap { position: relative; }
+.tb-btn.add { border-color: var(--accent); color: var(--accent); }
+.add-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; width: 270px; padding: 10px 12px 4px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 12px 30px rgba(20, 40, 80, 0.25); animation: menuPop 0.12s ease-out;
+}
+.add-menu[hidden] { display: none; }
+
+/* ---------- top bar: settings, sandbox / speed badge ---------- */
+.tb-btn.gear { position: relative; font-size: 0.95rem; padding: 3px 8px; }
+.dot-badge { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--danger); border: 2px solid var(--panel); }
+.dot-badge[hidden] { display: none; }
+.tb-btn.mode-badge { border-color: #b98cff; background: rgba(185, 140, 255, 0.15); }
+.tb-btn.mode-badge[hidden] { display: none; }
+.tb-btn.danger { color: var(--danger); }
+.tb-btn.danger:hover { border-color: var(--danger); }
+
+/* ---------- ⚙️ Settings ---------- */
+.settings-modal { position: fixed; z-index: 200; }
+.settings-card { width: min(480px, 100%); max-height: calc(100vh - 24px); gap: 4px; }
+.set-head { display: flex; align-items: center; justify-content: space-between; }
+.set-sec { padding: 6px 0 8px; border-top: 1px solid var(--border); }
+.set-sec:first-of-type { border-top: none; }
+.set-sec h4 { margin: 4px 0 6px; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 0; font-weight: 700; font-size: 0.92rem; }
+.set-row[hidden] { display: none; }
+.set-row > span { min-width: 0; }
+.set-row small { display: block; font-size: 0.74rem; font-weight: 600; color: var(--muted); }
+.set-row input[type="range"] { width: 150px; accent-color: var(--accent); }
+.set-row .tb-btn { flex: none; }
+.set-warn, .book-locked { margin: 4px 0 0; padding: 6px 10px; border-radius: 10px; background: rgba(185, 140, 255, 0.15); font-size: 0.82rem; font-weight: 700; color: var(--text); }
+.seg { flex: none; display: inline-flex; border: 2px solid var(--border); border-radius: 10px; overflow: hidden; }
+.seg button { border: none; background: transparent; color: var(--text); font: inherit; font-size: 0.8rem; font-weight: 800; padding: 5px 10px; cursor: pointer; }
+.seg button + button { border-left: 2px solid var(--border); }
+.seg button[aria-checked="true"] { background: var(--accent); color: #fff; }
+.set-sec.danger h4 { color: var(--danger); }
+
+/* ---------- the Mii menu: 📷 and the "can only hop" warning ---------- */
+.mm-cam { align-self: flex-start; border: 2px solid var(--border); border-radius: 10px; background: transparent; font-size: 1rem; padding: 2px 6px; cursor: pointer; }
+.mm-cam:hover:not(:disabled) { border-color: var(--accent); }
+.mm-cam:disabled { opacity: 0.4; cursor: default; }
+.mm-cam[hidden] { display: none; }
+.mm-warn { margin: 8px 0 0; font-size: 0.75rem; font-weight: 700; color: #b06a00; }
+
+/* ---------- 📷 group picture ---------- */
+.photo-card { width: min(520px, 100%); }
+.ph-who { display: flex; flex-wrap: wrap; gap: 6px; }
+.ph-mii { display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border: 2px solid var(--border); border-radius: 999px; background: transparent; color: var(--text); font: inherit; font-size: 0.82rem; font-weight: 800; cursor: pointer; }
+.ph-mii img { width: 26px; height: 26px; border-radius: 50%; background: #dff0ff; }
+.ph-mii[aria-pressed="true"] { border-color: var(--accent); background: rgba(47, 164, 231, 0.12); }
+.ph-mii[aria-pressed="false"] img { filter: grayscale(1); opacity: 0.6; }
+.ph-mii:disabled { cursor: default; }
+.ph-mii[aria-pressed="false"]:disabled { opacity: 0.6; }
+.ph-fight { margin: 0; padding: 6px 10px; border-radius: 10px; background: rgba(226, 68, 92, 0.12); color: var(--text); font-size: 0.8rem; font-weight: 700; }
+.ph-poses { display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow-y: auto; }
+.ph-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 4px 6px; border-radius: 12px; background: var(--bg); }
+.ph-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 0.85rem; }
+.ph-name img { width: 32px; height: 32px; border-radius: 50%; background: #dff0ff; }
+.ph-name small { display: block; color: var(--muted); font-weight: 700; font-size: 0.7rem; }
+.ph-pose-btns { display: flex; flex-wrap: wrap; gap: 3px; }
+.ph-pose-btns button { width: 32px; height: 32px; border: 2px solid var(--border); border-radius: 9px; background: var(--panel); font-size: 1rem; cursor: pointer; padding: 0; }
+.ph-pose-btns button[aria-pressed="true"] { border-color: var(--accent); background: rgba(47, 164, 231, 0.18); }
+.ph-pose-btns button:disabled { opacity: 0.45; cursor: help; }
+.ph-key { margin: 0; font-size: 0.75rem; }
+.ph-jump { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-weight: 800; font-size: 0.9rem; cursor: pointer; }
+.ph-jump small { flex-basis: 100%; color: var(--muted); font-weight: 700; font-size: 0.74rem; }
+.ph-jump.off { cursor: default; color: var(--muted); }
+.ph-go { text-align: center; }
+/* while the picture is taken: everything on the scene is tidied away */
+.stage.photo-mode .overlay, .stage.photo-mode .stage-tools, .stage.photo-mode .tip, .stage.photo-mode .toasts { visibility: hidden; }
+.stage.photo-mode::after { content: ""; position: absolute; inset: 0; z-index: 50; }
+.photo-flash { position: absolute; inset: 0; z-index: 60; background: #fff; pointer-events: none; animation: photoFlash 0.7s ease-out forwards; }
+@keyframes photoFlash { from { opacity: 0.95; } to { opacity: 0; } }
+
+/* the top bar stays one row on a normal window: the weather text gets cut short first */
+@media (min-width: 760px) {
+  .topbar { flex-wrap: nowrap; }
+  .town-bar { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; justify-content: flex-end; }
+  .town-bar > * { flex: none; }
+  .town-bar .weather { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+@media (min-width: 760px) and (max-width: 1100px) {
+  .topbar { gap: 10px; padding: 8px 12px; }
+  .town-bar { gap: 6px; }
+  .town-bar .weather { display: none; }
+  .town-level .xp { width: 50px; }
+  .topbar h1 { display: none; }
+}
+
+/* ---------- full screen: the 3D view plus the side panel ---------- */
+.layout.is-full { padding: 0; gap: 0; background: var(--bg); }
+.layout.is-full .side-panel { padding: 10px; }
