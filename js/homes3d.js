@@ -1176,6 +1176,250 @@
   const ROOM = { x: 6, z: 4.5, h: 5.2 };
   const TILE = 2; // one wallpaper / floor picture covers 2 x 2 units
 
+  // ---------- fine detail (only inside a Mii's home) ----------
+  // Furniture is also built, small, in the little rooms seen through the apartment
+  // windows (flatContents). Those stay plain and light: FINE is only switched on
+  // while a home is being built, and the extra touches below check it.
+  let FINE = false;
+
+  // Soft surface pictures, multiplied by a part's color: wood grain, woven cloth,
+  // padded cushions (a stitched seam round each face), brushed metal, and pleats
+  // for curtains. Each is drawn once and shared; each (picture, color) pair is one
+  // material shared by every piece, so parts still merge into a few draw calls.
+  // (They're mostly white, so the colors stay as bright as before.)
+  const SURF = {
+    wood(c, w, h) {
+      c.fillStyle = "#fff"; c.fillRect(0, 0, w, h);
+      const r = seeded(41);
+      // long grain lines, drawn twice (one tile apart) so they wrap round
+      for (let i = 0; i < 26; i++) {
+        const y = r() * h, a = 2 + r() * 5, ph = r() * TAU, k = 1 + Math.floor(r() * 2);
+        c.strokeStyle = "rgba(110,64,30," + (0.06 + r() * 0.1).toFixed(3) + ")"; c.lineWidth = 0.8 + r() * 1.6;
+        for (const dy of [-h, 0, h]) {
+          c.beginPath();
+          for (let x = 0; x <= w; x += 4) { const yy = y + dy + Math.sin((x / w) * TAU * k + ph) * a; if (x) c.lineTo(x, yy); else c.moveTo(x, yy); }
+          c.stroke();
+        }
+      }
+      // two little knots
+      for (const [x, y] of [[w * 0.3, h * 0.35], [w * 0.78, h * 0.8]]) {
+        for (let k = 3; k >= 1; k--) { c.strokeStyle = "rgba(110,64,30,0.14)"; c.lineWidth = 1.2; c.beginPath(); c.ellipse(x, y, k * 5, k * 2, 0, 0, TAU); c.stroke(); }
+        c.fillStyle = "rgba(110,64,30,0.22)"; c.beginPath(); c.ellipse(x, y, 3, 1.4, 0, 0, TAU); c.fill();
+      }
+    },
+    fabric(c, w, h) {
+      c.fillStyle = "#fff"; c.fillRect(0, 0, w, h);
+      // a soft basket weave
+      for (let y = 0; y < h; y += 4) for (let x = 0; x < w; x += 4) {
+        c.fillStyle = ((x + y) / 4) % 2 ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.0)";
+        c.fillRect(x, y, 4, 4);
+      }
+      const r = seeded(5);
+      for (let i = 0; i < 180; i++) { c.fillStyle = "rgba(0,0,0," + (0.03 + r() * 0.04).toFixed(3) + ")"; c.fillRect(r() * w, r() * h, 1 + r() * 2, 1); }
+    },
+    cushion(c, w, h) {
+      SURF.fabric(c, w, h);
+      // darker toward the edges (a padded, puffy look) and a stitched seam
+      const e = 14;
+      for (const [x, y, gw, gh, x0, y0, x1, y1] of [[0, 0, w, e, 0, 0, 0, e], [0, h - e, w, e, 0, h, 0, h - e], [0, 0, e, h, 0, 0, e, 0], [w - e, 0, e, h, w, 0, w - e, 0]]) {
+        const gr = c.createLinearGradient(x0, y0, x1, y1);
+        gr.addColorStop(0, "rgba(40,20,10,0.16)"); gr.addColorStop(1, "rgba(40,20,10,0)");
+        c.fillStyle = gr; c.fillRect(x, y, gw, gh);
+      }
+      c.strokeStyle = "rgba(40,20,10,0.28)"; c.lineWidth = 1.6; c.setLineDash([5, 4]);
+      c.strokeRect(9, 9, w - 18, h - 18);
+      c.setLineDash([]);
+      c.strokeStyle = "rgba(255,255,255,0.35)"; c.lineWidth = 1; c.strokeRect(11, 11, w - 22, h - 22);
+    },
+    metal(c, w, h) {
+      // brushed: fine streaks, with a bright band and a soft dark band (round a pole, a shine)
+      const gr = c.createLinearGradient(0, 0, w, 0);
+      gr.addColorStop(0, "#d4d4d4"); gr.addColorStop(0.18, "#ffffff"); gr.addColorStop(0.26, "#f2f2f2");
+      gr.addColorStop(0.55, "#c4c4c4"); gr.addColorStop(0.8, "#e8e8e8"); gr.addColorStop(1, "#d4d4d4");
+      c.fillStyle = gr; c.fillRect(0, 0, w, h);
+      const r = seeded(8);
+      for (let i = 0; i < 50; i++) { c.fillStyle = "rgba(255,255,255," + (0.1 + r() * 0.2).toFixed(3) + ")"; c.fillRect(r() * w, 0, 1, h); }
+    },
+    pleat(c, w, h) {
+      // soft vertical folds
+      const gr = c.createLinearGradient(0, 0, w, 0);
+      for (let k = 0; k <= 4; k++) { gr.addColorStop(k / 4, "#ffffff"); if (k < 4) gr.addColorStop(k / 4 + 0.125, "#d8d8d8"); }
+      c.fillStyle = gr; c.fillRect(0, 0, w, h);
+      SURF.fabricNoise(c, w, h);
+    },
+    fabricNoise(c, w, h) {
+      const r = seeded(9);
+      for (let i = 0; i < 120; i++) { c.fillStyle = "rgba(0,0,0,0.04)"; c.fillRect(r() * w, r() * h, 1, 2 + r() * 3); }
+    },
+  };
+  const surfTex = {}, surfMats = new Map();
+  function surface(kind) {
+    if (!surfTex[kind]) surfTex[kind] = canvasTexture(128, 128, SURF[kind], [1, 1]);
+    return surfTex[kind];
+  }
+  // A material with a surface picture (plain color outside a home: see FINE).
+  // (paintRoom later swaps it for one material per picture, with the color kept
+  // in the shape, so wood of every color is drawn in one go.)
+  function fine(kind, color) {
+    if (!FINE) return toon(color);
+    const key = kind + ":" + color;
+    if (!surfMats.has(key)) {
+      const m = toon(color, { map: surface(kind) });
+      m.userData.keep = true;
+      m.userData.surface = kind;
+      surfMats.set(key, m);
+    }
+    return surfMats.get(key);
+  }
+  const kindMats = {};
+  function kindMat(kind) {
+    if (!kindMats[kind]) {
+      kindMats[kind] = toon(0xffffff, { map: surface(kind), vertexColors: true });
+      kindMats[kind].userData.keep = true;
+    }
+    return kindMats[kind];
+  }
+
+  // Gives every plain-colored part under g (but not the moving ones) the shared
+  // "colors in the shape" material (and parts with a surface picture the shared one
+  // for that picture), so mergeStatic joins a whole room into a handful of draw
+  // calls instead of one per color. It looks exactly the same.
+  function paintRoom(g) {
+    if (W3D.debug && W3D.debug.noMerge) return;
+    const skip = new Set();
+    g.traverse((o) => { if (o !== g && o.userData.dynamic) o.traverse((c) => skip.add(c)); });
+    g.traverse((o) => {
+      if (!o.isMesh || o.isInstancedMesh || skip.has(o)) return;
+      const m = o.material;
+      if (Array.isArray(m) || !m.isMeshToonMaterial || m.vertexColors || m.transparent || m.alphaTest || m.side !== THREE.FrontSide || (m.emissive && m.emissive.getHex())) return;
+      const kind = m.userData.surface;
+      if (m.map && !kind) return;
+      const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      const n = geo.attributes.position.count, col = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { col[i * 3] = m.color.r; col[i * 3 + 1] = m.color.g; col[i * 3 + 2] = m.color.b; }
+      geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+      if (!geo.attributes.uv) geo.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(n * 2), 2));
+      o.geometry = geo;
+      o.material = kind ? kindMat(kind) : W3D.kit.paintedMat;
+    });
+  }
+  const woody = (c) => fine("wood", c), cloth = (c) => fine("fabric", c), padded = (c) => fine("cushion", c), shiny = (c) => fine("metal", c);
+
+  // Lots of little colored bits (books, buttons, stitches...) as ONE painted shape
+  // that keeps their colors: every painted bit in a room is drawn in one go.
+  // build(p) adds the parts to p with the usual helpers. Only inside a home.
+  function paint(g, build, o) {
+    if (!FINE) return null;
+    const geo = W3D.kit.bakeGeo(build);
+    if (!geo) return null;
+    return put(g, geo, W3D.kit.paintedMat, Object.assign({ shadow: false }, o));
+  }
+
+  // ---------- soft shadows and light pools (cheap, baked) ----------
+  // Shadows that sit on the floor under furniture (and in the corners), and warm
+  // pools of light under lamps: flat shapes whose edges fade out (the fading is in
+  // the vertex colors, no pictures), all sharing two materials, so all of them
+  // together are only a couple of draw calls.
+  let decalMats = null;
+  function decals() {
+    if (!decalMats) {
+      const base = { vertexColors: true, transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
+      decalMats = {
+        shade: new THREE.MeshBasicMaterial(Object.assign({ color: 0x3a2414 }, base)),
+        light: new THREE.MeshBasicMaterial(Object.assign({ color: 0xffffff, blending: THREE.AdditiveBlending }, base)),
+      };
+      decalMats.shade.userData.keep = decalMats.light.userData.keep = true;
+    }
+    return decalMats;
+  }
+  // A flat rectangle (w x d, lying on the floor) whose edges fade out over `soft`:
+  // a 4 x 4 grid, solid in the middle, clear round the outside. rgb = its tint.
+  function fadeRectGeo(w, d, soft, a, rgb) {
+    const xs = [-w / 2 - soft, -w / 2 + soft * 0.4, w / 2 - soft * 0.4, w / 2 + soft];
+    const zs = [-d / 2 - soft, -d / 2 + soft * 0.4, d / 2 - soft * 0.4, d / 2 + soft];
+    if (xs[1] > xs[2]) xs[1] = xs[2] = 0;
+    if (zs[1] > zs[2]) zs[1] = zs[2] = 0;
+    const pos = [], col = [], idx = [];
+    for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
+      pos.push(xs[i], 0, zs[j]);
+      const inner = i > 0 && i < 3 && j > 0 && j < 3;
+      col.push(rgb[0], rgb[1], rgb[2], inner ? a : 0);
+    }
+    for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
+      const p = j * 4 + i;
+      idx.push(p, p + 4, p + 1, p + 1, p + 4, p + 5);
+    }
+    return decalGeo(pos, col, idx);
+  }
+  // A round pool: solid middle (inner part of r), fading out to r.
+  function fadeDiscGeo(r, inner, a, rgb) {
+    const n = 20, pos = [0, 0, 0], col = [rgb[0], rgb[1], rgb[2], a], idx = [];
+    for (const [rr, aa] of [[r * inner, a * 0.75], [r, 0]]) for (let k = 0; k < n; k++) {
+      const t = (k / n) * TAU;
+      pos.push(Math.cos(t) * rr, 0, Math.sin(t) * rr);
+      col.push(rgb[0], rgb[1], rgb[2], aa);
+    }
+    for (let k = 0; k < n; k++) {
+      const a1 = 1 + k, a2 = 1 + ((k + 1) % n), b1 = a1 + n, b2 = a2 + n;
+      idx.push(0, a2, a1, a1, a2, b2, a1, b2, b1);
+    }
+    return decalGeo(pos, col, idx);
+  }
+  function decalGeo(pos, col, idx) {
+    const g = new THREE.BufferGeometry();
+    g.setIndex(idx);
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("normal", new THREE.Float32BufferAttribute(pos.map((v, i) => (i % 3 === 1 ? 1 : 0)), 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array((pos.length / 3) * 2), 2));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(col, 4));
+    return g;
+  }
+  const WARM = [1, 0.82, 0.5];
+  // o = { x, y, z, ry, rx, rz } (the shape lies flat: turn it with rx to stand it on a wall)
+  function shadeRect(p, w, d, o, a, soft) {
+    return put(p, fadeRectGeo(w, d, soft || 0.35, a === undefined ? 0.32 : a, [1, 1, 1]), decals().shade, Object.assign({ shadow: false, receive: false }, o));
+  }
+  function shadeDisc(p, r, o, a) {
+    return put(p, fadeDiscGeo(r, 0.55, a === undefined ? 0.32 : a, [1, 1, 1]), decals().shade, Object.assign({ shadow: false, receive: false }, o));
+  }
+  function lightPool(p, r, o, a, rgb) {
+    return put(p, fadeDiscGeo(r, 0.25, a === undefined ? 0.22 : a, rgb || WARM), decals().light, Object.assign({ shadow: false, receive: false }, o));
+  }
+  function lightRect(p, w, d, o, a, rgb, soft) {
+    return put(p, fadeRectGeo(w, d, soft || 0.4, a === undefined ? 0.16 : a, rgb || WARM), decals().light, Object.assign({ shadow: false, receive: false }, o));
+  }
+
+  // A wall or floor rectangle like patchGeo, cut into a grid that is finer near the
+  // edges, with a shade (0..1) per corner from shade(x, y) (x, y from its bottom-left,
+  // in units): darker into the corners and along the floor, a cheap "ambient occlusion".
+  function shadedPatch(w, h, u0, v0, shade, cuts) {
+    const steps = (len, a0, a1) => {
+      const s = new Set([0, len]);
+      for (const c of cuts) { if (a0 && c < len) s.add(c); if (a1 && len - c > 0) s.add(len - c); }
+      return [...s].filter((v) => v >= 0 && v <= len).sort((a, b) => a - b);
+    };
+    const xs = steps(w, true, true), ys = steps(h, true, true);
+    const pos = [], uv = [], col = [], idx = [];
+    for (const y of ys) for (const x of xs) {
+      pos.push(x - w / 2, y - h / 2, 0);
+      uv.push((u0 + x) / TILE, (v0 + y) / TILE);
+      const s = shade(x, y);
+      col.push(s, s, s);
+    }
+    const nx = xs.length;
+    for (let j = 0; j < ys.length - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      const p = j * nx + i;
+      idx.push(p, p + 1, p + nx, p + 1, p + nx + 1, p + nx);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setIndex(idx);
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("normal", new THREE.Float32BufferAttribute(pos.map((v, i) => (i % 3 === 2 ? 1 : 0)), 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    return g;
+  }
+
   // Wallpaper and floor pictures (they repeat across the walls and floor).
   // (size: the picture is drawn at 256 x 256 and scaled down to size x size)
   // The picture tiles, so anything drawn near an edge is drawn again on the other
@@ -1237,24 +1481,53 @@
           wrap(cx, cy, (px, py) => damask(ctx, px, py));
         }
       } else if (pat === "planks") {
+        // long boards (two units), their ends staggered row by row, each a slightly
+        // different shade, with wavy grain, the odd knot and a soft bevel at the joins
+        const tones = ["#c98a52", "#c28149", "#d0935c", "#bd7c45", "#c68650", "#cf9058", "#ba7943", "#c48450"];
+        const ends = [40, 168, 104, 232];
         for (let row = 0; row < 4; row++) {
-          const off = (row % 2) * 96 + row * 37;
-          for (let k = -1; k < 3; k++) {
-            const x0 = ((k * 128 + off) % 256 + 256) % 256 - 128;
-            ctx.fillStyle = ["#c98a52", "#c28149", "#d0935c", "#bd7c45"][(row + k + 4) % 4];
-            if (it.color) ctx.globalAlpha = 0.55;
-            ctx.fillRect(x0, row * 64, 128, 64);
-            ctx.fillRect(x0 + 256, row * 64, 128, 64);
-            ctx.globalAlpha = 1;
-            ctx.fillStyle = acc; ctx.fillRect(x0, row * 64, 3, 64); ctx.fillRect(x0 + 256, row * 64, 3, 64);
+          const y0 = row * 64, e = ends[row];
+          ctx.fillStyle = tones[row * 2 % tones.length];
+          if (it.color) ctx.globalAlpha = 0.55;
+          ctx.fillRect(0, y0, w, 64);
+          ctx.globalAlpha = 1;
+          // grain: wavy lines along each board (they wrap round with the tile)
+          for (let g = 0; g < 6; g++) {
+            const y = y0 + 7 + g * 9 + r() * 5, a = 1.5 + r() * 2.5, ph = r() * TAU;
+            ctx.strokeStyle = "rgba(110,60,25," + (0.12 + r() * 0.12).toFixed(3) + ")"; ctx.lineWidth = 1 + r() * 1.2;
+            ctx.beginPath();
+            for (let x = 0; x <= w; x += 8) { const yy = y + Math.sin((x / w) * TAU * 2 + ph) * a; if (x) ctx.lineTo(x, yy); else ctx.moveTo(x, yy); }
+            ctx.stroke();
           }
-          ctx.fillStyle = acc; ctx.fillRect(0, row * 64, w, 3);
-          ctx.strokeStyle = "rgba(120,70,30,0.25)"; ctx.lineWidth = 2;
-          for (let g = 0; g < 3; g++) { const y = row * 64 + 14 + g * 16 + r() * 6; ctx.beginPath(); ctx.moveTo(0, y); ctx.bezierCurveTo(80, y + 6, 160, y - 6, w, y); ctx.stroke(); }
+          // a knot now and then
+          const kx = (e + 60 + r() * 120) % w, ky = y0 + 20 + r() * 24;
+          wrap(kx, ky, (px, py) => {
+            ctx.strokeStyle = "rgba(110,60,25,0.25)"; ctx.lineWidth = 1.2;
+            for (let k = 1; k <= 3; k++) { ctx.beginPath(); ctx.ellipse(px, py, 4 + k * 4, 2 + k * 1.6, 0, 0, TAU); ctx.stroke(); }
+            ctx.fillStyle = "rgba(110,60,25,0.35)"; ctx.beginPath(); ctx.ellipse(px, py, 4, 2, 0, 0, TAU); ctx.fill();
+          });
+          // the joins: a dark gap with a little light edge beside it
+          ctx.fillStyle = acc; ctx.fillRect(0, y0, w, 3);
+          ctx.fillStyle = "rgba(255,240,215,0.28)"; ctx.fillRect(0, y0 + 3, w, 2);
+          ctx.fillStyle = "rgba(80,40,15,0.14)"; ctx.fillRect(0, y0 + 58, w, 6);
+          wrap(e, y0, (px, py) => {
+            ctx.fillStyle = acc; ctx.fillRect(px - 1, py, 3, 64);
+            ctx.fillStyle = "rgba(255,240,215,0.28)"; ctx.fillRect(px + 2, py + 3, 2, 61);
+          });
         }
       } else if (pat === "checker") {
         ctx.fillStyle = acc;
         for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) if ((x + y) % 2 === 0) ctx.fillRect(x * 64, y * 64, 64, 64);
+        // glazed tiles: a soft shine in one corner of each, and thin grout lines
+        for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+          const gr = ctx.createRadialGradient(x * 64 + 18, y * 64 + 16, 2, x * 64 + 18, y * 64 + 16, 34);
+          gr.addColorStop(0, "rgba(255,255,255,0.35)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+          ctx.fillStyle = gr; ctx.fillRect(x * 64, y * 64, 64, 64);
+          ctx.fillStyle = "rgba(0,0,0,0.06)"; ctx.fillRect(x * 64 + 4, y * 64 + 58, 58, 3); ctx.fillRect(x * 64 + 58, y * 64 + 4, 3, 56);
+        }
+        ctx.fillStyle = "rgba(150,150,165,0.55)";
+        for (let k = 0; k < 4; k++) { ctx.fillRect(k * 64 - 1, 0, 2, h); ctx.fillRect(0, k * 64 - 1, w, 2); }
+        ctx.fillRect(w - 1, 0, 1, h); ctx.fillRect(0, h - 1, w, 1);
       } else if (pat === "marble") {
         // veins start and end at the same height, so they carry on into the next tile
         ctx.strokeStyle = acc; ctx.lineWidth = 2.5; ctx.globalAlpha = 0.8;
@@ -1343,6 +1616,13 @@
       } else {
         // plain: a soft speckle (carpet, or grass blades for fake grass)
         const grass = /grass/.test(it.id || "");
+        if (isFloor && !grass) {
+          // carpet: rows of little woven loops
+          for (let y = 0; y < h; y += 6) for (let x = (y / 6) % 2 ? 3 : 0; x < w; x += 6) {
+            ctx.fillStyle = "rgba(0,0,0,0.07)"; ctx.fillRect(x, y + 3, 4, 2);
+            ctx.fillStyle = "rgba(255,255,255,0.1)"; ctx.fillRect(x, y, 4, 2);
+          }
+        }
         for (let i = 0; i < (grass ? 260 : 400); i++) {
           const x = r() * w, y = r() * h;
           ctx.fillStyle = r() < 0.5 ? acc : "rgba(255,255,255,0.18)";
@@ -1351,6 +1631,15 @@
         if (!isFloor) {
           ctx.fillStyle = acc;
           for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) dot(x * 64 + (y % 2) * 32 + 16, y * 64 + 32, 4);
+        }
+      }
+      // a fine grain over everything, like paper (walls) or a worn surface (floors)
+      // (only on the big pictures in a home: the little ones are too small to see it)
+      if (S >= 512) {
+        const n = seeded(77);
+        for (let i = 0; i < 700; i++) {
+          ctx.fillStyle = n() < 0.5 ? "rgba(0,0,0,0.035)" : "rgba(255,255,255,0.06)";
+          ctx.fillRect(n() * w, n() * h, 0.6 + n(), isFloor ? 0.6 + n() : 1.5 + n() * 3);
         }
       }
     }, [1, 1]);
@@ -3526,6 +3815,10 @@
   }
 
   function buildHome(opts) {
+    FINE = true; // (the finer touches: only in a home, see FINE)
+    try { return buildHomeRoom(opts); } finally { FINE = false; }
+  }
+  function buildHomeRoom(opts) {
     const record = (opts && opts.record) || { name: "Mii", home: root.MiiHomes ? root.MiiHomes.starterHome() : { items: {} } };
     const items = resolveItems(record);
     const ctx = { anim: [], record, portrait: portraitSource(opts, record) };
@@ -3581,11 +3874,13 @@
 
     // ---------- the room: floor, walls, window, door ----------
     const wallIt = items.wallpaper || {}, floorIt = items.floor || {};
-    const wallTex = patternTexture(wallIt, false);
-    const floorTex = patternTexture(floorIt, true);
-    const wallMat = toon(0xffffff, { map: wallTex });
-    const floorMat = toon(0xffffff, { map: floorTex });
-    put(rootG, patchGeo(RX * 2, RZ * 2, 0, 0), floorMat, { y: 0.005, rx: -PI / 2, shadow: false });
+    const wallTex = patternTexture(wallIt, false, 512);
+    const floorTex = patternTexture(floorIt, true, 512);
+    // (vertex colors: the walls and floor get a little darker into the corners, see shadedPatch)
+    const wallMat = toon(0xffffff, { map: wallTex, vertexColors: true });
+    const floorMat = toon(0xffffff, { map: floorTex, vertexColors: true });
+    const nearEdge = (d, k, s) => 1 - k * Math.exp(-Math.max(0, d) / s);
+    put(rootG, shadedPatch(RX * 2, RZ * 2, 0, 0, (x, y) => nearEdge(Math.min(x, RX * 2 - x), 0.2, 0.45) * nearEdge(Math.min(y, RZ * 2 - y), 0.2, 0.45), [0.25, 0.6, 1.1, 1.8]), floorMat, { y: 0.005, rx: -PI / 2, shadow: false });
     const dark = wallIt.id === "wall-dark" || wallIt.id === "wall-stars", fancy = wallIt.id === "wall-gold";
     const trimC = dark ? 0x4a4570 : fancy ? 0xd9a441 : 0xffffff;
     const shellC = 0xf6efe4;
@@ -3608,7 +3903,12 @@
       }
       for (const [u0, u1, v0, v1] of pieces) {
         const w = u1 - u0, h = v1 - v0;
-        put(g, patchGeo(w, h, u0 + len / 2, v0), wallMat, { x: (u0 + u1) / 2, y: (v0 + v1) / 2, z: 0.005, shadow: false });
+        // a little darker down by the floor, into the corners and up under the ceiling line
+        const shade = (x, y) => {
+          const u = u0 + x, v = v0 + y;
+          return nearEdge(v - 0.3, 0.2, 0.5) * nearEdge(len / 2 - Math.abs(u), 0.17, 0.45) * nearEdge(RH - 0.36 - v, 0.08, 0.35);
+        };
+        put(g, shadedPatch(w, h, u0 + len / 2, v0, shade, [0.3, 0.55, 0.9, 1.5]), wallMat, { x: (u0 + u1) / 2, y: (v0 + v1) / 2, z: 0.005, shadow: false });
         // the outside of the wall, a little wider so the corners close up
         const ext = (u0 <= -len / 2 + 0.01 ? T : 0) + (u1 >= len / 2 - 0.01 ? T : 0);
         const shift = (u0 <= -len / 2 + 0.01 ? -T / 2 : 0) + (u1 >= len / 2 - 0.01 ? T / 2 : 0);
@@ -3616,9 +3916,15 @@
       }
       // skirting board along the bottom and a trim along the top
       const skirts = hole && hole.v0 === 0 ? [[-len / 2, hole.u0], [hole.u1, len / 2]] : [[-len / 2, len / 2]];
-      for (const [a, b] of skirts) block(g, trimC, (a + b) / 2, 0.14, 0.04, b - a, 0.28, 0.08, 0.02, { shadow: false });
+      for (const [a, b] of skirts) {
+        block(g, trimC, (a + b) / 2, 0.14, 0.04, b - a, 0.28, 0.08, 0.02, { shadow: false });
+        block(g, trimC, (a + b) / 2, 0.3, 0.05, b - a, 0.05, 0.1, 0.02, { shadow: false }); // its rounded top lip
+      }
       block(g, trimC, 0, RH + 0.06, -T / 2, len + 2 * T + 0.02, 0.12, T + 0.14, 0.03, { shadow: false });
       block(g, trimC, 0, RH - 0.1, 0.03, len, 0.14, 0.06, 0.02, { shadow: false });
+      // crown molding: a rounded cove under the top trim, and a thin step below it
+      put(g, G.cyl(12), toon(trimC), { x: 0, y: RH - 0.22, z: 0, sx: 0.11, sy: len, sz: 0.11, rz: PI / 2, shadow: false });
+      block(g, trimC, 0, RH - 0.35, 0.025, len, 0.04, 0.05, 0.015, { shadow: false });
       return g;
     }
     const winHole = { u0: WINDOW.x - WINDOW.w / 2, u1: WINDOW.x + WINDOW.w / 2, v0: WINDOW.y0, v1: WINDOW.y1 };
@@ -3638,15 +3944,35 @@
       block(backWall, trimC, wx, wy, -0.12, 0.08, wh, 0.06, 0.02, { shadow: false });
       block(backWall, trimC, wx, wy, -0.12, ww, 0.08, 0.06, 0.02, { shadow: false });
       block(backWall, trimC, wx, WINDOW.y0 - 0.06, 0.15, ww + 0.5, 0.1, 0.35, 0.03); // sill
+      // under the sill: an apron board and two little brackets; a latch on the frame
+      block(backWall, trimC, wx, WINDOW.y0 - 0.2, 0.04, ww + 0.2, 0.16, 0.07, 0.02, { shadow: false });
+      for (const s of [-1, 1]) block(backWall, trimC, wx + s * (ww / 2 - 0.05), WINDOW.y0 - 0.2, 0.15, 0.08, 0.2, 0.18, 0.03, { shadow: false });
+      block(backWall, 0xd9a441, wx, wy + 0.12, -0.08, 0.05, 0.16, 0.04, 0.015, { shadow: false });
       cylinder(backWall, 0xe0784a, wx + 0.8, WINDOW.y0 + 0.1, 0.15, 0.12, 0.2);
       ball(backWall, 0xff6fa5, wx + 0.8, WINDOW.y0 + 0.3, 0.15, 0.13);
+      paint(backWall, (p) => {
+        // the pot gets a rim and some leaves; a tiny cactus keeps it company
+        cylinder(p, 0xd06a3e, wx + 0.8, WINDOW.y0 + 0.2, 0.15, 0.135, 0.04);
+        for (const s of [-1, 1]) ball(p, 0x5cb840, wx + 0.8 + s * 0.12, WINDOW.y0 + 0.25, 0.17, 0.07, { sx: 1.4, sy: 0.5, rz: s * 0.4 });
+        cylinder(p, 0x8fd3ff, wx - 0.85, WINDOW.y0 + 0.06, 0.15, 0.07, 0.12);
+        put(p, G.capsule(), toon(0x4fae5a), { x: wx - 0.85, y: WINDOW.y0 + 0.2, z: 0.15, sx: 0.09, sy: 0.14, sz: 0.09 });
+        ball(p, 0xffe25a, wx - 0.85, WINDOW.y0 + 0.31, 0.15, 0.03);
+      });
       cylinder(backWall, 0xb98a5e, wx, WINDOW.y1 + 0.25, 0.15, 0.03, ww + 1.2, { rz: PI / 2 });
+      for (const s of [-1, 1]) {
+        ball(backWall, 0xd9a441, wx + s * (ww / 2 + 0.66), WINDOW.y1 + 0.25, 0.15, 0.06, { shadow: false }); // rod ends
+        block(backWall, 0xb98a5e, wx + s * (ww / 2 + 0.5), WINDOW.y1 + 0.25, 0.06, 0.05, 0.08, 0.16, 0.01, { shadow: false }); // its brackets
+      }
       const curtainC = dark ? 0x7a5aff : fancy ? 0xd9a441 : 0xff9ec7;
       if (opts && opts.empty) closedCurtains(backWall, wx, wy, ww, wh, curtainC); // (nobody's home)
       else for (const s of [-1, 1]) {
-        put(backWall, G.capsule(), toon(curtainC), { x: wx + s * (ww / 2 + 0.25), y: wy - 0.05, z: 0.15, sx: 0.4, sy: (wh + 0.3) / 2, sz: 0.14 });
+        put(backWall, G.capsule(), fine("pleat", curtainC), { x: wx + s * (ww / 2 + 0.25), y: wy - 0.05, z: 0.15, sx: 0.4, sy: (wh + 0.3) / 2, sz: 0.14 });
         put(backWall, G.torus(0.12, 0.025), toon(trimC), { x: wx + s * (ww / 2 + 0.25), y: wy - 0.3, z: 0.15 });
+        // a ring at the top where it hangs from the rod
+        for (let k = 0; k < 3; k++) put(backWall, G.torus(0.05, 0.012), toon(0xd9a441), { x: wx + s * (ww / 2 + 0.12 + k * 0.13), y: WINDOW.y1 + 0.2, z: 0.15, shadow: false });
       }
+      // daylight from the window: a soft bright patch on the floor in front of it
+      lightRect(rootG, ww + 0.3, 1.7, { x: wx, y: 0.02, z: -RZ + 1.15 }, 0.13, [1, 0.96, 0.82], 0.55);
     }
     // the front door (on the right wall, near the front)
     {
@@ -3681,13 +4007,26 @@
     {
       const p = SLOT_PLACES.lamp;
       const ns = group(rootG, p.x, 0, p.z);
-      block(ns, 0xc98b4a, 0, 0.36, 0, 0.75, 0.72, 0.65, 0.06);
-      block(ns, 0xe0a868, 0, 0.42, 0.33, 0.6, 0.25, 0.02, 0.03);
+      block(ns, woody(0xc98b4a), 0, 0.36, 0, 0.75, 0.72, 0.65, 0.06);
+      block(ns, woody(0xe0a868), 0, 0.42, 0.33, 0.6, 0.25, 0.02, 0.03);
       ball(ns, 0xffcf5a, 0, 0.42, 0.36, 0.04);
+      paint(ns, (p) => {
+        block(p, 0xe0a868, 0, 0.15, 0.33, 0.6, 0.12, 0.02, 0.02); // a lower drawer
+        ball(p, 0xffcf5a, 0, 0.15, 0.35, 0.03);
+        for (const [x, z] of [[-0.3, -0.25], [0.3, -0.25], [-0.3, 0.25], [0.3, 0.25]]) cylinder(p, 0x9a6a3c, x, 0.01, z, 0.05, 0.02);
+      });
       if (!NIGHTSTAND_LAMPS.includes(items.lamp.id)) {
         block(ns, 0xff8a7a, -0.12, 0.85, 0.05, 0.3, 0.26, 0.15, 0.06); // alarm clock
         disc(ns, toon(0xffffff), -0.12, 0.85, 0.13, 0.09, { rx: 0 });
         block(ns, 0x4a90e2, 0.2, 0.76, -0.05, 0.25, 0.06, 0.32, 0.02); // a book
+        paint(ns, (p) => {
+          // the clock's bells, feet and hands; the book's pages and a bookmark
+          for (const s of [-1, 1]) { ball(p, 0xffcf5a, -0.12 + s * 0.1, 1.0, 0.05, 0.05); block(p, 0x9a6a3c, -0.12 + s * 0.1, 0.72, 0.05, 0.04, 0.03, 0.06, 0.01); }
+          block(p, 0x333333, -0.12, 0.87, 0.14, 0.012, 0.06, 0.005, 0.002);
+          block(p, 0x333333, -0.1, 0.85, 0.14, 0.05, 0.012, 0.005, 0.002);
+          block(p, 0xfff8ea, 0.21, 0.76, -0.05, 0.25, 0.04, 0.33, 0.01);
+          block(p, 0xe8424f, 0.25, 0.74, 0.12, 0.03, 0.08, 0.005, 0.002);
+        });
       }
     }
 
@@ -3752,6 +4091,30 @@
     // things other files add to the room (the wardrobe: see rooms3d.js)
     if (root.MiiRooms3D && root.MiiRooms3D.decorateMain) root.MiiRooms3D.decorateMain({ group: rootG, record, obstacles, spots, items, ctx });
 
+    // soft shadows on the floor under everything that stands there (the first four
+    // obstacles are the walls), a touch bigger than the piece and fading out
+    for (const o of obstacles.slice(4)) {
+      if (o.r !== undefined) shadeDisc(rootG, o.r + 0.35, { x: o.x, y: 0.02, z: o.z }, 0.42);
+      else shadeRect(rootG, o.w + 0.05, o.d + 0.05, { x: o.x, y: 0.02, z: o.z, ry: -(o.rot || 0) }, 0.42, 0.4);
+    }
+    // warm pools of light round the lamps (on the floor, and up the wall behind)
+    {
+      const id = items.lamp && items.lamp.id, def = FURNITURE[id] || {};
+      const at = def.at || SLOT_PLACES.lamp;
+      if (id === "lamp-basic") {
+        lightPool(rootG, 1.5, { x: at.x + 0.2, y: 0.025, z: at.z }, 0.2);
+        lightPool(leftWall, 1.1, { x: -at.z, y: 2.4, z: 0.03, rx: PI / 2 }, 0.22);
+      } else if (id === "lamp-lava" || id === "lamp-moon") {
+        const rgb = id === "lamp-lava" ? [1, 0.55, 0.85] : [1, 0.9, 0.6];
+        lightPool(rootG, 1.1, { x: at.x, y: 0.025, z: at.z + 0.4 }, 0.16, rgb);
+        lightPool(backWall, 0.9, { x: at.x, y: 1.2, z: 0.03, rx: PI / 2 }, 0.2, rgb);
+      } else if (id === "lamp-chandelier") {
+        lightPool(rootG, 2.6, { x: at.x, y: 0.025, z: at.z }, 0.18);
+      } else if (id === "lamp-disco") {
+        lightPool(rootG, 2.2, { x: at.x, y: 0.025, z: at.z }, 0.1, [0.9, 0.6, 1]);
+      }
+    }
+
     // hide any wall that's between the camera and the room (like a dollhouse)
     const walls = [
       { group: backWall.userData.outer, axis: "z", at: -RZ, outside: -1 },
@@ -3759,7 +4122,8 @@
       { group: leftWall.userData.outer, axis: "x", at: -RX, outside: -1 },
       { group: rightWall.userData.outer, axis: "x", at: RX, outside: 1 },
     ];
-    for (const w of walls) { mergeStatic(w.group); dynamic(w.group); }
+    for (const w of walls) { paintRoom(w.group); mergeStatic(w.group); dynamic(w.group); }
+    paintRoom(rootG);
     mergeStatic(rootG);
 
     const name = record.name || "I";
