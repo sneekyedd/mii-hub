@@ -16,7 +16,13 @@
   const rnd = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const smooth = (k) => k * k * (3 - 2 * k);
+  // how much of the way to go this frame, to get somewhere smoothly at `rate` (the same at any frame rate)
+  const ease = (dt, rate) => 1 - Math.exp(-dt * rate);
+  const easeInOut = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
   const MII_HEIGHT = 1.8;
+  // "Reduce motion" (in the computer's settings): no camera swoops, squashing and so on
+  const motionQuery = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  const reducedMotion = () => !!(motionQuery && motionQuery.matches);
 
   // Turns smoothly from angle a towards angle b.
   function turnToward(a, b, amount) {
@@ -69,6 +75,10 @@
       this.group = group || hub.miiGroup;
       this.x = 0; this.z = 0;
       this.yaw = 0; this.targetYaw = 0; this.moveYaw = null;
+      this.yawVel = 0;        // how fast it's turning (it speeds up and slows down into turns)
+      this.lookYaw = 0; this.lookUp = 0; this.lookGoal = 0; this.lookUpGoal = 0; this.lookIn = rnd(1, 4); // the head looking about
+      this.blinkIn = rnd(1, 4); this.blinkT = 0;
+      this.squash = 0; this.squashVel = 0; // squashing on landing, stretching in the air
       this.lift = 0; this.liftVel = 0;
       this.phase = 0; this.walkAmt = 0; this.curSpeed = 0;
       this.state = "idle";
@@ -175,11 +185,15 @@
     say(text, dur) {
       const partner = this.partner ? this.partner.look.name : "";
       text = text.replace(/\{A\}/g, this.look.name).replace(/\{B\}/g, partner);
+      const showing = !!this.bubble && this.uiBubble.classList.contains("show");
       this.bubble = { text, time: 0, dur: dur || Math.max(2, text.length * 0.07) };
       this.uiBubble.textContent = text;
-      this.uiBubble.classList.remove("show", "shout", "phone-voice");
-      void this.uiBubble.offsetWidth; // restart the pop-in animation
-      this.uiBubble.classList.add("show");
+      this.uiBubble.classList.remove("shout", "phone-voice", "bump");
+      if (showing) {
+        // already talking: the bubble just gives a little bounce for the next line
+        void this.uiBubble.offsetWidth; // (restart the bounce)
+        this.uiBubble.classList.add("bump");
+      } else this.uiBubble.classList.add("show"); // pops in
     }
 
     showEmote(icon, dur) {
@@ -406,6 +420,7 @@
     // Move the camera back far enough that the whole area fits on screen.
     fitCamera() {
       if (!this.world || this.flight) return;
+      this.endGlide();
       const { dist, ty, dir } = this.fitPose(this.world);
       // (the decorating panel opens beside the view now, so the room stays centered)
       const tx = 0;
@@ -422,7 +437,103 @@
       const az = this.world.cameraAzimuth || lim.azimuth;
       this.controls.minAzimuthAngle = az ? az[0] : -Infinity;
       this.controls.maxAzimuthAngle = az ? az[1] : Infinity;
+      this.zoomGoal = null;
       this.controls.update();
+    }
+
+    // ---------- smooth camera moves ----------
+    // Glides the camera to `pos`, looking at `target`, over `dur` seconds (swinging round
+    // the thing it looks at, rather than cutting straight across). from = { pos, target }
+    // to start from somewhere else than where it is now. done() runs once it's there.
+    glideCamera(pos, target, dur, from, done) {
+      this.endGlide();
+      this.zoomGoal = null;
+      const f = from || { pos: this.camera.position, target: this.controls.target };
+      const s0 = new THREE.Spherical().setFromVector3(tmpV.copy(f.pos).sub(f.target));
+      const s1 = new THREE.Spherical().setFromVector3(tmpV.copy(pos).sub(target));
+      this.glide = { t0: f.target.clone(), t1: target.clone(), s0, s1, k: 0, dur: reducedMotion() ? 0 : dur || 0, done };
+      this.stepGlide(0);
+    }
+    stepGlide(dt) {
+      const g = this.glide;
+      g.k = g.dur > 0 ? Math.min(1, g.k + dt / g.dur) : 1;
+      const e = easeInOut(g.k);
+      const s = this.glideSph || (this.glideSph = new THREE.Spherical());
+      s.radius = g.s0.radius + (g.s1.radius - g.s0.radius) * e;
+      s.phi = g.s0.phi + (g.s1.phi - g.s0.phi) * e;
+      s.theta = g.s0.theta + angleDiff(g.s0.theta, g.s1.theta) * e;
+      this.controls.target.lerpVectors(g.t0, g.t1, e);
+      this.camera.position.setFromSpherical(s).add(this.controls.target);
+      this.camera.lookAt(this.controls.target);
+      if (g.k >= 1) this.endGlide();
+    }
+    // Finishes a camera glide straight away (lands where it was going).
+    endGlide() {
+      const g = this.glide;
+      if (!g) return;
+      this.glide = null;
+      this.controls.target.copy(g.t1);
+      this.camera.position.setFromSpherical(g.s1).add(g.t1);
+      this.camera.lookAt(g.t1);
+      if (g.done) g.done();
+    }
+
+    // Every frame (when not flying): camera glides, and zooming with the mouse wheel,
+    // which eases in and out instead of jumping (dt in real seconds).
+    stepCamera(dt) {
+      // (the camera's spin slows down the same way at any frame rate)
+      this.controls.dampingFactor = 1 - Math.pow(1 - 0.06, Math.min(0.1, dt) * 60);
+      if (this.glide) { this.stepGlide(dt); return; }
+      if (this.zoomGoal == null) return;
+      const c = this.controls, off = tmpV.copy(this.camera.position).sub(c.target);
+      const d = off.length();
+      const goal = clamp(this.zoomGoal, c.minDistance, c.maxDistance);
+      let nd = reducedMotion() ? goal : d + (goal - d) * ease(dt, 11);
+      if (Math.abs(goal - nd) < goal * 0.002) { nd = goal; this.zoomGoal = null; }
+      if (d > 1e-6) this.camera.position.copy(c.target).addScaledVector(off, nd / d);
+    }
+    zoomBy(deltaY) {
+      const c = this.controls;
+      if (!c.enabled || !c.enableZoom || this.flight || this.glide) return;
+      const d = this.camera.position.distanceTo(c.target);
+      const from = this.zoomGoal == null ? d : this.zoomGoal;
+      this.zoomGoal = clamp(from * Math.exp(clamp(deltaY, -250, 250) * 0.0007), c.minDistance, c.maxDistance);
+    }
+
+    // The camera eases into where it is now, from a little further out (far > 1) or
+    // closer in (far < 1), a little higher up (up < 0) or lower: for going in and out of homes.
+    settleCamera(far, up) {
+      const t = this.controls.target, end = this.camera.position.clone();
+      const s = new THREE.Spherical().setFromVector3(end.clone().sub(t));
+      s.radius = clamp(s.radius * far, this.controls.minDistance, this.controls.maxDistance);
+      s.phi = clamp(s.phi + up, this.controls.minPolarAngle, this.controls.maxPolarAngle);
+      const start = new THREE.Vector3().setFromSpherical(s).add(t);
+      this.glideCamera(end, t.clone(), 1.1, { pos: start, target: t.clone() });
+    }
+    // A soft flash of light when the view changes all at once (into a home and out again...)
+    fadeIn() {
+      if (reducedMotion() || !this.canvas.parentElement) return;
+      const el = this.fadeEl || (this.fadeEl = document.createElement("div"));
+      el.className = "scene-fade";
+      if (!el.parentNode) this.canvas.after(el);
+      void el.offsetWidth; // (start the fade again)
+      el.className = "scene-fade go";
+    }
+
+    // Glides the camera over to look at a Mii (closer up, the same way round).
+    focusWalker(w) {
+      if (!w || this.flight) return;
+      const t = new THREE.Vector3(w.x, w.lift + MII_HEIGHT * w.sizeScale * 0.5, w.z);
+      const off = this.camera.position.clone().sub(this.controls.target);
+      const d = clamp(off.length(), this.controls.minDistance, Math.max(this.controls.minDistance, 13));
+      this.glideCamera(t.clone().addScaledVector(off.normalize(), d), t, 0.9);
+    }
+    // Glides back to the view of the whole place.
+    resetView() {
+      if (!this.world || this.flight) return;
+      const { dist, ty, dir } = this.fitPose(this.world);
+      const t = new THREE.Vector3(0, ty, 0);
+      this.glideCamera(dir.multiplyScalar(dist).add(t), t, 0.9);
     }
 
     // Shows a place (already built) and lets Miis find their way around it.
@@ -444,6 +555,7 @@
     // The camera flies there over the planet (unless that's turned off in Settings).
     setScene(id) {
       if (this.visiting) this.leaveHome();
+      this.endGlide();
       if (this.world && this.world.id === id) return;
       const fly = !!(this.flyOn && this.world && this.isPlanetPlace(this.world));
       const from = fly ? this.cameraState() : null;
@@ -461,7 +573,7 @@
       this.useWorld(world);
       this.keepCamera = false;
       if (fly) this.startFlight(from, look);
-      else { this.endFlight(true); this.fitCamera(); }
+      else { this.endFlight(true); this.fitCamera(); this.fadeIn(); }
       if (this.onSceneChange) this.onSceneChange(id);
       this.onChange();
     }
@@ -1036,6 +1148,8 @@
       v.yaw = v.targetYaw = this.viewYaw(v);
       v.timer = rnd(3, 5);
       this.visiting = { record, walker: v, empty, room: (opts && opts.room) || "main" };
+      this.settleCamera(1.3, -0.12);
+      this.fadeIn();
       if (empty) { v.inst.holder.visible = false; v.ui.style.display = "none"; this.onChange(); return; }
       this.later(v, 0.7, () => {
         v.arms = "wave";
@@ -1067,7 +1181,9 @@
         this.camera.position.copy(this.mainCamera.pos);
         this.controls.target.copy(this.mainCamera.target);
         this.controls.update();
+        this.settleCamera(0.82, 0.05); // (stepping back out)
       }
+      this.fadeIn();
       this.miiGroup.visible = true;
       for (const w of this.walkers) w.ui.style.display = "";
       if (this.onLeftHome) this.onLeftHome();
@@ -1654,6 +1770,7 @@
             w.lift += w.liftVel * dt;
             if (w.lift <= base && w.liftVel <= 0) {
               w.lift = base;
+              this.landed(w);
               // a small bounce when dropped from high up
               w.liftVel = w.liftVel < -6 && !floaty ? -w.liftVel * 0.25 : 0;
             }
@@ -1761,7 +1878,7 @@
         if (g.liftVel !== 0 || g.lift > 0) {
           g.liftVel -= gravity * dt;
           g.lift += g.liftVel * dt;
-          if (g.lift <= 0 && g.liftVel <= 0) { g.lift = 0; g.liftVel = 0; }
+          if (g.lift <= 0 && g.liftVel <= 0) { g.lift = 0; this.landed(g); g.liftVel = 0; }
         }
         this.applyPose(g, dt);
       }
@@ -2167,9 +2284,9 @@
       const off = Math.abs(angleDiff(w.moveYaw, want));
       const top = w.speed * (this.world.floaty ? 0.6 : 1);
       let target = top * clamp(1.15 - off / 1.4, 0.15, 1);
-      if (last) target *= clamp(d / 0.9, 0.35, 1);
+      if (last) target *= clamp(d / 1.1, 0.22, 1); // (slowing down gently at the end)
       // speed up gently, slow down a bit faster
-      w.curSpeed += (target - w.curSpeed) * Math.min(1, dt * (target > w.curSpeed ? 3.5 : 7));
+      w.curSpeed += (target - w.curSpeed) * ease(dt, target > w.curSpeed ? 3.5 : 7);
       const step = Math.min(d, w.curSpeed * dt);
       // close to the end: go straight there; otherwise follow our (smoothly turning) heading
       const dir = last && d < 0.6 ? want : w.moveYaw;
@@ -2216,16 +2333,62 @@
       A.stepTimer = step.dur;
     }
 
+    // Landing from a jump (or a drop): a little squash, more the faster it came down.
+    landed(w) {
+      if (w.liftVel < -1.5) w.squashVel -= Math.min(2.8, -w.liftVel * 0.4);
+    }
+
+    // Turns a Mii towards `goal` the way a person would: easing into the turn and out
+    // of it again, never faster than maxSpeed (radians a second).
+    turnBody(w, goal, dt, rate, maxSpeed) {
+      const steps = Math.max(1, Math.ceil(dt * 120)); // (small steps, so it's the same at any frame rate)
+      const h = dt / steps;
+      for (let i = 0; i < steps; i++) {
+        w.yawVel += (rate * rate * angleDiff(w.yaw, goal) - 2 * rate * w.yawVel) * h;
+        w.yawVel = clamp(w.yawVel, -maxSpeed, maxSpeed);
+        w.yaw += w.yawVel * h;
+      }
+    }
+
+    // Where the Mii's head looks, on top of where its body faces: at whoever it's
+    // talking to, and now and then at you, or just around.
+    updateLook(w, dt, lying) {
+      let goal = 0, up = 0;
+      const p = w.partner;
+      w.lookIn -= dt;
+      if (lying || w.sleep || w.held || w.dance || w.state === "photo" || w.state === "perform" || w.state === "guest") {
+        w.lookMode = "ahead";
+      } else if (p && !p.ghost && (w.state === "interact" || w.state === "waiting" || w.state === "approach")) {
+        // whoever they're talking to (with a glance at you now and then)
+        if (w.lookIn <= 0) { w.lookMode = Math.random() < 0.25 ? "cam" : "partner"; w.lookIn = w.lookMode === "cam" ? rnd(0.8, 1.6) : rnd(2.5, 5); }
+        if (w.lookMode === "cam") { goal = angleDiff(w.yaw, this.viewYaw(w)); up = 0.1; }
+        else goal = angleDiff(w.yaw, Math.atan2(p.x - w.x, p.z - w.z));
+      } else {
+        if (w.lookIn <= 0) {
+          const moving = w.state === "walk" || w.state === "approach";
+          const r = Math.random();
+          w.lookMode = r < (moving ? 0.12 : 0.3) ? "cam" : r < (moving ? 0.3 : 0.6) ? "around" : "ahead";
+          w.lookAround = rnd(-0.8, 0.8);
+          w.lookIn = w.lookMode === "ahead" ? rnd(2, 5) : rnd(1, 2.6);
+        }
+        if (w.lookMode === "cam") { goal = angleDiff(w.yaw, this.viewYaw(w)); up = 0.1; }
+        else if (w.lookMode === "around") goal = w.lookAround;
+      }
+      // (a head only turns so far: anything further round, it just looks ahead)
+      if (Math.abs(goal) > 1.6) goal = 0;
+      goal = clamp(goal, -0.85, 0.85);
+      w.lookYaw += (goal - w.lookYaw) * ease(dt, 5);
+      w.lookUp += (up - w.lookUp) * ease(dt, 4);
+    }
+
     // Copies the Mii's position and movement onto its 3D model.
     applyPose(w, dt) {
       const holder = w.inst.holder;
       const rig = w.inst.rig;
       const st = w.style;
+      const reduce = reducedMotion();
       const moving = (w.state === "walk" || w.state === "approach") && !w.held;
       const moonwalk = w.state === "perform" && w.performKind === "moonwalk";
-      const target = moonwalk ? 0.8 : moving ? clamp(w.curSpeed / Math.max(0.3, w.speed * 0.55), 0, 1) : 0;
-      w.walkAmt += (target - w.walkAmt) * Math.min(1, dt * 8);
-      if (!moving) { w.curSpeed = 0; w.moveYaw = null; }
 
       // getting on / off a seat, bed or treadmill
       const wanted = w.state === "activity" && w.anchor && !w.held;
@@ -2235,11 +2398,18 @@
       const anchor = w.seatBlend > 0 ? w.lastAnchor : null;
       const k = anchor ? smooth(w.seatBlend) : 0;
 
-      // on a seat or bed the Mii keeps facing the same way (no spinning round on a bench)
+      // turning: eases into the turn and out of it (on a seat or bed the Mii keeps
+      // facing the same way: no spinning round on a bench)
       let yaw = w.targetYaw;
       if (anchor) yaw = anchor.kind === "lie" ? (anchor.at.yaw || 0) + Math.PI : anchor.yaw; // lying: head on the pillow
-      w.yaw = turnToward(w.yaw, anchor ? yaw : w.targetYaw, dt * (anchor ? 6 : 8));
-      if (w.shake) w.yaw += Math.sin(this.time * 20) * 0.04;
+      this.turnBody(w, yaw, dt, moving ? 13 : anchor ? 8 : 9, moving ? 12 : 8);
+
+      // turning round on the spot: little steps, so the feet don't slide round
+      const shuffle = !moving && !anchor && !w.held && w.state !== "perform" ? clamp((Math.abs(w.yawVel) - 1) * 0.15, 0, 0.4) : 0;
+      if (shuffle > 0) w.phase += dt * Math.abs(w.yawVel) * 1.6;
+      const target = moonwalk ? 0.8 : moving ? clamp(w.curSpeed / Math.max(0.3, w.speed * 0.55), 0, 1) : shuffle;
+      w.walkAmt += (target - w.walkAmt) * ease(dt, 8);
+      if (!moving) { w.curSpeed = 0; w.moveYaw = null; }
 
       let px = w.x, pz = w.z, py = 0, tip = 0;
       if (anchor) {
@@ -2264,7 +2434,7 @@
 
       // models without leg bones (e.g. head-only exports) hop along instead of walking
       const hopY = !rig.hasLegs && !rig.mixer ? Math.abs(Math.sin(w.phase)) * 0.22 * w.walkAmt : 0;
-      holder.rotation.y = w.yaw;
+      holder.rotation.y = w.yaw + (w.shake ? Math.sin(this.time * 20) * 0.04 : 0);
       // a backflip: one full turn while in the air
       if (w.flipT !== undefined && w.flipT !== null) {
         w.flipT += dt / 0.75;
@@ -2274,17 +2444,40 @@
       holder.rotation.x = tip;
       holder.rotation.z = !rig.hasLegs ? Math.sin(w.phase) * 0.08 * w.walkAmt : 0;
       if (w.state === "photo" && w.photo && w.photo.lean) holder.rotation.z -= w.photo.lean * 0.2; // leaning in for a picture
+
+      // squash and stretch: stretching up while flying through the air, squashing on landing
+      // (a springy wobble, from the feet up)
+      const air = !anchor && !w.held && !reduce && w.lift > this.baseLift(w) + 0.03 ? Math.min(0.07, Math.abs(w.liftVel) * 0.013) : 0;
+      if (reduce) { w.squash = 0; w.squashVel = 0; }
+      else {
+        const steps = Math.max(1, Math.ceil(dt * 120)), h = dt / steps;
+        for (let i = 0; i < steps; i++) {
+          w.squashVel += (420 * (air - w.squash) - 13 * w.squashVel) * h;
+          w.squash += w.squashVel * h;
+        }
+        w.squash = clamp(w.squash, -0.2, 0.15);
+      }
       const pop = w.appear < 1 ? 0.3 + 0.7 * (1 - Math.pow(1 - w.appear, 3)) : 1;
       const gone = w.vanish > 0 ? 1 - smooth(w.vanish) : 1;
-      holder.scale.setScalar(w.sizeScale * pop * Math.max(0.01, gone));
+      const size = w.sizeScale * pop * Math.max(0.01, gone);
+      const sy = 1 + w.squash * (1 - k), sxz = 1 / Math.sqrt(sy);
+      holder.scale.set(size * sxz, size * sy, size * sxz);
 
       if (w.phone) w.phone.visible = w.arms === "phone" && !w.held;
-      const sitting = anchor && anchor.kind === "sit" && w.seatBlend > 0.5;
-      const lying = anchor && anchor.kind === "lie" && w.seatBlend > 0.5;
-      if (M.setEyesClosed) M.setEyesClosed(w.inst, w.sleep || lying); // asleep (or dozing): eyes shut
+      // sitting/lying legs and arms blend in while the Mii gets on (and out while it gets off)
+      const on = w.seatBlend > (wanted ? 0.15 : 0.85);
+      const sitting = anchor && anchor.kind === "sit" && on;
+      const lying = anchor && anchor.kind === "lie" && on;
+      this.updateLook(w, dt, lying);
+      // blinking now and then (sometimes twice), eyes shut when asleep
+      w.blinkIn -= dt;
+      if (w.blinkIn <= 0) { w.blinkT = 0.13; w.blinkIn = Math.random() < 0.18 ? 0.3 : rnd(2, 6); }
+      if (w.blinkT > 0) w.blinkT -= dt;
+      if (M.setEyesClosed) M.setEyesClosed(w.inst, w.sleep || lying || (w.blinkT > 0 && !w.held && w.state !== "photo"));
       rig.pose({
         t: this.time + (w.id.length % 7) * 0.37,
         dt,
+        smooth: true,
         walk: running ? 1 : w.walkAmt,
         run: running,
         phase: w.phase,
@@ -2296,8 +2489,8 @@
         talking: !!w.bubble,
         nod: (w.sleep && !lying ? 0.45 + Math.sin(this.time * 2) * 0.05 : 0) + (w.nod || 0) + (w.bow ? 0.35 : 0),
         bow: !!w.bow,
-        lookYaw: w.shake ? Math.sin(this.time * 14) * 0.4 : 0,
-        lookUp: w.state === "activity" && w.spot && w.spot.lookUp ? w.spot.lookUp : 0,
+        lookYaw: (w.shake ? Math.sin(this.time * 14) * 0.4 : 0) + w.lookYaw,
+        lookUp: (w.state === "activity" && w.spot && w.spot.lookUp ? w.spot.lookUp : 0) + w.lookUp,
         sit: sitting,
         legsOut: sitting && anchor.at.legs === "out",
         lie: lying,
@@ -2309,6 +2502,10 @@
     updateOverlay() {
       const v = overlayHead, feetV = overlayFeet;
       const placed = [];
+      const now = performance.now();
+      const odt = Math.min(0.1, (now - (this.overlayAt || now)) / 1000);
+      this.overlayAt = now;
+      this.overlayFrame = (this.overlayFrame || 0) + 1;
       // front-most Miis first, so bubbles behind them move up out of the way
       const sorted = this.active().concat(this.guests).sort((a, b) => b.z - a.z);
       for (const w of sorted) {
@@ -2332,7 +2529,8 @@
           if (w.uiBubbleKey !== key || !w.uiBubbleW) { w.uiBubbleKey = key; w.uiBubbleW = w.uiBubble.offsetWidth; w.uiBubbleH = w.uiBubble.offsetHeight; }
           const bw = w.uiBubbleW, bh = w.uiBubbleH;
           let bx = clamp(x - bw / 2, 4, this.W - bw - 4);
-          let by = y - bh - 12 - (w.remote === "phone" ? 24 : 0); // leave room for the "📱 Mia" tag
+          const by0 = y - bh - 12 - (w.remote === "phone" ? 24 : 0); // leave room for the "📱 Mia" tag
+          let by = by0;
           for (let tries = 0; tries < 6; tries++) {
             const hit = placed.find((r) => bx < r.x + r.w && bx + bw > r.x && by < r.y + r.h + 6 && by + bh + 6 > r.y);
             if (!hit) break;
@@ -2340,8 +2538,12 @@
           }
           by = Math.max(4, by);
           placed.push({ x: bx, y: by, w: bw, h: bh });
+          // moving up out of another bubble's way (or back down): it slides there instead of jumping
+          const lift = by - by0;
+          w.bubbleLift = w.bubbleFrame === this.overlayFrame - 1 && !reducedMotion() ? w.bubbleLift + (lift - w.bubbleLift) * ease(odt, 14) : lift;
+          w.bubbleFrame = this.overlayFrame;
           w.uiBubble.style.left = bx - x + "px";
-          w.uiBubble.style.top = by - y + "px";
+          w.uiBubble.style.top = by0 + w.bubbleLift - y + "px";
           w.uiBubble.style.setProperty("--tail", clamp(x - bx, 14, bw - 14) + "px");
         }
         const wish = this.wishIconFor ? this.wishIconFor(w.record) : null;
@@ -2451,7 +2653,7 @@
           w.liftVel = 0;
           w.targetYaw = this.viewYaw(w);
         } else if (!down && !this.flight) {
-          this.hoverAt = { clientX: e.clientX, clientY: e.clientY }; // (looked at once a frame, see pickHover)
+          this.hoverAt = { clientX: e.clientX, clientY: e.clientY }; // (looked at once a frame, see beforeRender)
         }
       });
 
@@ -2490,6 +2692,21 @@
       c.addEventListener("pointerup", release);
       c.addEventListener("pointercancel", release);
       c.addEventListener("pointerleave", () => { this.hoverAt = null; if (!this.dragging) this.hover = null; });
+      // zooming with the wheel eases in (see stepCamera) instead of jumping
+      // (caught on the way down to the 3D view, before the camera controls see it)
+      if (c.parentElement) c.parentElement.addEventListener("wheel", (e) => {
+        if (e.target !== c || !this.controls.enabled || this.flight) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.zoomBy(e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1));
+      }, { capture: true, passive: false });
+      // double-click a Mii: the camera glides over to it; double-click the scenery: back to the whole place
+      c.addEventListener("dblclick", (e) => {
+        if (this.flight || this.dragging) return;
+        const w = this.pickWalker(this.pointerRay(e));
+        if (w) this.focusWalker(w);
+        else this.resetView();
+      });
       // right-click a Mii to open its menu
       c.addEventListener("contextmenu", (e) => {
         e.preventDefault();
@@ -2525,6 +2742,7 @@
     takePhoto(list, poses, opts) {
       opts = opts || {};
       this.finishFlight();
+      this.endGlide();
       const n = list.length;
       const scale = Math.max(...list.map((w) => w.sizeScale || 1));
       const gap = 1.3 * scale;
@@ -2571,9 +2789,8 @@
       const target = new THREE.Vector3(center.x, lift + height * 0.5, center.z);
       const el = 0.16;
       Object.assign(this.controls, { minDistance: 0.5, maxDistance: 500, minAzimuthAngle: -Infinity, maxAzimuthAngle: Infinity, enabled: false });
-      this.controls.target.copy(target);
-      this.camera.position.set(target.x - fwd.x * dist * Math.cos(el), target.y + dist * Math.sin(el), target.z - fwd.z * dist * Math.cos(el));
-      this.controls.update();
+      // (the camera glides down into place while everyone gets ready)
+      this.glideCamera(new THREE.Vector3(target.x - fwd.x * dist * Math.cos(el), target.y + dist * Math.sin(el), target.z - fwd.z * dist * Math.cos(el)), target, 0.65);
 
       // everyone into place, facing the camera
       list.forEach((w, i) => {
@@ -2589,17 +2806,20 @@
         w.arms = pose.arms || "down";
         w.bow = !!pose.bow;
         w.yaw = w.targetYaw = this.viewYaw(w) + (pose.face || 0) * 0.65;
+        w.yawVel = 0; w.lookYaw = 0; w.squash = 0; w.squashVel = 0; w.walkAmt = 0;
+        w.inst.rig.poseKey = null; // (straight into the pose, no blending: the picture is taken soon)
       });
       const release = () => {
         for (const w of list) {
           if (w.state !== "photo") continue;
           w.state = "idle"; w.timer = rnd(1.5, 3); w.photo = null; w.arms = "down"; w.bow = false;
         }
-        this.camera.position.copy(saved.pos);
         this.timeScale = saved.timeScale;
-        Object.assign(this.controls, { minDistance: saved.min, maxDistance: saved.max, minAzimuthAngle: saved.minAz, maxAzimuthAngle: saved.maxAz, enabled: saved.enabled });
-        this.controls.target.copy(saved.target);
-        this.controls.update();
+        // glide back to where the camera was, then the usual limits apply again
+        this.glideCamera(saved.pos, saved.target, 0.8, null, () => {
+          Object.assign(this.controls, { minDistance: saved.min, maxDistance: saved.max, minAzimuthAngle: saved.minAz, maxAzimuthAngle: saved.maxAz, enabled: saved.enabled });
+          this.controls.update();
+        });
       };
       return new Promise((resolve, reject) => {
         // give them a moment to settle (and jump, if they're jumping)
@@ -2607,6 +2827,7 @@
         setTimeout(() => {
           try {
             // a sharper picture than the screen: render it bigger for a moment
+            this.endGlide(); // (in place, even on a slow computer)
             const pr = this.renderer.getPixelRatio();
             const big = Math.max(pr, Math.min(2.5, 2400 / this.W));
             this.renderer.setPixelRatio(big);
@@ -2768,7 +2989,7 @@
           const steps = Math.max(1, Math.round(this.timeScale || 1));
           for (let i = 0; i < steps; i++) this.update(dt);
           if (this.flight) this.stepFlight(real);
-          else this.controls.update();
+          else { this.stepCamera(real); this.controls.update(); }
           this.traffic.update(dt);
           this.beforeRender(real);
           this.renderer.render(this.scene, this.camera);
