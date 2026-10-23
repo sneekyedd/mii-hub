@@ -844,18 +844,22 @@
           const m = this.riderMii();
           if (!m || !m.template) continue;
           const inst = M.createInstance(m.template, m.look || {});
-          inst.holder.rotation.order = "YXZ";
-          inst.holder.scale.setScalar(1.05);
-          inst.holder.position.set(spot.x, spot.y, spot.z);
-          inst.holder.rotation.set(0, spot.yaw || 0, 0);
-          spot.parent.add(inst.holder);
-          world.ridersMade.push({ inst, t0: Math.random() * 10 });
+          if (spot.mount) spot.mount(inst); // (the place sits it on the saddle itself)
+          else {
+            inst.holder.rotation.order = "YXZ";
+            inst.holder.scale.setScalar(1.05);
+            inst.holder.position.set(spot.x, spot.y, spot.z);
+            inst.holder.rotation.set(0, spot.yaw || 0, 0);
+            spot.parent.add(inst.holder);
+          }
+          world.ridersMade.push({ inst, spot, t0: Math.random() * 10 });
         }
       }
       for (const r of world.ridersMade) {
         const t = this.time + r.t0;
         // sitting on the saddle, legs going round (pedalling), hands on the handlebars
-        r.inst.rig.pose({ t, dt, arms: "type", sit: true, walk: 0.6, phase: t * 7, legsOut: true });
+        if (r.spot.ride) r.spot.ride(r.inst, t, dt);
+        else r.inst.rig.pose({ t, dt, arms: "type", sit: true, walk: 0.6, phase: t * 7, legsOut: true });
       }
     }
 

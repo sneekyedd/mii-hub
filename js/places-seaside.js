@@ -26,6 +26,11 @@
     THREE, TAU, toon, glow, G, put, ball, cylinder, block, disc, group, dynamic, canvasTexture, seeded,
     skyDome, addLights, mergeStatic, scatter, palmTree, bush, parkBench, lampPost,
   } = root.World3D.kit;
+  // (newer kit parts: plain stand-ins if the kit doesn't have them)
+  const kit = root.World3D.kit;
+  const detailMat = kit.detailMat || ((kind, color) => toon(color));
+  const blobShadows = kit.blobShadows || (() => null);
+  const litterBin = kit.litterBin || (() => null);
   const PI = Math.PI;
 
   // =====================================================================
@@ -273,20 +278,39 @@
         "vWinN = normalize(mat3(modelMatrix) * winN);",
       ].join("\n"));
       sh.fragmentShader = "uniform vec2 winSize;\nuniform vec3 winGlass;\nuniform vec3 winLit;\nuniform float winMinY;\nvarying vec3 vWinPos;\nvarying vec3 vWinN;\n" +
+        "float winHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\n" +
+        "float winNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);" +
+        " return mix(mix(winHash(i), winHash(i + vec2(1.0, 0.0)), f.x), mix(winHash(i + vec2(0.0, 1.0)), winHash(i + vec2(1.0)), f.x), f.y); }\n" +
         sh.fragmentShader.replace("#include <color_fragment>", [
           "#include <color_fragment>",
           "float winAmt = 0.0;",
           "vec3 winCol = winGlass;",
-          "if (abs(vWinN.y) < 0.5 && vWinPos.y > winMinY) {", // only on the walls, not the roof
+          "if (abs(vWinN.y) < 0.5) {", // only on the walls, not the roof
           "  float u = abs(vWinN.x) > abs(vWinN.z) ? vWinPos.z : vWinPos.x;",
+          // soft plaster: gentle blotches over the whole wall
+          "  diffuseColor.rgb *= 0.95 + 0.07 * winNoise(vec2(u, vWinPos.y) * 1.4) + 0.03 * winNoise(vec2(u, vWinPos.y) * 6.0);",
+          "  if (vWinPos.y > winMinY) {",
           "  vec2 cell = vec2(u, vWinPos.y) / winSize;",
           "  vec2 f = fract(cell);",
           "  winAmt = step(0.22, f.x) * step(f.x, 0.78) * step(0.3, f.y) * step(f.y, 0.8);",
           "  float frame = winAmt * (1.0 - step(0.26, f.x) * step(f.x, 0.74) * step(0.34, f.y) * step(f.y, 0.76));",
           "  float rnd = fract(sin(dot(floor(cell), vec2(12.9898, 78.233))) * 43758.5453);",
+          "  float rnd2 = fract(rnd * 7.31), rnd3 = fract(rnd * 13.7);",
           "  winCol = rnd > 0.87 ? winLit : mix(winGlass, vec3(1.0), f.y * 0.35);",
+          // the glass: window bars, and curtains or a blind in most windows
+          "  vec2 g = vec2((f.x - 0.26) / 0.48, (f.y - 0.34) / 0.42);",
+          "  vec3 cur = rnd3 < 0.25 ? vec3(1.0, 0.72, 0.8) : rnd3 < 0.5 ? vec3(1.0, 0.94, 0.78) : rnd3 < 0.75 ? vec3(0.72, 0.92, 0.84) : vec3(0.84, 0.78, 1.0);",
+          "  float cw = 0.2 + 0.12 * smoothstep(0.55, 0.0, g.y);", // (tied back: wider at the bottom)
+          "  if (rnd2 < 0.6 && (g.x < cw || g.x > 1.0 - cw || g.y > 0.86)) winCol = cur * (0.86 + 0.14 * sin(g.x * 70.0));",
+          "  else if (rnd2 > 0.82 && g.y > 0.55) winCol = mix(vec3(1.0, 0.97, 0.9), vec3(0.85, 0.8, 0.72), step(0.7, fract(g.y * 14.0)));",
+          "  winCol = mix(winCol, vec3(1.0), max(step(abs(g.x - 0.5), 0.018), step(abs(g.y - 0.62), 0.025)) * step(rnd2, 0.82));",
           "  winCol = mix(winCol, vec3(1.0), frame);",
           "  diffuseColor.rgb = mix(diffuseColor.rgb, winCol, winAmt);",
+          // a little sill under each window, with a soft shadow below it
+          "  float sill = step(0.2, f.x) * step(f.x, 0.8);",
+          "  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), sill * step(0.27, f.y) * step(f.y, 0.3));",
+          "  diffuseColor.rgb *= 1.0 - sill * 0.12 * smoothstep(0.18, 0.27, f.y) * step(f.y, 0.27);",
+          "  }",
           "}",
         ].join("\n")).replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += winCol * winAmt * 0.2;");
     };
@@ -449,6 +473,12 @@
       for (let i = 0; i < 260; i++) {
         ctx.fillStyle = r() < 0.5 ? "rgba(200,160,95,0.45)" : "rgba(255,244,214,0.7)";
         ctx.beginPath(); ctx.arc(r() * w, r() * h, 1 + r() * 1.6, 0, TAU); ctx.fill();
+      }
+      // gentle wind ripples (the shared sand details)
+      if (kit.surfaceTexture) {
+        ctx.globalCompositeOperation = "multiply";
+        ctx.drawImage(kit.surfaceTexture("sand").image, 0, 0, w, h);
+        ctx.globalCompositeOperation = "source-over";
       }
     });
     sandTex.wrapS = sandTex.wrapT = THREE.RepeatWrapping;
@@ -1277,7 +1307,7 @@
     // Each shop: a ground floor with a big window, a door, an awning and a sign.
     // The floors above are boxes with windows painted on (one material for all).
     const upperMat = windowMaterial({ glass: 0x8fcfee, w: 2.2, h: 3.0, minY: 5.6 });
-    const uppers = [], roofs = [], cornices = [];
+    const uppers = [], lowers = [], roofs = [], cornices = [];
     const shops = [
       { id: "bakery", x0: -20.5, x1: -11, h: 9.5, wall: 0xffcf7a, trim: 0xb9763a, roof: 0xd96b4a, name: "Bakery", emoji: "🥐", bg: "#b9763a", awn: [0xb9763a, 0xfff1d6], door: 0x8a5a32, win: [-17.2, -13.4] },
       { id: "cafe", x0: -11, x1: -0.5, h: 8.2, wall: 0x96dcbc, trim: 0x2f8f6f, roof: 0x2f8f6f, name: "Mii Café", emoji: "☕", bg: "#2f8f6f", awn: [0x2f8f6f, 0xffffff], door: 0x2f6f5a, win: [-8.2, -4.2], door2: -1.8 },
@@ -1289,7 +1319,7 @@
     const GF = 3.9; // ground floor height
     for (const S of shops) {
       const w = S.x1 - S.x0, cx = (S.x0 + S.x1) / 2, D = 6;
-      bx(back, S.wall, cx, GF / 2, FZ - D / 2, w, GF, D);
+      lowers.push({ x: cx, y: GF / 2, z: FZ - D / 2, sx: w, sy: GF, sz: D, color: S.wall });
       uppers.push({ x: cx, y: GF + (S.h - GF) / 2, z: FZ - D / 2, sx: w, sy: S.h - GF, sz: D, color: S.wall });
       // a band between the shop and the flats, and a cornice at the top
       cornices.push({ x: cx, y: GF + 0.1, z: FZ + 0.05, sx: w + 0.05, sy: 0.35, sz: 0.3, color: S.trim });
@@ -1333,6 +1363,7 @@
       }
     }
     farScatter(back, G.box(), upperMat, uppers).castShadow = true;
+    scatter(back, G.box(), upperMat, lowers, true); // (no windows down here: they start higher up)
     scatter(back, G.box(), toon(0xffffff), cornices, false);
     farScatter(back, prismGeo(), toon(0xffffff), roofs);
     // chimneys
@@ -1577,16 +1608,27 @@
       { x: 16.8, z: 2.8, w: 1.2, tree: true }, { x: -2.4, z: 9.2, w: 1.0, tree: false }, { x: 16.8, z: -8.4, w: 1.0, tree: false },
     ];
     for (const P of planters) {
-      block(root, 0xa86b3c, P.x, 0.35, P.z, P.w, 0.7, P.w, 0.1);
+      block(root, detailMat("wood", 0xa86b3c), P.x, 0.35, P.z, P.w, 0.7, P.w, 0.1);
       block(root, 0x6b4a2a, P.x, 0.68, P.z, P.w - 0.15, 0.05, P.w - 0.15, 0.02, { shadow: false });
       if (P.tree) {
-        put(root, G.taper(0.08, 0.12), toon(0x9a6a3c), { x: P.x, y: 1.4, z: P.z, sy: 1.6 });
+        put(root, G.taper(0.08, 0.12), detailMat("bark", 0x9a6a3c), { x: P.x, y: 1.4, z: P.z, sy: 1.6 });
         ball(root, 0x5cc84a, P.x, 2.6, P.z, 0.85);
         ball(root, 0x7fdc5c, P.x + 0.25, 2.9, P.z + 0.3, 0.45);
       } else {
         bush(root, P.x, P.z, 0.55, 0x5cc84a, 0xff6fa5).position.y = 0.6;
       }
     }
+
+    const bins = [{ x: -11.4, z: 7.5 }, { x: 6.6, z: 8.2 }];
+    bins.forEach((b) => litterBin(root, b.x, b.z, 0x4a7fc0));
+    blobShadows(root, [
+      ...planters.map((P) => ({ x: P.x, z: P.z, r: P.w * 0.95 })),
+      ...lamps.map(([x, z]) => ({ x, z, r: 0.45 })),
+      ...bins.map((b) => ({ x: b.x, z: b.z, r: 0.5 })),
+      ...lightPoles.map((P) => ({ x: P.x, z: P.z, r: 0.35 })),
+      { x: BN.x, z: BN.z, r: 1.4, sz: 0.6 }, { x: CL.x, z: CL.z, r: 0.5 }, { x: K.x, z: K.z, r: 1.9 },
+      { x: FS.x + 0.4, z: FS.z, r: 1.2, sz: 1.8 }, { x: MB.x, z: MB.z, r: 0.6 },
+    ], 0.2, 0x3a2a18);
 
     // ---------- bunting across the street ----------
     const flags = [];
@@ -1663,7 +1705,9 @@
         ...terraceTables.map((T) => ({ x: T.x, z: T.z - 0.85, w: 0.55, d: 0.55 })),
         ...terraceTables.map((T) => ({ x: T.x, z: T.z + 0.85, w: 0.55, d: 0.55 })),
       ].concat(lamps.map(([x, z]) => ({ x, z, r: 0.25 })))
-        .concat(planters.map((P) => ({ x: P.x, z: P.z, w: P.w, d: P.w }))),
+        .concat(planters.map((P) => ({ x: P.x, z: P.z, w: P.w, d: P.w })))
+        .concat(bins.map((b) => ({ x: b.x, z: b.z, r: 0.35 })))
+        .concat(zones.obstacles || []),
       spots: [
         tableSpot(terraceTables[0], "sipping coffee", "☕", ["Mmm, a perfect latte!", "Careful, it's hot!", "Coffee makes everything better.", "One more cup, please!"]),
         tableSpot(terraceTables[1], "having cake at the café", "🍰", ["This cake is amazing!", "Just one more bite...", "Strawberry shortcake, my favorite!", "Nom nom nom."]),
@@ -1946,26 +1990,276 @@
     };
 
     // ---------- cyclists on the street in front of the shops ----------
-    const bikeGeo = (shirt) => bakeGeo((b) => {
-      for (const sx of [-0.55, 0.55]) put(b, G.torus(0.33, 0.04), toon(0x333333), { x: sx, y: 0.36 });
-      bx(b, 0xff5a5a, 0, 0.6, 0, 1.0, 0.07, 0.07, { rz: 0.15 });
-      bx(b, 0xff5a5a, 0.4, 0.75, 0, 0.07, 0.6, 0.07, { rz: -0.3 });
-      bx(b, 0x333333, 0.5, 1.05, 0, 0.08, 0.06, 0.6);
-      bx(b, 0x333333, -0.15, 0.95, 0, 0.3, 0.08, 0.2);
-      // (the rider is a real random Mii, added by the hub: see world.riders)
+    // Two little town bikes, one each way (either side of the tram), each with a
+    // random Mii riding it (added by the hub: see world.riders and riderSpot). The
+    // wheels roll, the pedals go round in time with them, and the bikes weave
+    // gently in their lanes, leaning into the turns.
+    const B = BIKE;
+    // a straight tube from (x1, y1) to (x2, y2), seen from the side
+    const tube = (b, color, x1, y1, x2, y2, z, r) => cylinder(b, color, (x1 + x2) / 2, (y1 + y2) / 2, z, r, Math.hypot(x2 - x1, y2 - y1),
+      { rz: Math.atan2(-(x2 - x1), y2 - y1), seg: 8 });
+    const bikeGeo = (color, extra) => bakeGeo((b) => {
+      const [bbx, bby] = B.bb, [sx, sy] = B.saddle, A = B.axle, R = B.R;
+      const seatTop = [sx + 0.05, sy - 0.12], headTop = [0.33, 0.69], headBot = [0.37, 0.53];
+      tube(b, color, bbx, bby, seatTop[0], seatTop[1], 0, 0.028);                      // seat tube
+      tube(b, 0xd8d8e0, seatTop[0], seatTop[1], sx + 0.015, sy - 0.03, 0, 0.018);      // seat post
+      tube(b, color, seatTop[0], seatTop[1] - 0.02, headTop[0], headTop[1] - 0.04, 0, 0.026); // top tube
+      tube(b, color, bbx, bby, headBot[0], headBot[1], 0, 0.03);                       // down tube
+      tube(b, color, headTop[0], headTop[1] + 0.02, headBot[0], headBot[1] - 0.02, 0, 0.034); // head tube
+      for (const z of [-0.055, 0.055]) {
+        tube(b, color, bbx, bby, -A, R, z, 0.016);                                     // chain stays
+        tube(b, color, seatTop[0], seatTop[1], -A, R, z, 0.014);                       // seat stays
+        tube(b, color, headBot[0], headBot[1], A, R, z, 0.016);                        // fork
+      }
+      // stem and handlebars, with soft grips and a bell
+      tube(b, 0xd8d8e0, headTop[0], headTop[1], 0.31, B.grip[1] - 0.01, 0, 0.018);
+      cylinder(b, 0xd8d8e0, 0.3, B.grip[1], 0, 0.016, B.grip[2] * 2 - 0.06, { rx: PI / 2, seg: 8 });
+      for (const z of [-1, 1]) cylinder(b, 0x4a3a33, B.grip[0] + 0.01, B.grip[1], z * B.grip[2], 0.026, 0.12, { rx: PI / 2, seg: 10 });
+      cylinder(b, 0xffd23a, 0.31, B.grip[1] + 0.03, 0.1, 0.03, 0.025, { seg: 12 });
+      // the saddle, and a little red light under it
+      block(b, 0x5a3b2a, sx, sy - 0.03, 0, 0.26, 0.06, 0.15, 0.03);
+      block(b, 0x5a3b2a, sx + 0.1, sy - 0.03, 0, 0.12, 0.05, 0.08, 0.025);
+      ball(b, 0xff4d4d, sx - 0.06, sy - 0.1, 0, 0.03, { sx: 0.6 });
+      // mudguards over the wheels, and a chain guard
+      for (const [wx, from, to] of [[-A, 0.9, 3.3], [A, 0.25, 2.3]]) {
+        const arc = new THREE.TorusGeometry(R + 0.04, 0.02, 4, 16, to - from);
+        arc.rotateZ(from); arc.scale(1, 1, 2.2);
+        put(b, arc, toon(color), { x: wx, y: R });
+      }
+      block(b, 0xe8e8ee, (bbx - A) / 2, (bby + R) / 2 + 0.01, 0.092, A + bbx + 0.1, 0.06, 0.02, 0.01, { rz: Math.atan2(R - bby, -A - bbx) + PI });
+      // a wicker basket on the front (with the shopping in it), and the lamp
+      const kx = 0.53, ky = 0.79;
+      block(b, 0xd6a564, kx, ky, 0, 0.22, 0.16, 0.26, 0.03);
+      for (const dy of [-0.045, 0, 0.045]) block(b, 0xa8783d, kx, ky + dy, 0, 0.23, 0.014, 0.27, 0.007);
+      tube(b, 0x8b8b95, 0.36, 0.66, kx - 0.08, ky - 0.08, 0, 0.012);
+      ball(b, 0xfff6c0, kx + 0.12, ky - 0.04, 0, 0.04, { sx: 0.6 });
+      if (extra) extra(b, kx, ky + 0.08);
+    });
+    // the parts that go round: one InstancedMesh each, for all the bikes
+    const wheelGeo = bakeGeo((w) => {
+      put(w, G.torus(B.R - 0.02, 0.034), toon(0x34343c), {});
+      put(w, G.torus(B.R - 0.055, 0.012), toon(0xd8d8e0), {});
+      cylinder(w, 0xd8d8e0, 0, 0, 0, 0.03, 0.1, { rx: PI / 2, seg: 10 });
+      for (let i = 0; i < 6; i++) bx(w, 0xd8d8e0, 0, 0, 0, 0.008, (B.R - 0.06) * 2, 0.008, { rz: (i / 6) * PI });
+    });
+    const crankGeo = bakeGeo((c) => {
+      cylinder(c, 0xb8b8c4, 0, 0, 0.065, 0.07, 0.012, { rx: PI / 2, seg: 16 }); // chain ring
+      bx(c, 0x6a6a78, 0, -B.crank / 2, B.pedalZ - 0.04, 0.03, B.crank + 0.02, 0.02);
+      bx(c, 0x6a6a78, 0, B.crank / 2, -B.pedalZ + 0.04, 0.03, B.crank + 0.02, 0.02);
+      cylinder(c, 0x6a6a78, 0, 0, 0, 0.022, B.pedalZ * 2 - 0.06, { rx: PI / 2, seg: 8 });
+    });
+    const pedalGeo = bakeGeo((p) => {
+      bx(p, 0x3a3a44, 0, 0, 0, 0.1, 0.022, 0.08);
+      for (const dx of [-0.051, 0.051]) bx(p, 0xffb02b, dx, 0, 0, 0.004, 0.016, 0.06);
     });
     const bikes = [
-      { mesh: dynamic(painted(root, bikeGeo(0x5cc84a))), z: 10.7, speed: 3.2, off: 0 },
-      { mesh: dynamic(painted(root, bikeGeo(0xff8fb8))), z: 11.1, speed: -2.7, off: 40 },
+      { color: 0x4fc6a0, z: TZ - 1.75, speed: 3.2, off: 0, extra: (b, x, y) => { // flowers in the basket
+        for (const [dx, dz, c] of [[-0.04, -0.06, 0xff6fa8], [0.03, 0.05, 0xffd23a], [0.04, -0.03, 0xffffff], [-0.03, 0.06, 0xff5a5a]]) {
+          cylinder(b, 0x4fae3f, x + dx, y + 0.02, dz, 0.008, 0.12, { seg: 5 });
+          ball(b, c, x + dx, y + 0.09, dz, 0.035);
+        }
+      } },
+      { color: 0xff8fb8, z: TZ + 1.7, speed: -2.7, off: 40, extra: (b, x, y) => { // a baguette and a bag
+        cylinder(b, 0xe0a85a, x - 0.02, y + 0.06, 0.04, 0.03, 0.32, { rz: 0.6, seg: 8 });
+        block(b, 0xffffff, x + 0.02, y + 0.01, -0.05, 0.12, 0.14, 0.1, 0.02);
+      } },
     ];
-    // where the hub sits a random Mii on each bike (facing the way the bike goes)
-    zones.riders = bikes.map((b) => ({ parent: b.mesh, x: -0.15, y: 0.42, z: 0, yaw: PI / 2 })); // (y: the saddle, minus the seat drop)
+    const wheels = movingCopies(root, wheelGeo, paintedMat, bikes.length * 2, true);
+    const cranks = movingCopies(root, crankGeo, paintedMat, bikes.length, false);
+    const pedals = movingCopies(root, pedalGeo, paintedMat, bikes.length * 2, false);
+    for (const b of bikes) {
+      b.mesh = dynamic(painted(root, bikeGeo(b.color, b.extra), { shadow: true }));
+      b.mesh.rotation.order = "YXZ"; // (turn, then lean)
+      b.k = 1;                        // its size (riderSpot makes it suit the rider)
+      b.crank = 0;                    // how far round the pedals are
+    }
+    // where the hub sits a random Mii on each bike (see riderSpot)
+    zones.riders = bikes.map((b) => riderSpot(b));
+
+    // a bike rack on the square, with two bikes parked in it (all one painted shape)
+    const RK = { x: 14.3, z: 8.7 };
+    const rackParts = [bakeGeo((g) => {
+      for (let i = 0; i < 3; i++) { // hoops
+        const hoop = new THREE.TorusGeometry(0.32, 0.03, 6, 14, PI);
+        put(g, hoop, toon(0x8b95a5), { x: RK.x - 0.8 + i * 0.8, y: 0.45, z: RK.z, ry: PI / 2 });
+        for (const dz of [-0.32, 0.32]) cylinder(g, 0x8b95a5, RK.x - 0.8 + i * 0.8, 0.22, RK.z + dz, 0.03, 0.45, { seg: 6 });
+      }
+    })];
+    for (const [k, color] of [[0, 0xffb02b], [1, 0x7a8cff]]) {
+      const at = new THREE.Matrix4().makeRotationY(PI / 2 + (k ? 0.05 : -0.04)).setPosition(RK.x - 0.4 + k * 0.8, 0, RK.z + (k ? 0.12 : -0.12));
+      const part = (geo, x, y, rz) => rackParts.push(geo.clone().applyMatrix4(new THREE.Matrix4().makeRotationZ(rz).setPosition(x, y, 0).premultiply(at)));
+      part(bikeGeo(color), 0, 0, 0);
+      for (const ax0 of [-B.axle, B.axle]) part(wheelGeo, ax0, B.R, ax0 + k);
+      part(crankGeo, B.bb[0], B.bb[1], 0.6 + k);
+    }
+    painted(root, THREE.BufferGeometryUtils.mergeBufferGeometries(rackParts), { shadow: true });
+    zones.obstacles = [{ x: RK.x, z: RK.z, w: 2.4, d: 1.6 }];
+
+    const M = new THREE.Matrix4(), T = new THREE.Matrix4(), Rz = new THREE.Matrix4();
+    const place = (mesh, i, b, x, y, z, rot) => {
+      T.makeTranslation(x, y, z).premultiply(M.copy(b.mesh.matrix));
+      if (rot !== undefined) T.multiply(Rz.makeRotationZ(rot));
+      mesh.setMatrixAt(i, T);
+    };
     anim.push((t) => bikes.forEach((b, i) => {
-      const x = ((((t * b.speed + b.off) % 120) + 180) % 120) - 60;
-      b.mesh.position.set(x, Math.abs(Math.sin(t * 6 + i)) * 0.02, b.z);
-      b.mesh.rotation.y = b.speed > 0 ? 0 : PI;
+      // along the street (round again off-screen), weaving a little in its lane
+      const v = Math.abs(b.speed), dir = Math.sign(b.speed);
+      const d = t * v + b.off; // how far it has gone
+      const x = ((((d * dir) % 120) + 180) % 120) - 60;
+      const z = b.z + Math.sin(d * 0.5 + b.off) * 0.14 + Math.sin(d * 0.11) * 0.08;
+      const dz = 0.5 * 0.14 * Math.cos(d * 0.5 + b.off) + 0.11 * 0.08 * Math.cos(d * 0.11);              // dz per step along
+      const ddz = -0.25 * 0.14 * Math.sin(d * 0.5 + b.off) - 0.0121 * 0.08 * Math.sin(d * 0.11);       // ...and how that changes
+      const yaw = Math.atan2(-dz, dir);
+      // lean into the turns (sideways push = speed² × how sharply it turns)
+      const side = v * v * ddz * Math.cos(yaw);
+      const lean = Math.max(-0.22, Math.min(0.22, Math.atan(side / 9.8) * 3.5));
+      b.mesh.position.set(x, 0, z);
+      b.mesh.rotation.set(lean, yaw, 0);
+      b.mesh.scale.setScalar(b.k);
+      b.mesh.updateMatrix();
+      // the wheels roll along the ground; the pedals go round a little slower
+      const roll = -d / (B.R * b.k);
+      b.crank = roll / B.gear;
+      place(wheels.mesh, i * 2, b, -B.axle, B.R, 0, roll);
+      place(wheels.mesh, i * 2 + 1, b, B.axle, B.R, 0, roll + 1);
+      place(cranks.mesh, i, b, B.bb[0], B.bb[1], 0, b.crank);
+      for (const k of [0, 1]) {
+        const p = BIKE.pedal(b.crank, k);
+        place(pedals.mesh, i * 2 + k, b, p.x, p.y, p.z);
+      }
+      wheels.mesh.instanceMatrix.needsUpdate = cranks.mesh.instanceMatrix.needsUpdate = pedals.mesh.instanceMatrix.needsUpdate = true;
     }));
     return zones;
+  }
+
+  // ---------------------------------------------------------------------
+  // The Café Street bikes, and the Miis riding them
+  // ---------------------------------------------------------------------
+  // Sizes are for the bike as built (x = forward, y = up, z = to its right);
+  // each bike is then scaled to suit its rider.
+  const BIKE = {
+    R: 0.27, axle: 0.46,           // wheel size, and how far the axles are from the middle
+    bb: [-0.04, 0.24], crank: 0.1,  // the pedals go round this point
+    pedalZ: 0.15,                   // how far out the pedals are (each side)
+    saddle: [-0.2, 0.58],           // the top of the saddle
+    grip: [0.27, 0.875, 0.22],      // the handlebar grips (x, y, each side)
+    gear: 2.1,                      // the wheels turn this much faster than the pedals
+    legs: 0.507,                    // a rider's legs (hip to ankle), in bike units
+    // where pedal k (0 = right, 1 = left) is when the pedals have turned by `crank`
+    pedal(crank, k) {
+      const a = crank + k * Math.PI;
+      return { x: this.bb[0] + Math.sin(a) * this.crank, y: this.bb[1] - Math.cos(a) * this.crank, z: (k ? -1 : 1) * this.pedalZ };
+    },
+  };
+
+  // Where the hub puts a Mii on a bike. The hub calls mount(inst) once, when the Mii is
+  // made (it sits it on the saddle and sizes the bike to its legs), then ride(inst)
+  // every frame (feet on the pedals, hands on the grips: see twoBone).
+  function riderSpot(bike) {
+    const B = BIKE;
+    const spot = { parent: bike.mesh, x: B.saddle[0], y: B.saddle[1] - 0.45, z: 0, yaw: PI / 2 };
+    let m = null; // the rider's measurements (in its own units, standing)
+    const LIMBS = { legL: ["Leg_1_L", "Leg_2_L"], legR: ["Leg_1_R", "Leg_2_R"], armL: ["Arm_1_L", "Arm_2_L"], armR: ["Arm_1_R", "Arm_2_R"] };
+    spot.mount = (inst) => {
+      const h = inst.holder, bones = inst.rig.bones;
+      h.rotation.order = "YXZ";
+      const ok = Object.values(LIMBS).every(([a, b]) => bones[a] && bones[b]);
+      if (!ok) { // (a model we can't pose: just sit it on the saddle)
+        h.scale.setScalar(1.2);
+        h.position.set(spot.x, spot.y, 0);
+        h.rotation.set(0, PI / 2, 0);
+        bike.mesh.add(h);
+        return;
+      }
+      // measure the joints, standing (the holder isn't anywhere yet)
+      h.position.set(0, 0, 0); h.rotation.set(0, 0, 0); h.scale.setScalar(1);
+      h.updateMatrixWorld(true);
+      const pos = (o) => new THREE.Vector3().setFromMatrixPosition(o.matrixWorld);
+      const tip = (o) => { // the joint at the far end of a bone (its furthest child bone)
+        const p = pos(o);
+        let best = null;
+        for (const c of o.children) if (c.isBone && (!best || pos(c).distanceTo(p) > best.distanceTo(p))) best = pos(c);
+        return best;
+      };
+      m = { limbs: {} };
+      for (const [k, [a, b]] of Object.entries(LIMBS)) {
+        const A = pos(bones[a].bone), Bk = pos(bones[b].bone);
+        const C = tip(bones[b].bone) || Bk.clone().multiplyScalar(2).sub(A);
+        m.limbs[k] = { a: A, b: Bk, c: C, upper: a, lower: b };
+      }
+      const leg = (l) => l.a.distanceTo(l.b) + l.b.distanceTo(l.c);
+      const legLen = (leg(m.limbs.legL) + leg(m.limbs.legR)) / 2;
+      m.ankleY = (m.limbs.legL.c.y + m.limbs.legR.c.y) / 2;
+      m.spine = bones.Spine_1 ? pos(bones.Spine_1.bone) : m.limbs.armL.a.clone().lerp(m.limbs.legL.a, 0.5);
+      // its size in the bike's units (legs that fit the bike), and the bike's size
+      // to suit the rider (riders come in different sizes, like the walking Miis)
+      const hs = THREE.MathUtils.clamp(B.legs / legLen, 0.5, 3);
+      const size = 1.1 + Math.random() * 0.25;
+      bike.k = size / hs;
+      // sit it down: hips just above the saddle (they're inside the thighs)
+      const hip = m.limbs.legL.a.clone().add(m.limbs.legR.a).multiplyScalar(0.5);
+      const hipAt = new THREE.Vector3(B.saddle[0] + 0.01, B.saddle[1] + 0.05 * hs, 0);
+      // (turned to face along the bike: its x, y, z become the bike's -z, y, x)
+      h.scale.setScalar(hs);
+      h.rotation.set(0, PI / 2, 0);
+      h.position.set(hipAt.x - hip.z * hs, hipAt.y - hip.y * hs, hipAt.z + hip.x * hs);
+      bike.mesh.add(h);
+      h.updateMatrix();
+      m.toMii = h.matrix.clone().invert(); // bike units -> the Mii's own
+      m.hs = hs;
+    };
+    const v = new THREE.Vector3(), pole = new THREE.Vector3(), qS = new THREE.Quaternion(), qSi = new THREE.Quaternion(), eS = new THREE.Euler();
+    spot.ride = (inst, t, dt) => {
+      const rig = inst.rig;
+      if (!m) { rig.pose({ t, dt, arms: "type", sit: true, walk: 0.6, phase: bike.crank, legsOut: true }); return; }
+      const crank = bike.crank;
+      // the body: leaning forward over the handlebars, rocking a little with the pedals
+      const lean = 0.26 + Math.sin(crank * 2) * 0.012, sway = Math.sin(crank) * 0.035;
+      rig.set("Spine_1", lean, Math.sin(crank) * 0.04, sway);
+      rig.set("Spine_2", 0, 0, 0);
+      rig.set("Head", -lean * 0.6 + Math.sin(t * 0.9) * 0.04, Math.sin(t * 0.37) * 0.25, -sway * 0.6);
+      qS.setFromEuler(eS.set(lean, Math.sin(crank) * 0.04, sway, "XYZ"));
+      qSi.copy(qS).invert();
+      // feet on the pedals (the ankle a little above and behind the middle of the pedal)
+      for (const [k, side, sg] of [[0, "legR", -1], [1, "legL", 1]]) {
+        const p = B.pedal(crank, k);
+        v.set(p.x - 0.035, p.y + 0.011 + m.ankleY * m.hs, p.z * 0.85).applyMatrix4(m.toMii);
+        pole.set(sg * 0.15, 0.2, 1); // knees forward (and a little out)
+        twoBone(rig, m.limbs[side], v, pole);
+      }
+      // hands on the grips: worked out as if the body were upright, then leaned with it
+      for (const [z, side, sg] of [[1, "armR", -1], [-1, "armL", 1]]) {
+        v.set(B.grip[0], B.grip[1] + 0.02, z * B.grip[2]).applyMatrix4(m.toMii);
+        v.sub(m.spine).applyQuaternion(qSi).add(m.spine);
+        const l = m.limbs[side];
+        v.add(pole.copy(l.a).sub(v).setLength(0.045)); // (the wrist is a hand's width short of the grip)
+        pole.set(sg * 1, -0.6, -0.4).applyQuaternion(qSi); // elbows out and down
+        twoBone(rig, l, v, pole);
+      }
+    };
+    return spot;
+  }
+
+  // Bends a limb (hip-knee-ankle or shoulder-elbow-wrist, measured standing) so its
+  // end reaches `target`, with the middle joint pointing towards `pole`. Everything is
+  // in the Mii's own units; the limb's parent hasn't moved (arms: see ride above).
+  const ikA = new THREE.Vector3(), ikB = new THREE.Vector3(), ikN = new THREE.Vector3(), ikP = new THREE.Vector3(), ikD = new THREE.Vector3();
+  const ikQ = new THREE.Quaternion(), ikQ2 = new THREE.Quaternion(), ikQi = new THREE.Quaternion(), ikE = new THREE.Euler();
+  function twoBone(rig, l, target, pole) {
+    const l1 = l.a.distanceTo(l.b), l2 = l.b.distanceTo(l.c);
+    ikN.copy(target).sub(l.a);
+    const d = THREE.MathUtils.clamp(ikN.length(), Math.abs(l1 - l2) + 1e-3, (l1 + l2) * 0.999);
+    ikN.normalize();
+    const cosA = THREE.MathUtils.clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1), sinA = Math.sqrt(1 - cosA * cosA);
+    ikP.copy(pole).addScaledVector(ikN, -pole.dot(ikN)).normalize();
+    const knee = ikB.copy(l.a).addScaledVector(ikN, cosA * l1).addScaledVector(ikP, sinA * l1);
+    // upper bone: from where it pointed to the new middle joint
+    ikQ.setFromUnitVectors(ikA.copy(l.b).sub(l.a).normalize(), ikD.copy(knee).sub(l.a).normalize());
+    // lower bone: from where it pointed (in the upper bone's new frame) to the end
+    ikD.copy(l.a).addScaledVector(ikN, d).sub(knee).normalize().applyQuaternion(ikQi.copy(ikQ).invert());
+    ikQ2.setFromUnitVectors(ikA.copy(l.c).sub(l.b).normalize(), ikD);
+    ikE.setFromQuaternion(ikQ, "XYZ"); rig.set(l.upper, ikE.x, ikE.y, ikE.z);
+    ikE.setFromQuaternion(ikQ2, "XYZ"); rig.set(l.lower, ikE.x, ikE.y, ikE.z);
   }
 
   root.World3D.addPlace({ id: "beach", name: "Beach", icon: "🏖️" }, buildBeach);
