@@ -25,6 +25,13 @@
     THREE, TAU, toon, glow, G, put, ball, cylinder, block, disc, group, dynamic, canvasTexture, seeded,
     skyDome, addLights, mergeStatic, scatter, roundTree, bush, parkBench, lampPost,
   } = root.World3D.kit;
+  // (newer kit parts: plain stand-ins if the kit doesn't have them)
+  const kit = root.World3D.kit;
+  const detailMat = kit.detailMat || ((kind, color) => toon(color));
+  const blobShadows = kit.blobShadows || (() => null);
+  const litterBin = kit.litterBin || (() => null);
+  const uvScaled = kit.uvScaled || ((geo) => geo);
+  const extras = kit.extras || ((p, geo, mat, items, cast) => scatter(p, geo, mat, items, cast));
   const PI = Math.PI;
 
   // =====================================================================
@@ -504,6 +511,21 @@
         text(ctx, "Σ 1/n² = π²/6", 860, 226, 28, chalk);
         ctx.fillStyle = "rgba(255,217,122,0.9)"; roundRect(ctx, 760, 258, 220, 50, 10); ctx.fill();
         text(ctx, "Midterm: Oct 28!", 870, 284, 26, "#2c5a4a");
+        // half rubbed-out sums, a doodle, the homework and chalk dust along the bottom
+        for (const [x, y, rw, rh] of [[350, 290, 70, 22], [470, 96, 50, 16], [690, 300, 60, 18]]) {
+          ctx.fillStyle = "rgba(255,255,255,0.07)"; ctx.beginPath(); ctx.ellipse(x, y, rw, rh, -0.1, 0, TAU); ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.08)"; ctx.lineWidth = 6;
+          ctx.beginPath(); ctx.moveTo(x - rw * 0.8, y - 4); ctx.quadraticCurveTo(x, y + 8, x + rw * 0.8, y - 2); ctx.stroke();
+        }
+        ctx.globalAlpha = 0.35; text(ctx, "x = 4", 350, 290, 24, chalk); ctx.globalAlpha = 1;
+        ctx.strokeStyle = chalk; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(392, 248, 16, 0, TAU); ctx.stroke();                 // a little smiley doodle
+        ctx.beginPath(); ctx.arc(392, 252, 9, 0.3, PI - 0.3); ctx.stroke();
+        ctx.fillStyle = chalk; ctx.fillRect(386, 242, 3, 3); ctx.fillRect(396, 242, 3, 3);
+        text(ctx, "HW: p.42  #1–9", 40, 316, 20, pink, "left");
+        const dust = ctx.createLinearGradient(0, h - 14, 0, h);
+        dust.addColorStop(0, "rgba(255,255,255,0)"); dust.addColorStop(1, "rgba(255,255,255,0.16)");
+        ctx.fillStyle = dust; ctx.fillRect(0, h - 14, w, 14);
       }],
       hallPlaque: [1020, 64, (ctx, w, h) => {
         ctx.fillStyle = "#6e4527"; roundRect(ctx, 0, 0, w, h, 10); ctx.fill();
@@ -704,6 +726,44 @@
         ctx.strokeRect(10, h / 2 - 50, 60, 100); ctx.strokeRect(w - 70, h / 2 - 50, 60, 100);
       }],
     }, 2048);
+  }
+
+  // A few more posters and the numbers on the lockers (one more little picture sheet)
+  function moreCollegePictures() {
+    const poster = (bg, draw) => [200, 270, (ctx, w, h) => {
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = "rgba(255,255,255,0.9)"; roundRect(ctx, 10, 10, w - 20, h - 20, 12); ctx.fill();
+      draw(ctx, w, h);
+      ctx.fillStyle = "#e23b3b"; ctx.beginPath(); ctx.arc(w / 2, 8, 6, 0, TAU); ctx.fill(); // (a pin)
+    }];
+    const cells = {
+      pScience: poster("#3f7a2a", (ctx, w) => {
+        text(ctx, "SCIENCE", w / 2, 42, 30, "#3f7a2a"); text(ctx, "FAIR", w / 2, 76, 30, "#3f7a2a");
+        ctx.fillStyle = "#7fd36a"; ctx.beginPath(); ctx.moveTo(80, 120); ctx.lineTo(120, 120); ctx.lineTo(140, 200); ctx.lineTo(60, 200); ctx.closePath(); ctx.fill(); // a flask...
+        ctx.fillStyle = "#cfeeff"; ctx.fillRect(88, 100, 24, 24);
+        for (let i = 0; i < 4; i++) { ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.beginPath(); ctx.arc(85 + i * 10, 180 - i * 18, 5, 0, TAU); ctx.fill(); } // ...bubbling
+        text(ctx, "Fri · Main Hall", w / 2, 232, 18, "#555");
+      }),
+      pChoir: poster("#a0304f", (ctx, w) => {
+        text(ctx, "JOIN THE", w / 2, 42, 26, "#a0304f"); text(ctx, "CHOIR!", w / 2, 76, 34, "#a0304f");
+        ctx.fillStyle = "#a0304f";
+        for (const [x, y] of [[70, 170], [130, 150]]) { ctx.beginPath(); ctx.ellipse(x, y, 14, 10, -0.4, 0, TAU); ctx.fill(); ctx.fillRect(x + 10, y - 60, 5, 60); }
+        ctx.fillRect(80, 92, 55, 8);
+        text(ctx, "♪ Tuesdays ♪", w / 2, 232, 20, "#555");
+      }),
+      pKind: poster("#2f8f9f", (ctx, w) => {
+        text(ctx, "BE KIND", w / 2, 44, 32, "#2f8f9f");
+        smiley(ctx, w / 2, 140, 46, "#ffd9b0", "#5a3a22");
+        ctx.fillStyle = "#ff6b8a"; heart(ctx, w / 2 + 50, 90, 26);
+        text(ctx, "it's cool to care", w / 2, 230, 17, "#555");
+      }),
+    };
+    for (let i = 0; i < 6; i++) cells["num" + i] = [64, 40, (ctx, w, h) => {
+      ctx.fillStyle = "#e9eef4"; ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = "#8a96a8"; ctx.lineWidth = 3; ctx.strokeRect(2, 2, w - 4, h - 4);
+      text(ctx, String(101 + i), w / 2, h / 2 + 2, 22, "#2a2f38");
+    }];
+    return makeAtlas(1024, cells, 272);
   }
 
   // A row of lecture desks: one long desk with four chairs behind it (the
@@ -1016,7 +1076,9 @@
     // ---------- walls (each hides when the camera is behind it) ----------
     const W = { back: -11, front: 11, side: 18 };
     const WALL_H = 8;
-    const style = { H: WALL_H, wallC: 0xf4ead6, panelC: 0x9a6a44, trimC: 0xf8f1e2, frameC: 0xffffff, topC: 0x8a5a3a, panelH: 1.9, glass: glassMaterial() };
+    // (the panelling and the rail along the top are wood: see the kit's detailMat)
+    const style = { H: WALL_H, wallC: 0xf4ead6, panelC: detailMat("wood", 0x9a6a44), trimC: 0xf8f1e2, frameC: 0xffffff, topC: detailMat("wood", 0x8a5a3a), panelH: 1.9, glass: glassMaterial() };
+    const more = moreCollegePictures(); // (posters and locker numbers: one more picture for all of them)
     const backWall = group(root), leftWall = group(root), rightWall = group(root), frontWall = group(root);
     const backWindows = [{ c: -15.0, w: 4.2, y0: 1.3, y1: 6.3 }, { c: 8.4, w: 4.2, y0: 3.2, y1: 6.3 }, { c: 14.7, w: 4.2, y0: 1.3, y1: 6.3 }];
     const leftWindows = [{ c: -6.2, w: 4.6, y0: 1.3, y1: 6.3 }];
@@ -1191,16 +1253,17 @@
     const VO = { x: SC.x + 2.25, y: 1.1, z: SC.z + 0.1 };
     block(sci, 0x2a2f38, 2.25, 1.14, 0.1, 0.5, 0.06, 0.4, 0.02);
     cylinder(sci, 0x9aa3b0, 2.25, 1.4, 0.1, 0.02, 0.5);
-    const mol = dynamic(group(root, VO.x, VO.y + 0.95, VO.z));
-    ball(mol, 0x2a2f38, 0, 0, 0, 0.16);
-    const arms = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
-    arms.forEach(([ax, ay, az], i) => {
-      const v = new THREE.Vector3(ax, ay, az).normalize();
-      ball(mol, i === 0 ? 0xe2574c : 0xffffff, v.x * 0.42, v.y * 0.42, v.z * 0.42, 0.1);
-      const stick = cylinder(mol, 0xbfc4cc, v.x * 0.21, v.y * 0.21, v.z * 0.21, 0.025, 0.3);
-      stick.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v);
-    });
-    mergeStatic(mol);
+    // (one painted shape, so the whole model is drawn in one go)
+    const mol = dynamic(painted(root, bakeGeo((m) => {
+      ball(m, 0x2a2f38, 0, 0, 0, 0.16);
+      const arms = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
+      arms.forEach(([ax, ay, az], i) => {
+        const v = new THREE.Vector3(ax, ay, az).normalize();
+        ball(m, i === 0 ? 0xe2574c : 0xffffff, v.x * 0.42, v.y * 0.42, v.z * 0.42, 0.1);
+        const stick = cylinder(m, 0xbfc4cc, v.x * 0.21, v.y * 0.21, v.z * 0.21, 0.025, 0.3);
+        stick.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v);
+      });
+    }), { x: VO.x, y: VO.y + 0.95, z: VO.z }));
     const tmp = new THREE.Object3D();
     anim.push((t) => { mol.rotation.set(0.3, t * 0.5, 0); });
     // a big leafy plant in the corner
@@ -1357,8 +1420,22 @@
       block(l, lockerC[i], 0, 1.45, 0, 0.94, 2.9, 0.8, 0.05);
       for (let k = 0; k < 4; k++) bx(l, 0x333333, 0, 2.5 + k * 0.1, 0.405, 0.5, 0.03, 0.01, { shadow: false });
       bx(l, 0xdfe4ea, 0.3, 1.5, 0.41, 0.06, 0.3, 0.04);
-      bx(l, 0xffffff, 0, 2.05, 0.405, 0.3, 0.18, 0.01, { shadow: false });
+      more.pic(l, "num" + i, 0.3, 0.18, { y: 2.05, z: 0.41 });
+      bx(l, 0x2a2f38, 0, 0.13, 0.405, 0.86, 0.2, 0.01);                            // a kick plate
+      bx(l, 0x52769e, 0, 2.93, 0, 0.98, 0.06, 0.84);                                 // the top
+      if (i % 3 === 1) { // a padlock
+        block(l, 0xd9b26a, 0.3, 1.22, 0.44, 0.1, 0.12, 0.05, 0.02);
+        put(l, G.torus(0.035, 0.012), toon(0x9aa3b0), { x: 0.3, y: 1.3, z: 0.44 });
+      }
+      if (i === 2 || i === 5) bx(l, [0xffd23f, 0xff6b8a][i === 2 ? 0 : 1], -0.2, 1.75, 0.41, 0.14, 0.14, 0.01, { rz: 0.4 }); // a sticker
     }
+    // stuff left on top of the lockers: a box, a basketball and a backpack
+    block(root, 0xc9a46a, -W.side + 0.65, 3.17, 0.9, 0.6, 0.42, 0.7, 0.04, { ry: 0.15 });
+    ball(root, 0xff8a3a, -W.side + 0.6, 3.18, 3.9, 0.22);
+    block(root, 0x6fd36a, -W.side + 0.55, 3.15, 4.9, 0.4, 0.45, 0.55, 0.12, { ry: -0.3 });
+    // a recycling bin by the lockers
+    const RCB = { x: -W.side + 0.7, z: -1.35 };
+    litterBin(root, RCB.x, RCB.z, 0x4a90e2, PI / 2);
     // the coffee bar: a counter with a coffee machine, cups and a menu board
     const cub = group(root, -W.side + 0.6, 0, 7.95, PI / 2);
     block(cub, 0x7a4e2c, 0, 0.55, 0, 3.3, 1.1, 0.75, 0.05);
@@ -1397,14 +1474,12 @@
     ball(pet, 0x9aa3b0, 0.5, TK.y + 0.15, 0.1, 0.12, { sy: 0.7 });
     // the fish (they swim round and round)
     const fishC = [0xff8a2a, 0xffd23f, 0x4fb7ff, 0xff6b8a];
-    const fish = fishC.map((c) => {
-      const f = dynamic(group(pet, 0, TK.y + 0.5, 0));
+    // (each fish is one painted shape: drawn in one go)
+    const fish = fishC.map((c) => dynamic(painted(pet, bakeGeo((f) => {
       ball(f, c, 0, 0, 0, 0.08, { sx: 1.5, sz: 0.6 });
       put(f, G.cone(4), toon(c), { x: -0.14, s: 0.07, sy: 0.08, rz: PI / 2 });
       ball(f, 0x222222, 0.08, 0.02, 0.035, 0.015);
-      mergeStatic(f);
-      return f;
-    });
+    }), { y: TK.y + 0.5 })));
     anim.push((t) => {
       fish.forEach((f, i) => {
         const a = t * (0.5 + i * 0.12) + i * 1.7;
@@ -1439,9 +1514,28 @@
     ball(root, 0xffffff, TD.x + 2.05, 0.62, TD.z - 0.2, 0.1);
 
     // every book in one go
-    scatter(root, G.box(), toon(0xffffff), books, true);
+    // a few more books: a pile on the study table, one by a beanbag and some on the professor's desk
+    for (let i = 0; i < 4; i++) books.push({ x: ST.x - 0.15 + (i % 2) * 0.04, y: 1.08 + i * 0.07, z: ST.z - 0.65, sx: 0.36, sy: 0.07, sz: 0.26, ry: i * 0.25, color: [0x2f4f8f, 0xc98b2a, 0x7a2f3a, 0x3f7a2a][i] });
+    for (let i = 0; i < 3; i++) books.push({ x: 12.2 + i * 0.03, y: 0.04 + i * 0.07, z: 6.5, sx: 0.36, sy: 0.07, sz: 0.27, ry: 0.6 - i * 0.3, color: [0x9a3b3b, 0x2a2f38, 0xe9d6b0][i] });
+    // every book in one go (with bands and a title on the spine)
+    scatter(root, G.box(), detailMat("spine", 0xffffff), books, true);
 
     // ---------- merge everything that doesn't move ----------
+    // more posters on the walls
+    more.pic(leftWall, "pScience", 1.2, 1.62, { x: -W.side + 0.28, y: 4.4, z: -3.0, ry: PI / 2 });
+    more.pic(leftWall, "pKind", 1.2, 1.62, { x: -W.side + 0.28, y: 4.6, z: 5.7, ry: PI / 2 });
+    more.pic(rightWall, "pChoir", 1.05, 1.42, { x: W.side - 0.28, y: 3.3, z: 2.4, ry: -PI / 2 });
+    // soft shadows on the floor under the furniture (see blobShadows)
+    blobShadows(root, [
+      ...RZ.map((z) => ({ x: -5, z: z + 0.4, r: 6.2, sz: 1.2 })),
+      { x: TD.x, z: TD.z - 0.4, r: 2.0, sz: 1.3 }, { x: GL.x, z: GL.z, r: 0.6 }, { x: SC.x, z: SC.z + 0.1, r: 3.1, sz: 0.8 },
+      { x: 16.7, z: -9.9, r: 0.6 }, { x: 16.6, z: PN.z, r: 1.3, sz: 1.8 }, { x: E1.x, z: E1.z, r: 0.7 }, { x: E2.x, z: E2.z, r: 0.7 },
+      { x: AT.x, z: AT.z + 0.2, r: 1.6, sz: 1.1 }, { x: W.side - 0.6, z: 6.2, r: 0.7, sz: 3.4 }, { x: 15.4, z: 9.0, r: 0.9, sz: 0.5 },
+      { x: BB1.x, z: BB1.z - 0.1, r: 0.9 }, { x: 14.9, z: 4.7, r: 0.9 }, { x: 11.2, z: 5.1, r: 0.9 },
+      { x: -W.side + 0.65, z: 2.4, r: 0.7, sz: 3.3 }, { x: -W.side + 0.6, z: 7.95, r: 0.7, sz: 1.9 }, { x: PT.x, z: PT.z, r: 1.4, sz: 0.65 },
+      { x: ST.x, z: ST.z, r: 1.4 }, { x: -3.4, z: 10.0, r: 0.55 }, { x: 3.4, z: 10.0, r: 0.55 }, { x: RCB.x, z: RCB.z, r: 0.45 },
+    ], 0.22, 0x3a2410);
+
     const walls = [
       { group: backWall, axis: "z", at: W.back, outside: -1 },
       { group: frontWall, axis: "z", at: W.front, outside: 1 },
@@ -1492,6 +1586,7 @@
           { x: PT.x, z: PT.z, w: 2.4, d: 1.1 },                                         // fish tank table
           { x: ST.x, z: ST.z, r: 1.95 },                                                // study table + stools
           { x: -3.4, z: 10.0, r: 0.5 }, { x: 3.4, z: 10.0, r: 0.5 },                    // plants by the door
+          { x: RCB.x, z: RCB.z, r: 0.35 },                                              // recycling bin
         ]),
       spots: [
         studySpot(1, 0, 0), studySpot(2, 1, 1), studySpot(0, 2, 2),
@@ -1547,8 +1642,9 @@
     const A = atlas.pic;
     disc(root, toon(0xffffff, { map: grassTexture([70, 70]) }), 0, -0.03, 0, 230);
     // the building's base and a pavement all round it
-    block(root, 0xe6dccb, 0, -0.15, 0, 37.4, 0.3, 23.4, 0.05, { shadow: false });
-    bx(root, 0xeae3d6, 0, -0.025, 0, 41, 0.01, 27, { shadow: false });
+    // a brick plinth round the bottom of the building, and stone paving all round it
+    put(root, uvScaled(G.rbox(37.4, 0.3, 23.4, 0.05), 21, 0.25), detailMat("brick", 0xc9806a), { y: -0.15, shadow: false });
+    put(root, uvScaled(G.box(), 20, 13), detailMat("slabs", 0xeae3d6), { y: -0.025, sx: 41, sy: 0.01, sz: 27, shadow: false });
 
     // ----- behind the college: a brick plaza, the quad, the sports field -----
     A(root, "yard", 30, 10, { x: -9, y: -0.015, z: -18.5, rx: -PI / 2 });
@@ -1601,7 +1697,7 @@
     }
     // the clock tower on the far side of the campus
     const tw = group(root, 27, 0, -40, -0.4);
-    block(tw, 0xb8664f, 0, 6, 0, 3.4, 12, 3.4, 0.05);
+    put(tw, uvScaled(G.rbox(3.4, 12, 3.4, 0.05), 1.5, 7.5), detailMat("brick", 0xb8664f), { y: 6 });
     block(tw, 0xe9dcc4, 0, 12.6, 0, 3.8, 1.4, 3.8, 0.05);
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * TAU;
@@ -1645,7 +1741,7 @@
     const flowers = [];
     const fr = seeded(6);
     for (const cx of [-10, 10]) {
-      block(root, 0xb07a45, cx, 0.18, 12.4, 13, 0.36, 0.9, 0.05);
+      put(root, uvScaled(G.rbox(13, 0.36, 0.9, 0.05), 5, 1), detailMat("wood", 0xb07a45), { x: cx, y: 0.18, z: 12.4 });
       bx(root, 0x7a4e2c, cx, 0.37, 12.4, 12.6, 0.04, 0.7, { shadow: false });
       for (let i = 0; i < 26; i++) flowers.push({ x: cx - 6 + i * 0.48, y: 0.5, z: 12.4 + (fr() - 0.5) * 0.4, s: 0.12, color: [0xff6b8a, 0xffd23f, 0xffffff, 0xa58cff, 0xff8a5c][Math.floor(fr() * 5)] });
     }
@@ -1671,7 +1767,7 @@
     void flag;
     // the college sign (on a brick base)
     const sign = group(root, -7, 0, 15.6, 0.15);
-    block(sign, 0xb8664f, 0, 0.4, 0, 3.6, 0.8, 0.6, 0.08);
+    put(sign, uvScaled(G.rbox(3.6, 0.8, 0.6, 0.08), 1.6, 0.5), detailMat("brick", 0xb8664f), { y: 0.4 });
     block(sign, 0xe9dcc4, 0, 1.55, 0, 3.4, 1.15, 0.14, 0.08);
     A(sign, "collegeSign", 3.2, 0.96, { y: 1.55, z: 0.08 });
     A(sign, "collegeSign", 3.2, 0.96, { y: 1.55, z: -0.08, ry: PI });
@@ -1718,7 +1814,7 @@
     cylinder(crow, 0xe8c060, 0, 2.6, 0, 0.5, 0.05);
     put(crow, G.cone(), toon(0xe8c060), { y: 2.75, s: 0.3, sy: 0.3 });
     const shed = group(root, -27, 0, 9, 0.3);
-    block(shed, 0xa8d8a0, 0, 1.2, 0, 3.2, 2.4, 2.6, 0.06);
+    put(shed, uvScaled(G.rbox(3.2, 2.4, 2.6, 0.06), 0.6, 4), detailMat("wood", 0xa8d8a0), { y: 1.2, rz: 0 });
     put(shed, G.cone(4), toon(0xe2574c), { y: 3.0, sx: 2.6, sy: 1.2, sz: 2.2, ry: PI / 4 });
     bx(shed, 0x9a6a3c, 0, 0.85, 1.31, 1.0, 1.7, 0.06);
 
@@ -1745,7 +1841,22 @@
     const trees = [[-30, -20, 1.1], [-31, -26, 1.2], [22, -31, 1.1], [31, -20, 1.0], [-27, 23, 1.0], [26, 24, 1.1],
       [-35, 12, 1.2], [35, -8, 1.0], [17, -33, 0.9], [-30, -42, 1.2], [18, -44, 1.1]];
     trees.forEach(([x, z, s], i) => roundTree(root, x, z, s, i % 4 === 2 ? [0xff9ec7, 0xffc3dc] : [0x5cc84a, 0x7fdc5c], i % 5 === 1 ? 0xff4b3a : null));
-    for (const [x, z] of [[-20, 13], [19.5, 14], [-25, -12], [24, -24]]) bush(root, x, z, 1, 0x4fbf47, 0xff6fa5);
+    const campusBushes = [[-20, 13], [19.5, 14], [-25, -12], [24, -24]];
+    for (const [x, z] of campusBushes) bush(root, x, z, 1, 0x4fbf47, 0xff6fa5);
+    // litter bins by the benches, and soft shadows on the grass under things (see blobShadows)
+    litterBin(root, 14.6, 16.3, 0x7a2f3a);
+    litterBin(root, PG.x + 1.5, PG.z + 4.7, 0x7a2f3a);
+    blobShadows(root, [
+      ...trees.map(([x, z, s]) => ({ x, z, r: 1.9 * s })),
+      ...campusBushes.map(([x, z]) => ({ x, z, r: 1.15, sz: 0.85 })),
+      { x: PG.x, z: PG.z + 4.4, r: 1.45, sz: 0.65 }, { x: PG.x + 4.5, z: PG.z - 3.2, r: 1.45, sz: 0.65, ry: -PI / 2 }, { x: 13, z: 16, r: 1.45, sz: 0.65 },
+      { x: PG.x + 5.5, z: PG.z + 3.2, r: 1.6, sz: 1.2, ry: 0.2 }, { x: PG.x - 3.5, z: PG.z - 4.6, r: 1.6, sz: 1.2, ry: -0.15 },
+      { x: PG.x, z: PG.z, r: 2.8 }, { x: PG.x - 5.5, z: PG.z + 0.2, r: 1.2 }, { x: -21, z: -23.2, r: 0.5 },
+      { x: PG.x - 2, z: PG.z + 3, r: 0.45 }, { x: PG.x + 2, z: PG.z - 3, r: 0.45 }, { x: -2.6, z: 23, r: 0.45 }, { x: 2.6, z: 23, r: 0.45 },
+      { x: 27.5, z: 1.8, r: 1.6, sz: 5.4 }, { x: 24, z: -6, r: 1.0, sz: 1.8 }, { x: 31, z: -6, r: 1.0, sz: 1.8 }, { x: 31, z: 9, r: 1.0, sz: 1.8 },
+      { x: -7, z: 15.6, r: 1.9, sz: 0.5, ry: -0.15 }, { x: FP.x, z: FP.z, r: 0.5 }, { x: -27, z: 9, r: 2.0, sz: 1.7, ry: -0.3 },
+      { x: -30, z: -1, r: 0.4 }, { x: -13.8, z: 15.8, r: 1.6, sz: 0.4 }, { x: 14.6, z: 16.3, r: 0.5 }, { x: PG.x + 1.5, z: PG.z + 4.7, r: 0.5 },
+    ], 0.22);
 
     // ----- the town all around: a ring road with cars, houses, trees and hills -----
     const ROAD = 58;
@@ -1901,8 +2012,23 @@
     // ---------- the stage ----------
     const ST = { z0: -9.6, z1: -5.4, h: 1.0, w: 18.4 };
     const stz = (ST.z0 + ST.z1) / 2;
-    block(root, 0x3a3346, 0, ST.h / 2, stz, ST.w, ST.h, ST.z1 - ST.z0, 0.06);
-    bx(root, 0x5b4a6e, 0, ST.h + 0.01, stz, ST.w - 0.1, 0.02, ST.z1 - ST.z0 - 0.1, { shadow: false });
+    // the stage: a skirt of folded cloth all round, and a deck of dark wooden planks
+    put(root, uvScaled(G.rbox(ST.w, ST.h, ST.z1 - ST.z0, 0.06), 40, 1), detailMat("folds", 0x3a3346), { y: ST.h / 2, z: stz });
+    bx(root, toon(0xffffff, { map: planksTexture([7, 1.6], ["#7a5a48", "#86634e", "#6f5242", "#8a6a52"]) }), 0, ST.h + 0.01, stz, ST.w - 0.1, 0.02, ST.z1 - ST.z0 - 0.1, { shadow: false });
+    // gaffer tape marks where the band stands, and the cables between their gear (one material: drawn together)
+    const gaffer = toon(0xd9c08a);
+    for (const [x, z, r] of [[0, -6.4, 0.3], [4.6, -7.0, 0], [-4.6, -6.1, 0.1], [-7.6, -6.6, -0.2]]) {
+      bx(root, gaffer, x, ST.h + 0.025, z, 0.5, 0.01, 0.07, { ry: r, shadow: false });
+      bx(root, gaffer, x, ST.h + 0.025, z, 0.07, 0.01, 0.5, { ry: r, shadow: false });
+    }
+    const stageCable = toon(0x1e1a26);
+    const floorCable = (pts) => cable(root, stageCable, pts.map(([x, z]) => new THREE.Vector3(x, ST.h + 0.035, z)), 0.025);
+    floorCable([[0, -6.1], [0.4, -7.2], [1.6, -8.6], [3.2, -9.2]]);                 // the mic
+    floorCable([[-4.6, -6.5], [-3.6, -7.6], [-2.6, -8.7]]);                          // the keyboard to its amp
+    floorCable([[7.4, -7.4], [7.5, -8.3]]);                                          // the guitar to its amp
+    floorCable([[-2.2, -5.55], [-1.2, -6.6], [-0.2, -8.4], [1.0, -9.2], [3.2, -9.3]]);  // the monitors
+    floorCable([[2.2, -5.55], [2.0, -6.8], [3.2, -9.2]]);
+    bx(root, 0x2a2a30, 3.4, ST.h + 0.2, -9.25, 0.6, 0.4, 0.3);                       // the stage box they all plug into
     // glowing strip along the front of the stage (changes color)
     const ledMat = toon(0xff6b8a, { emissive: 0xff6b8a, emissiveIntensity: 0.9 });
     dynamic(bx(root, ledMat, 0, 0.82, ST.z1 + 0.01, ST.w - 0.2, 0.12, 0.04, { shadow: false }));
@@ -1930,6 +2056,8 @@
         put(g, G.cyl(4), trussMat, { y: y + 0.3, x: -0.22, sx: 0.025, sy: 0.75, sz: 0.025, rx: -0.6 });
       }
       bx(g, 0x2a2438, 0, 0.1, 0, 0.8, 0.2, 0.8);
+      bx(g, 0x2a2438, 0, h + 0.02, 0, 0.6, 0.18, 0.6);                    // the corner block on top
+      cylinder(g, 0x1e1a26, 0.3, h / 2, 0.3, 0.035, h, { seg: 5, shadow: false });          // a cable loom running down it
     };
     const beam = (x0, z0, x1, z1, y) => {
       const len = Math.hypot(x1 - x0, z1 - z0), ang = Math.atan2(z1 - z0, x1 - x0);
@@ -1946,6 +2074,11 @@
     beam(-PX, PZ0, PX, PZ0, TR);
     beam(-PX, PZ1, PX, PZ1, TR);
     for (const x of [-PX, PX]) beam(x, PZ0, x, PZ1, TR);
+    // chain hoists holding up the front beam (motor, chain and hook)
+    for (const x of [-5.2, 5.2]) {
+      cylinder(root, 0x9aa3b0, x, TR + 0.9, PZ0, 0.025, 1.4, { seg: 4 });
+      block(root, 0x2a2438, x, TR + 0.45, PZ0, 0.36, 0.32, 0.3, 0.05);
+    }
     const canopyR = 4.0;
     const canopy = new THREE.CylinderGeometry(canopyR, canopyR, 2 * PX + 1.2, 24, 1, true, PI / 2 - 0.75, 1.5).rotateZ(PI / 2);
     put(backdrop, canopy, toon(0xf4f0ff, { side: THREE.DoubleSide }), { y: TR + 0.25 - canopyR * Math.cos(0.75), z: stz, shadow: true });
@@ -2044,12 +2177,20 @@
     cylinder(dk, 0x2a2438, 0, 0.3, -0.75, 0.05, 0.6);                                                     // stool
     cylinder(dk, 0x2a2438, 0, 0.62, -0.75, 0.24, 0.1);
     // cymbals wobble when they're hit
-    const cymbals = [[-0.95, 1.27, 0.0], [0.95, 1.47, 0.1], [-0.6, 1.62, 0.35]].map(([x, y, z]) => {
-      const c = dynamic(group(dk, x, y, z));
-      put(c, G.cyl(18), toon(0xf2c94c), { sx: 0.36, sy: 0.02, sz: 0.36 });
-      return c;
+    // (the three cymbals are one shape drawn three times: they wobble one by one)
+    const cymbalAt = [[-0.95, 1.27, 0.0], [0.95, 1.47, 0.1], [-0.6, 1.62, 0.35]];
+    const cymbals = dynamic(new THREE.InstancedMesh(G.cyl(18), toon(0xf2c94c), cymbalAt.length));
+    cymbals.castShadow = true;
+    cymbals.frustumCulled = false;
+    dk.add(cymbals);
+    anim.push((t) => {
+      cymbalAt.forEach(([x, y, z], i) => {
+        const k = (t * 2 + i * 0.37) % 1;
+        tmp.position.set(x, y, z); tmp.rotation.set(Math.sin(k * 30) * 0.15 * (1 - k), 0, 0.1 * i); tmp.scale.set(0.36, 0.02, 0.36);
+        tmp.updateMatrix(); cymbals.setMatrixAt(i, tmp.matrix);
+      });
+      cymbals.instanceMatrix.needsUpdate = true;
     });
-    anim.push((t) => cymbals.forEach((c, i) => { const k = (t * 2 + i * 0.37) % 1; c.rotation.x = Math.sin(k * 30) * 0.15 * (1 - k); c.rotation.z = 0.1 * i; }));
     // keyboard (stage left)
     const KB = { x: -4.6, z: -6.5 };
     const kb = group(root, KB.x, ST.h, KB.z);
@@ -2069,6 +2210,7 @@
     for (const [ax, az] of [[7.6, -8.7], [-2.4, -9.0]]) {
       const a = group(root, ax, ST.h, az);
       block(a, 0x2a2a30, 0, 0.55, 0, 1.3, 1.1, 0.7, 0.06);
+      for (const sx of [-0.6, 0.6]) for (const sy of [0.06, 1.04]) block(a, 0x9aa3b0, sx, sy, 0.3, 0.12, 0.12, 0.12, 0.03); // metal corners
       A(a, "grill", 1.1, 0.7, { y: 0.5, z: 0.36 });
       bx(a, 0xd9c08a, 0, 1.0, 0.36, 1.1, 0.12, 0.02, { shadow: false });
       for (let k = 0; k < 5; k++) ball(a, 0xf2c94c, -0.4 + k * 0.2, 1.0, 0.38, 0.03);
@@ -2080,7 +2222,12 @@
     ball(gt, 0x2a2438, 0, 0.62, 0.11, 0.07, { sz: 0.2 });
     bx(gt, 0x8a5a3a, 0, 1.3, 0.06, 0.07, 0.9, 0.04);
     bx(gt, 0x2a2438, 0, 1.8, 0.06, 0.12, 0.2, 0.05);
-    for (const mx of [-2.2, 2.2]) block(root, 0x2a2a30, mx, ST.h + 0.25, ST.z1 - 0.45, 1.0, 0.45, 0.6, 0.06, { rx: -0.45 });
+    // monitor wedges: their whole front is a speaker grille
+    const grilleMat = detailMat("grille", 0x5a5f6e);
+    for (const mx of [-2.2, 2.2]) {
+      block(root, 0x2a2a30, mx, ST.h + 0.25, ST.z1 - 0.45, 1.0, 0.45, 0.6, 0.06, { rx: -0.45 });
+      put(root, uvScaled(new THREE.PlaneGeometry(0.88, 0.36), 3, 1.2), grilleMat, { x: mx, y: ST.h + 0.383, z: ST.z1 - 0.172, rx: -0.45, shadow: false });
+    }
     // bubble machine at the front corner
     block(root, 0x7fe0ff, -8.2, ST.h + 0.2, ST.z1 - 0.5, 0.6, 0.4, 0.5, 0.08);
 
@@ -2095,6 +2242,12 @@
         put(sp, G.torus(r, 0.05), toon(0x55606e), { y, z: 0.66 });
         woofers.push({ x: sx * 10.9, y, z: -6.9 + 0.66, r });
       }
+      // the grilles on the cabinets' fronts (behind the woofers), metal corners and side handles
+      for (const [y, w, h] of [[0.8, 1.45, 1.45], [2.3, 1.25, 1.2], [3.4, 1.05, 0.72]]) {
+        put(sp, uvScaled(new THREE.PlaneGeometry(w, h), w * 2.5, h * 2.5), grilleMat, { y, z: 0.655, shadow: false });
+        for (const cx of [-1, 1]) for (const cy of [-1, 1]) block(sp, 0x9aa3b0, cx * (w / 2 + 0.02), y + cy * (h / 2 + 0.02), 0.6, 0.14, 0.14, 0.14, 0.03);
+      }
+      for (const hx of [-0.81, 0.81]) block(sp, 0x9aa3b0, hx, 1.0, 0, 0.04, 0.12, 0.4, 0.02);
     }
     const woof = dynamic(new THREE.InstancedMesh(new THREE.SphereGeometry(1, 16, 8, 0, TAU, 0, PI / 2).rotateX(PI / 2), toon(0x3c3c46), woofers.length));
     woof.frustumCulled = false;
@@ -2209,8 +2362,9 @@
     for (const sx of [-1.35, 1.35]) cylinder(ds, 0xffffff, sx, 1.9, -0.3, 0.05, 2.6);
     A(ds, "awning2", 3.2, 1.4, { y: 3.1, z: 0.2, rx: -1.1 });
     A(ds, "lemonade", 2.4, 0.64, { y: 0.7, z: 0.51 });
+    const lemonMat = toon(0xfff27a, { transparent: true, opacity: 0.85 }); // (both jugs share it: drawn in one go)
     for (const sx of [-0.7, 0.4]) {
-      cylinder(ds, toon(0xfff27a, { transparent: true, opacity: 0.85 }), sx, 1.6, 0, 0.25, 0.6);
+      cylinder(ds, lemonMat, sx, 1.6, 0, 0.25, 0.6);
       cylinder(ds, 0xffffff, sx, 1.95, 0, 0.26, 0.08);
     }
     for (let i = 0; i < 6; i++) put(ds, G.taper(0.07, 0.055), toon([0xff6b8a, 0x4fb7ff, 0x6fd36a][i % 3]), { x: 0.95 + (i % 3) * 0.17, y: 1.38, z: 0.25 - Math.floor(i / 3) * 0.2, sy: 0.18 });
@@ -2382,6 +2536,28 @@
       bubbles.instanceMatrix.needsUpdate = true;
     });
 
+    // ---------- the sound desk out in the crowd, behind a crowd barrier ----------
+    const FOH = { x: -9.6, z: 7.3 };
+    const foh = group(root, FOH.x, 0, FOH.z, 0.25);
+    block(foh, 0x2a2438, 0, 0.5, 0, 1.8, 1.0, 0.9, 0.05);
+    block(foh, 0x2a2a30, 0, 1.08, 0.05, 1.6, 0.16, 0.7, 0.04, { rx: -0.2 }); // the mixing desk...
+    for (let i = 0; i < 10; i++) block(foh, [0xff6b6b, 0xffd23f, 0x4fb7ff, 0x6fd36a, 0xffffff][i % 5], -0.66 + i * 0.146, 1.17, -0.05 + (i % 3) * 0.06, 0.05, 0.03, 0.08, 0.01, { rx: -0.2 }); // ...its faders
+    block(foh, 0x2a2a30, 0.55, 1.45, -0.25, 0.55, 0.4, 0.05, 0.02, { rx: 0.25 }); // a laptop screen
+    for (const [px, pz] of [[-1.0, -0.6], [1.0, -0.6], [-1.0, 0.6], [1.0, 0.6]]) cylinder(foh, 0xffffff, px, 1.25, pz, 0.04, 2.5, { seg: 6 });
+    block(foh, 0xa58cff, 0, 2.55, 0, 2.3, 0.12, 1.5, 0.05);                       // a little canopy
+    // crowd barriers: steel panels with feet, in front of the sound desk and the speaker stacks
+    const barrier = (x, z, len, ry) => {
+      const b = group(root, x, 0, z, ry);
+      for (const y of [0.2, 1.05]) cylinder(b, 0x9aa3b0, 0, y, 0, 0.035, len, { rz: Math.PI / 2, seg: 6 });
+      for (let k = -len / 2 + 0.1; k <= len / 2 - 0.05; k += 0.14) cylinder(b, 0x9aa3b0, k, 0.62, 0, 0.012, 0.85, { seg: 4 });
+      for (const k of [-len / 2, len / 2]) block(b, 0x9aa3b0, k, 0.03, -0.25, 0.06, 0.06, 0.6, 0.02);
+    };
+    barrier(FOH.x + 0.35, FOH.z - 1.25, 2.6, 0.25);
+    barrier(FOH.x + 1.65, FOH.z - 0.1, 1.6, 0.25 - Math.PI / 2);
+    for (const sx of [-1, 1]) barrier(sx * 10.9, -5.75, 2.0, 0);
+    // the cable snake from the stage to the desk, along the ground
+    cable(root, stageCable, [[-6.2, -5.3], [-7.0, -2.0], [-8.4, 2.6], [-9.0, 6.6]].map(([x, z]) => new THREE.Vector3(x, 0.05, z)), 0.04);
+
     // a few lamp posts, bins and hay bales around the edge
     lampPost(root, -16.8, -1.2, 0xffd08a); lampPost(root, 16.8, -2.6, 0xffd08a);
     for (const [hx, hz, r] of [[-16.6, 9.2, 0.3], [16.9, -0.4, -0.2]]) block(root, 0xe8c060, hx, 0.4, hz, 1.4, 0.8, 0.8, 0.12, { ry: r });
@@ -2389,12 +2565,31 @@
       put(root, G.taper(0.32, 0.28), toon(c), { x: bx0, y: 0.45, z: bz0, sy: 0.9 });
       cylinder(root, 0x2a2438, bx0, 0.93, bz0, 0.34, 0.06);
     }
+    // the grass is worn bare where the crowd stands and queues (soft brown patches),
+    // and soft shadows under things (see blobShadows)
+    const wearBlobs = [
+      ...[-6, -2, 2, 6].map((x) => ({ x, z: 3.0, r: 2.0, sz: 0.9 })), { x: 0, z: 10.6, r: 1.9, sz: 2.4 },
+      { x: FT.x - 2.4, z: FT.z - 0.3, r: 1.5, sz: 2.2 }, { x: DS.x + 2.2, z: DS.z, r: 1.3, sz: 1.8 }, { x: MB.x + 2.0, z: MB.z, r: 1.2, sz: 1.8 },
+      { x: BL.x, z: tierZ[0] - 1.1, r: 2.6, sz: 0.8 }, { x: FOH.x + 0.8, z: FOH.z - 1.9, r: 2.0, sz: 0.9, ry: 0.25 },
+      { x: -10.9, z: -5.0, r: 1.3, sz: 0.6 }, { x: 10.9, z: -5.0, r: 1.3, sz: 0.6 },
+    ].map((b) => Object.assign(b, { color: 0x6a4a20 })); // (brown: drawn below with the shadows)
+    const stageBlobs = [ // (drawn below, with the trees)
+      { x: -10.9, z: -6.9, r: 1.3, sz: 1.1 }, { x: 10.9, z: -6.9, r: 1.3, sz: 1.1 },
+      ...[-PX, PX].map((x) => ({ x, z: PZ0, r: 0.6 })), { x: FT.x, z: FT.z, r: 1.8, sz: 3.6 }, { x: DS.x, z: DS.z, r: 1.0, sz: 1.8 },
+      { x: MB.x, z: MB.z, r: 1.2, sz: 1.9 }, { x: BL.x, z: BL.z, r: 3.1, sz: 1.5 }, { x: BC.x, z: BC.z, r: 0.95, sz: 0.75 },
+      ...benches.map((b) => ({ x: b.x, z: b.z, r: 1.45, sz: 0.65 })), { x: FOH.x, z: FOH.z, r: 1.4, sz: 1.0, ry: -0.25 },
+      { x: -16.8, z: -1.2, r: 0.45 }, { x: 16.8, z: -2.6, r: 0.45 }, { x: -10.6, z: 5.6, r: 0.5 }, { x: 10.1, z: -1.4, r: 0.5 },
+      { x: -16.6, z: 9.2, r: 0.95, sz: 0.6, ry: -0.3 }, { x: 16.9, z: -0.4, r: 0.95, sz: 0.6, ry: 0.2 },
+      ...Object.values(poles).map(([x, z]) => ({ x, z, r: 0.35 })), { x: searchAt[0].x, z: searchAt[0].z, r: 0.7 }, { x: searchAt[1].x, z: searchAt[1].z, r: 0.7 },
+      { x: SCR.x + Math.cos(SCR.ry) * 3.3, z: SCR.z - Math.sin(SCR.ry) * 3.3, r: 0.6 }, { x: SCR.x - Math.cos(SCR.ry) * 3.3, z: SCR.z + Math.sin(SCR.ry) * 3.3, r: 0.6 },
+    ];
 
     // ---------- scenery all around: park trees, hills, the city and a ferris wheel ----------
     // (pushed out to at least 31 away, beyond where the camera can zoom out to: see cameraMaxDistance)
     const near = [[-20, -14, 1.2], [-24, -2, 1.0], [-21, 10, 1.1], [21, -15, 1.1], [24, -3, 1.0], [22, 11, 1.2], [-8, -17, 1.0], [7, -18, 1.1], [-30, -20, 1.3], [30, 18, 1.1], [-15, 20, 1.0], [14, 21, 1.0]]
       .map(([x, z, s]) => { const d = Math.hypot(x, z), k = Math.max(1, 31 / d); return [x * k, z * k, s]; });
     near.forEach(([x, z, s], i) => roundTree(root, x, z, s, i % 4 === 1 ? [0xff9ec7, 0xffc3dc] : [0x5fb84a, 0x86d65e]));
+    blobShadows(root, wearBlobs.concat(stageBlobs, near.map(([x, z, s]) => ({ x, z, r: 1.9 * s }))), 0.26, 0x2a2010);
     for (const [x, z] of [[-18.5, -9], [18.6, 6], [-19, 4], [19.5, -9.5]]) bush(root, x, z, 1, 0x4fbf47, 0xff6fa5);
     farTown(root, {
       seed: 5, trees: [200, 33, 90], hills: [26, 160], dim: 0.95,
@@ -2483,6 +2678,10 @@
         { x: -16.6, z: 9.2, w: 1.5, d: 1.0, rot: -0.3 }, { x: 16.9, z: -0.4, w: 1.5, d: 1.0, rot: 0.2 }, // hay bales
         { x: -10.6, z: 5.6, r: 0.4 }, { x: 10.1, z: -1.4, r: 0.4 },                // bins
         { x: -12.6, z: -9.8, r: 0.2 }, { x: 12.6, z: -10.4, r: 0.2 }, { x: -16.5, z: 6.4, r: 0.2 }, // flag poles
+        { x: FOH.x, z: FOH.z, w: 2.4, d: 1.6, rot: -0.25 },                       // the sound desk
+        { x: FOH.x + 0.35, z: FOH.z - 1.25, w: 2.7, d: 0.6, rot: -0.25 },         // its crowd barriers
+        { x: FOH.x + 1.65, z: FOH.z - 0.1, w: 0.6, d: 1.7, rot: -0.25 },
+        { x: -10.9, z: -5.75, w: 2.1, d: 0.6 }, { x: 10.9, z: -5.75, w: 2.1, d: 0.6 }, // barriers by the speakers
       ].concat(Object.values(poles).map(([x, z]) => ({ x, z, r: 0.22 })))
         .concat(benches.map((b) => ({ x: b.x, z: b.z + 0.05, w: 2.5, d: 1.0 }))),
       spots: [

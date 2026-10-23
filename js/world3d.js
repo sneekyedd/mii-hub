@@ -50,6 +50,14 @@
   function glow(color, intensity) {
     return toon(color, { emissive: color, emissiveIntensity: intensity === undefined ? 0.8 : intensity });
   }
+  // A glow that's shared (for lights that never change: lamp posts, windows...),
+  // so everything glowing in that color is drawn in one go. Don't animate it!
+  const glowCache = new Map();
+  function sharedGlow(color, intensity) {
+    const key = color + ":" + (intensity === undefined ? 0.8 : intensity);
+    if (!glowCache.has(key)) glowCache.set(key, glow(color, intensity));
+    return glowCache.get(key);
+  }
 
   const geoCache = new Map();
   function cachedGeo(key, make) {
@@ -514,7 +522,7 @@
     const l = group(p, x, 0, z);
     cylinder(l, 0x2f4f46, 0, 0.12, 0, 0.22, 0.24);
     cylinder(l, 0x2f4f46, 0, 1.7, 0, 0.07, 3.2);
-    ball(l, glow(color || 0xfff1b8, 0.9), 0, 3.45, 0, 0.32);
+    ball(l, sharedGlow(color || 0xfff1b8, 0.9), 0, 3.45, 0, 0.32); // (all the lamps share one glow: drawn in one go)
     put(l, G.cone(), toon(0x2f4f46), { y: 3.78, s: 0.4, sy: 0.3 });
     return l;
   }
@@ -654,6 +662,71 @@
       }
       for (let i = 0; i < 600; i++) { ctx.fillStyle = r() < 0.5 ? "rgba(80,60,130,0.16)" : "rgba(255,255,255,0.6)"; ctx.fillRect(r() * w, r() * h, 1.5, 1.5); }
     }],
+    panel: [128, 128, [1, 1], (ctx, w, h, r) => { // metal panels: seams, rivets and a little grime
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      for (const [x, y] of [[0, 0], [64, 0], [0, 64], [64, 64]]) { // each panel a touch different
+        ctx.fillStyle = "rgba(120,120,150," + (0.03 + r() * 0.05) + ")"; ctx.fillRect(x, y, 64, 64);
+      }
+      ctx.fillStyle = "rgba(70,70,100,0.4)";
+      for (const k of [0, 63]) { ctx.fillRect(k, 0, 2, h); ctx.fillRect(0, k, w, 2); }
+      ctx.fillStyle = "rgba(255,255,255,0.8)";
+      for (const k of [2, 65]) { ctx.fillRect(k, 0, 1, h); ctx.fillRect(0, k, w, 1); }
+      for (let i = 0; i < 16; i++) for (const [x, y] of [[i * 8 + 4, 6], [i * 8 + 4, 70], [6, i * 8 + 4], [70, i * 8 + 4]]) {
+        ctx.fillStyle = "rgba(80,80,110,0.35)"; ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fillRect(x - 1, y - 1.2, 1, 1);
+      }
+      for (let i = 0; i < 6; i++) { // soft streaks of dust
+        const x = r() * w, g = ctx.createLinearGradient(x, h, x, h * 0.4);
+        g.addColorStop(0, "rgba(110,90,140,0.12)"); g.addColorStop(1, "rgba(110,90,140,0)");
+        ctx.fillStyle = g; ctx.fillRect(x, 0, 6 + r() * 14, h);
+      }
+    }],
+    grille: [64, 64, [1, 1], (ctx, w, h) => { // a speaker's cloth/metal grille: rows of little holes
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = "rgba(0,0,10,0.55)";
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { ctx.beginPath(); ctx.arc(x * 4 + 2 + (y % 2) * 2, y * 4 + 2, 1.15, 0, Math.PI * 2); ctx.fill(); }
+      ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 2; ctx.strokeRect(1, 1, w - 2, h - 2);
+    }],
+    folds: [64, 32, [1, 1], (ctx, w, h) => { // soft folds in a curtain
+      for (let x = 0; x < w; x++) {
+        const v = Math.round(222 + 33 * (0.5 + 0.5 * Math.sin((x / w) * Math.PI * 2 * 5)));
+        ctx.fillStyle = "rgb(" + v + "," + v + "," + v + ")"; ctx.fillRect(x, 0, 1, h);
+      }
+      ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.fillRect(0, 0, w, 3); // (a hem at the top and bottom)
+      ctx.fillStyle = "rgba(0,0,0,0.08)"; ctx.fillRect(0, h - 3, w, 3);
+    }],
+    coir: [128, 64, [1, 1], (ctx, w, h, r) => { // a bristly doormat with a border and a flower
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 700; i++) { ctx.fillStyle = r() < 0.5 ? "rgba(90,50,20,0.2)" : "rgba(255,240,210,0.6)"; ctx.fillRect(r() * w, r() * h, 1, 2); }
+      ctx.strokeStyle = "rgba(60,30,10,0.45)"; ctx.lineWidth = 5; ctx.strokeRect(6, 6, w - 12, h - 12);
+      ctx.fillStyle = "rgba(60,30,10,0.4)";
+      for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.arc(w / 2 + Math.cos(k * 1.05) * 8, h / 2 + Math.sin(k * 1.05) * 8, 5, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = "rgba(255,245,220,0.9)"; ctx.beginPath(); ctx.arc(w / 2, h / 2, 4.5, 0, Math.PI * 2); ctx.fill();
+    }],
+    spine: [32, 64, [1, 1], (ctx, w, h) => { // book spines: bands near the top and bottom, a title strip
+      const g = ctx.createLinearGradient(0, 0, w, 0);
+      g.addColorStop(0, "#d8d8d8"); g.addColorStop(0.35, "#ffffff"); g.addColorStop(1, "#cfcfcf");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(0, 7, w, 4); ctx.fillRect(0, h - 11, w, 4);
+      ctx.fillStyle = "rgba(255,240,190,0.95)"; ctx.fillRect(0, 12, w, 1.5); ctx.fillRect(0, h - 13, w, 1.5);
+      ctx.fillStyle = "rgba(255,250,230,0.8)"; ctx.fillRect(w * 0.3, 24, w * 0.4, 16);
+    }],
+    slabs: [128, 128, [1, 1], (ctx, w, h, r) => { // stone paving slabs with joints (and a crack or two)
+      ctx.fillStyle = "rgba(150,140,125,0.6)"; ctx.fillRect(0, 0, w, h);
+      for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+        const v = 238 + Math.floor(r() * 17);
+        ctx.fillStyle = "rgb(" + v + "," + (v - 2) + "," + (v - 6) + ")"; ctx.fillRect(x * 32 + 1, y * 32 + 1, 30, 30);
+        ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.fillRect(x * 32 + 2, y * 32 + 2, 27, 2);
+        for (let k = 0; k < 10; k++) { ctx.fillStyle = "rgba(120,110,95,0.15)"; ctx.fillRect(x * 32 + 2 + r() * 27, y * 32 + 2 + r() * 27, 1.5, 1.5); }
+      }
+      ctx.strokeStyle = "rgba(110,100,85,0.35)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(40, 34); ctx.lineTo(47, 44); ctx.lineTo(45, 54); ctx.moveTo(98, 100); ctx.lineTo(108, 104); ctx.stroke();
+    }],
+    carpet: [128, 128, [1, 1], (ctx, w, h, r) => { // carpet: fine loops and fluff
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 1400; i++) { ctx.fillStyle = r() < 0.5 ? "rgba(30,40,70,0.13)" : "rgba(255,255,255,0.5)"; ctx.fillRect(r() * w, r() * h, 1, 1); }
+      for (let y = 0; y < h; y += 4) for (let x = (y / 4) % 2 * 2; x < w; x += 4) { ctx.fillStyle = "rgba(30,40,70,0.05)"; ctx.fillRect(x, y, 2, 2); }
+    }],
   };
   function surfaceTexture(kind) {
     if (!surfaceCache.has("tex:" + kind)) {
@@ -669,6 +742,39 @@
     if (!surfaceCache.has(key)) surfaceCache.set(key, toon(color, { map: surfaceTexture(kind) }));
     return surfaceCache.get(key);
   }
+  // Soft plaster for big walls made of boxes of all sizes: the blotches come from
+  // where each bit of the wall is (not from a picture), so they're the same size
+  // everywhere and join up across the boxes. Shared per color (merges like toon()).
+  const PLASTER_NOISE = [
+    "varying vec3 vPlPos;",
+    "float plHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }",
+    "float plNoise(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);",
+    "  return mix(mix(mix(plHash(i), plHash(i + vec3(1, 0, 0)), f.x), mix(plHash(i + vec3(0, 1, 0)), plHash(i + vec3(1, 1, 0)), f.x), f.y),",
+    "             mix(mix(plHash(i + vec3(0, 0, 1)), plHash(i + vec3(1, 0, 1)), f.x), mix(plHash(i + vec3(0, 1, 1)), plHash(i + vec3(1, 1, 1)), f.x), f.y), f.z); }",
+  ].join("\n");
+  function plasterMat(color) {
+    const key = "plasterW:" + color;
+    if (!surfaceCache.has(key)) {
+      const mat = new THREE.MeshToonMaterial({ color, gradientMap: gradient });
+      mat.onBeforeCompile = (sh) => {
+        sh.vertexShader = "varying vec3 vPlPos;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvPlPos = position;");
+        sh.fragmentShader = PLASTER_NOISE + "\n" + sh.fragmentShader.replace("#include <color_fragment>", [
+          "#include <color_fragment>",
+          "float pl = plNoise(vPlPos * 0.9) * 0.6 + plNoise(vPlPos * 3.7) * 0.3 + plNoise(vPlPos * 17.0) * 0.1;",
+          "diffuseColor.rgb *= 0.92 + 0.11 * pl;",
+        ].join("\n"));
+      };
+      mat.customProgramCacheKey = () => "plasterW";
+      surfaceCache.set(key, mat);
+    }
+    return surfaceCache.get(key);
+  }
+  // A copy of a shape whose picture repeats su x sv times (for a surface on something big).
+  function uvScaled(geo, su, sv) {
+    const g = geo.clone(), uv = g.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
+    return g;
+  }
 
   // Soft round shadows on the ground under things (where the sun's shadow doesn't
   // darken much): makes trees, benches and posts look like they stand on the ground.
@@ -681,11 +787,45 @@
       ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
     });
     const geo = cachedGeo("blobPlane", () => new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2));
-    const mat = new THREE.MeshBasicMaterial({ color: color === undefined ? 0x1d2b10 : color, alphaMap: blobTex, transparent: true, opacity: opacity || 0.26, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-    const m = scatter(parent, geo, mat, items.map((it) => ({ x: it.x, y: it.y || 0.03, z: it.z, sx: it.sx || it.r, sy: 1, sz: it.sz || it.r, ry: it.ry || 0 })), false);
+    // (an item can have its own color, e.g. worn grass among the shadows: still one draw)
+    const base = color === undefined ? 0x1d2b10 : color, tinted = items.some((it) => it.color !== undefined);
+    const mat = new THREE.MeshBasicMaterial({ color: tinted ? 0xffffff : base, alphaMap: blobTex, transparent: true, opacity: opacity || 0.26, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const m = scatter(parent, geo, mat, items.map((it) => ({ x: it.x, y: it.y || 0.03, z: it.z, sx: it.sx || it.r, sy: 1, sz: it.sz || it.r, ry: it.ry || 0, color: tinted ? (it.color === undefined ? base : it.color) : undefined })), false);
     m.receiveShadow = false;
+    m.frustumCulled = false; // (three.js would only check where the first copy is)
     m.renderOrder = -1; // (before other see-through things)
     return m;
+  }
+
+  // Marks a little extra (an InstancedMesh of pebbles, desk clutter, worn grass...) as
+  // optional: at the Low graphics quality it's hidden (see hub3d.js qualityFor).
+  // (Only for things that aren't merged: a merged shape forgets this.)
+  function optional(obj) { obj.userData.qDetail = true; return obj; }
+
+  // Little glowing lights (on a moon base, a server, a stage...) drawn in one go.
+  // items = [{ x, y, z, s?, color }]. Returns the InstancedMesh (its colors can be
+  // changed to make them blink: m.setColorAt(i, c); m.instanceColor.needsUpdate = true).
+  function lightDots(parent, items, size) {
+    const m = new THREE.InstancedMesh(G.tinySphere(), new THREE.MeshBasicMaterial({ toneMapped: false }), items.length);
+    const tmp = new THREE.Object3D(), col = new THREE.Color();
+    items.forEach((it, i) => {
+      tmp.position.set(it.x, it.y, it.z);
+      tmp.scale.setScalar(it.s || size || 0.05);
+      tmp.updateMatrix();
+      m.setMatrixAt(i, tmp.matrix);
+      m.setColorAt(i, col.set(it.color === undefined ? 0xffffff : it.color));
+    });
+    m.castShadow = false; m.receiveShadow = false;
+    m.frustumCulled = false; // (three.js would only check where the first copy is)
+    parent.add(m);
+    return dynamic(m);
+  }
+  // Copies of a small prop scattered about (see scatter), marked optional and always
+  // drawn (so the copies don't vanish when the middle of the place is off screen).
+  function extras(parent, geo, mat, items, castShadow) {
+    const m = scatter(parent, geo, mat, items, castShadow);
+    m.frustumCulled = false;
+    return optional(m);
   }
 
   // =====================================================================
@@ -1523,29 +1663,90 @@
   // =====================================================================
   // OFFICE — a cozy, colorful workplace
   // =====================================================================
-  function screenTexture(kind) {
-    return canvasTexture(128, 80, (ctx, w, h) => {
-      ctx.fillStyle = "#eaf6ff"; ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = "#4a90e2"; ctx.fillRect(0, 0, w, 10);
-      if (kind === 0) { // bar chart
-        const bars = [30, 50, 38, 62, 45];
-        bars.forEach((b, i) => { ctx.fillStyle = ["#ff7a59", "#ffc94a", "#5cc84a", "#4a90e2", "#b58cff"][i]; ctx.fillRect(12 + i * 22, h - 8 - b, 14, b); });
-      } else if (kind === 1) { // spreadsheet
-        ctx.strokeStyle = "#b9d3ea";
-        for (let y = 14; y < h; y += 9) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
-        for (let x = 0; x < w; x += 26) { ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, h); ctx.stroke(); }
-        ctx.fillStyle = "#5cc84a"; ctx.fillRect(27, 32, 25, 8);
-      } else if (kind === 2) { // video call
-        ctx.fillStyle = "#ffd3ad"; ctx.beginPath(); ctx.arc(40, 45, 16, 0, TAU); ctx.fill();
-        ctx.fillStyle = "#ffb669"; ctx.beginPath(); ctx.arc(90, 45, 16, 0, TAU); ctx.fill();
-        ctx.fillStyle = "#333"; ctx.fillRect(34, 40, 3, 3); ctx.fillRect(43, 40, 3, 3); ctx.fillRect(84, 40, 3, 3); ctx.fillRect(93, 40, 3, 3);
-      } else { // email
-        for (let y = 16; y < h - 4; y += 12) {
-          ctx.fillStyle = "#ffcf5a"; ctx.fillRect(6, y, 8, 8);
-          ctx.fillStyle = "#9db4c9"; ctx.fillRect(18, y + 2, 60 + (y % 20), 4);
+  // What's on the office screens: all of them share ONE picture (8 little screens
+  // side by side), so every monitor in the office is drawn in a single go.
+  //   0 bar chart, 1 spreadsheet, 2 video call, 3 email, 4 code, 5 ticket queue,
+  //   6 network map, 7 a desktop with icons
+  function screenSheet() {
+    const CW = 128, CH = 80;
+    const tex = canvasTexture(CW * 4, CH * 2, (ctx) => {
+      const r = seeded(23);
+      for (let kind = 0; kind < 8; kind++) {
+        ctx.save();
+        ctx.translate((kind % 4) * CW, Math.floor(kind / 4) * CH);
+        ctx.beginPath(); ctx.rect(0, 0, CW, CH); ctx.clip();
+        const w = CW, h = CH;
+        const dark = kind === 4 || kind === 6;
+        ctx.fillStyle = dark ? "#1e2433" : "#eaf6ff"; ctx.fillRect(0, 0, w, h);
+        // a window title bar with the three little buttons
+        ctx.fillStyle = dark ? "#2d3548" : "#4a90e2"; ctx.fillRect(0, 0, w, 10);
+        ["#ff6b6b", "#ffcf5a", "#5cc84a"].forEach((c, i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(6 + i * 7, 5, 2.2, 0, TAU); ctx.fill(); });
+        if (kind === 0) { // bar chart with a trend line
+          const bars = [30, 50, 38, 62, 45];
+          bars.forEach((b, i) => { ctx.fillStyle = ["#ff7a59", "#ffc94a", "#5cc84a", "#4a90e2", "#b58cff"][i]; ctx.fillRect(12 + i * 22, h - 8 - b, 14, b); });
+          ctx.strokeStyle = "#24283b"; ctx.lineWidth = 2; ctx.beginPath();
+          bars.forEach((b, i) => (i ? ctx.lineTo(19 + i * 22, h - 14 - b) : ctx.moveTo(19, h - 14 - b))); ctx.stroke();
+        } else if (kind === 1) { // spreadsheet
+          ctx.strokeStyle = "#b9d3ea";
+          for (let y = 14; y < h; y += 9) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+          for (let x = 0; x < w; x += 26) { ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, h); ctx.stroke(); }
+          ctx.fillStyle = "#9db4c9";
+          for (let y = 16; y < h; y += 9) for (let x = 3; x < w; x += 26) ctx.fillRect(x, y, 6 + r() * 14, 3);
+          ctx.fillStyle = "#5cc84a"; ctx.fillRect(27, 32, 25, 8);
+        } else if (kind === 2) { // video call
+          ctx.fillStyle = "#bfe0ff"; ctx.fillRect(4, 14, 58, 52); ctx.fillStyle = "#ffe0b8"; ctx.fillRect(66, 14, 58, 52);
+          ctx.fillStyle = "#ffd3ad"; ctx.beginPath(); ctx.arc(33, 42, 14, 0, TAU); ctx.fill();
+          ctx.fillStyle = "#ffb669"; ctx.beginPath(); ctx.arc(95, 42, 14, 0, TAU); ctx.fill();
+          ctx.fillStyle = "#5a3a22"; ctx.beginPath(); ctx.arc(33, 37, 14.5, Math.PI, TAU); ctx.fill();
+          ctx.fillStyle = "#333"; ctx.fillRect(28, 42, 3, 3); ctx.fillRect(36, 42, 3, 3); ctx.fillRect(90, 40, 3, 3); ctx.fillRect(98, 40, 3, 3);
+          ctx.fillStyle = "#e2445c"; ctx.beginPath(); ctx.arc(64, 73, 4, 0, TAU); ctx.fill();
+        } else if (kind === 3) { // email
+          for (let y = 16; y < h - 4; y += 12) {
+            ctx.fillStyle = "#ffcf5a"; ctx.fillRect(6, y, 8, 8);
+            ctx.fillStyle = "#9db4c9"; ctx.fillRect(18, y + 2, 60 + (y % 20), 4);
+            ctx.fillStyle = "#c9d8e6"; ctx.fillRect(18, y + 7, 40, 2);
+          }
+        } else if (kind === 4) { // code, with line numbers and colored words
+          const cols = ["#ff8ad8", "#7fe0ff", "#ffcf5a", "#a8ff8a", "#ffffff"];
+          for (let line = 0; line < 8; line++) {
+            const y = 15 + line * 8;
+            ctx.fillStyle = "#5a6480"; ctx.fillRect(3, y, 6, 3);
+            let x = 14 + (line % 3) * 6;
+            for (let k = 0; k < 4 && x < w - 8; k++) { const ww = 6 + r() * 20; ctx.fillStyle = cols[(line + k) % 5]; ctx.fillRect(x, y, ww, 3); x += ww + 4; }
+          }
+          ctx.fillStyle = "#ffffff"; ctx.fillRect(40, 70, 2, 6); // (the cursor)
+        } else if (kind === 5) { // the ticket queue: rows with colored status tags
+          ctx.fillStyle = "#24283b"; ctx.font = "bold 9px sans-serif"; ctx.fillText("TICKETS", 40, 8.5);
+          for (let row = 0; row < 6; row++) {
+            const y = 14 + row * 10.5;
+            ctx.fillStyle = row % 2 ? "#ffffff" : "#dceefc"; ctx.fillRect(2, y, w - 4, 9);
+            ctx.fillStyle = ["#e2445c", "#ffb02e", "#5cc84a"][row % 3]; ctx.fillRect(4, y + 2, 14, 5);
+            ctx.fillStyle = "#7d8fa6"; ctx.fillRect(22, y + 3, 40 + (row * 13) % 40, 3);
+          }
+        } else if (kind === 6) { // a network map with a red link
+          const nodes = [[64, 24], [24, 48], [64, 60], [104, 48], [40, 72], [88, 72]];
+          ctx.strokeStyle = "#5cc8ff"; ctx.lineWidth = 2;
+          for (const [a, b] of [[0, 1], [0, 2], [0, 3], [2, 4], [2, 5]]) { ctx.strokeStyle = a === 0 && b === 3 ? "#ff5a64" : "#5cc8ff"; ctx.beginPath(); ctx.moveTo(...nodes[a]); ctx.lineTo(...nodes[b]); ctx.stroke(); }
+          nodes.forEach(([x, y], i) => { ctx.fillStyle = i === 3 ? "#ff5a64" : "#a8ff8a"; ctx.beginPath(); ctx.arc(x, y, 5, 0, TAU); ctx.fill(); });
+        } else { // a desktop: wallpaper and icons
+          const g = ctx.createLinearGradient(0, 10, 0, h);
+          g.addColorStop(0, "#8fd3ff"); g.addColorStop(1, "#b58cff");
+          ctx.fillStyle = g; ctx.fillRect(0, 10, w, h);
+          ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(92, 50, 18, 0, TAU); ctx.fill();
+          for (let i = 0; i < 4; i++) { ctx.fillStyle = ["#ffcf5a", "#5cc84a", "#ff7a59", "#ffffff"][i]; ctx.fillRect(6, 15 + i * 15, 10, 10); }
+          ctx.fillStyle = "rgba(20,30,50,0.6)"; ctx.fillRect(0, h - 8, w, 8);
         }
+        ctx.restore();
       }
     });
+    const mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+    // a flat screen w x h showing one of the 8 pictures
+    const plane = (w, h, kind) => {
+      const k = ((kind % 8) + 8) % 8, g = new THREE.PlaneGeometry(w, h), uv = g.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, ((k % 4) + uv.getX(i)) / 4, (1 - Math.floor(k / 4) + uv.getY(i)) / 2);
+      return g;
+    };
+    return { mat, plane };
   }
 
   function officeChair(p, x, z, ry, color) {
@@ -1561,9 +1762,10 @@
     return c;
   }
 
-  function deskPod(p, x, z, colors, kinds) {
+  function deskPod(p, x, z, colors, kinds, shared) {
     // Two tech desks side by side with a low divider. The techs sit behind the
     // desks facing the camera, so we can see their faces.
+    // shared = { screens, led } (one material each for the whole office: see screenSheet)
     const d = group(p, x, 0, z);
     const wood = toon(0xf0d3a8), legs = toon(0x8f96a3);
     block(d, wood, 0, 1.0, 0, 3.0, 0.1, 1.3, 0.04);
@@ -1576,7 +1778,9 @@
       // two monitors each, facing the tech (towards -z)
       for (const mx of [-0.33, 0.33]) {
         block(d, 0x2f3542, sx + mx, 1.6, 0.25, 0.62, 0.42, 0.05, 0.03, { ry: mx > 0 ? -0.18 : 0.18 });
-        put(d, new THREE.PlaneGeometry(0.56, 0.36), new THREE.MeshBasicMaterial({ map: screenTexture(kinds[i] + (mx > 0 ? 1 : 0)), toneMapped: false }), { x: sx + mx, y: 1.6, z: 0.222, ry: Math.PI + (mx > 0 ? -0.18 : 0.18), shadow: false });
+        put(d, shared.screens.plane(0.56, 0.36, kinds[i] * 2 + (mx > 0 ? 1 : 0)), shared.screens.mat, { x: sx + mx, y: 1.6, z: 0.222, ry: Math.PI + (mx > 0 ? -0.18 : 0.18), shadow: false });
+        // a sticker on the back of the monitor (the side we see) and a sticky note on its edge
+        block(d, [0xff9ec7, 0x9fe3ff, 0xfff176, 0xc5f08a][(i * 2 + (mx > 0 ? 1 : 0) + kinds[i]) % 4], sx + mx + (mx > 0 ? 0.12 : -0.12), 1.7, 0.278, 0.1, 0.1, 0.01, 0.01, { ry: mx > 0 ? -0.18 : 0.18 });
       }
       block(d, 0x2f3542, sx, 1.2, 0.27, 0.1, 0.3, 0.1, 0.03);
       block(d, 0x2f3542, sx, 1.06, 0.27, 0.45, 0.03, 0.22, 0.02);
@@ -1584,11 +1788,28 @@
       ball(d, 0xf4f4f4, sx + 0.45, 1.08, -0.2, 0.06, { sy: 0.5, sz: 1.4 }); // mouse
       cylinder(d, colors[1], sx - 0.55, 1.15, -0.05, 0.07, 0.18); // mug
       block(d, 0x3a3f4a, sx + 0.5, 0.45, 0.3, 0.32, 0.8, 0.7, 0.04); // PC tower under the desk
-      ball(d, glow(0x5cc8ff, 1), sx + 0.5, 0.75, -0.06, 0.03);
+      ball(d, shared.led, sx + 0.5, 0.75, -0.06, 0.03);
+      cylinder(d, 0x222222, sx + 0.5, 0.95, 0.58, 0.025, 0.25, { seg: 5, shadow: false }); // its cables up to the desk
+      // desk clutter (in colors the office already uses, so it all joins up into the same few shapes)
+      const cx = i === 0 ? -1.3 : 1.3;
+      block(d, 0xffffff, cx, 1.075, -0.42, 0.3, 0.03, 0.22, 0.005, { ry: i ? 0.2 : -0.15 });  // a stack of papers
+      block(d, 0xffffff, cx + 0.02, 1.1, -0.4, 0.3, 0.02, 0.22, 0.005, { ry: i ? 0.05 : 0.1 });
+      cylinder(d, 0x3a3f4a, i ? 1.38 : -1.38, 1.13, 0.4, 0.05, 0.14, { seg: 10 });            // a pen pot...
+      for (let k = 0; k < 3; k++) cylinder(d, [0xff5a64, 0x4a90e2, 0x222222][k], (i ? 1.38 : -1.38) + (k - 1) * 0.022, 1.24, 0.4 + (k % 2) * 0.015, 0.008, 0.16, { rz: (k - 1) * 0.25, seg: 4 }); // ...with pens
+      if (i === 1) { // a photo frame
+        block(d, 0xf0d3a8, 1.36, 1.19, 0.18, 0.2, 0.24, 0.03, 0.01, { ry: Math.PI + 0.35, rx: 0.12 });
+        block(d, 0xbfe6ff, 1.36, 1.19, 0.165, 0.15, 0.18, 0.01, 0.005, { ry: Math.PI + 0.35, rx: 0.12, shadow: false });
+      }
       // headset
       put(d, G.torus(0.12, 0.02), toon(0x222222), { x: sx - 0.25, y: 1.17, z: 0.05, rx: Math.PI / 2 });
       officeChair(d, sx, -1.05, 0, colors[1]);
     }
+    // a little leafy plant on the desk, peeking over the divider
+    cylinder(d, 0xffffff, 0, 1.15, 0.36, 0.11, 0.2);
+    for (let k = 0; k < 5; k++) put(d, G.sphere(), toon(k % 2 ? 0x46b04a : 0x5cc84a), { x: Math.cos(k * 1.26) * 0.08, y: 1.42 + (k % 2) * 0.08, z: 0.36 + Math.sin(k * 1.26) * 0.08, sx: 0.07, sy: 0.24, sz: 0.07, rx: Math.sin(k * 1.26) * 0.5, rz: -Math.cos(k * 1.26) * 0.5 });
+    // a power pole: the desks' cables go up to the cable tray overhead
+    cylinder(d, 0xc9d2dc, 0, 5.1, 0.62, 0.07, 7.9, { seg: 10 });
+    for (let k = 0; k < 3; k++) put(d, G.torus(0.075, 0.015), toon(0x8f96a3), { y: 2.2 + k * 2.4, z: 0.62, rx: Math.PI / 2 });
     // the classic debugging rubber duck
     ball(d, 0xffd23f, 1.25, 1.13, 0.0, 0.09, { sx: 1.2 });
     ball(d, 0xffd23f, 1.31, 1.25, 0.0, 0.06);
@@ -1814,6 +2035,10 @@
       }
       ctx.strokeStyle = "rgba(40,50,70,0.25)"; ctx.lineWidth = 2;
       ctx.strokeRect(0, 0, 128, 128); ctx.strokeRect(128, 0, 128, 128); ctx.strokeRect(0, 128, 128, 128); ctx.strokeRect(128, 128, 128, 128);
+      // fine loops and fluff in the pile (the shared carpet details)
+      ctx.globalCompositeOperation = "multiply";
+      for (const [x, y] of [[0, 0], [128, 0], [0, 128], [128, 128]]) ctx.drawImage(surfaceTexture("carpet").image, x, y, 128, 128);
+      ctx.globalCompositeOperation = "source-over";
     }, [7.3, 4.5]);
     // the carpet covers the room exactly (outside is a long way down!)
     put(root, new THREE.PlaneGeometry(36.5, 22.5), toon(0xffffff, { map: carpet }), { rx: -Math.PI / 2, shadow: false });
@@ -1836,6 +2061,7 @@
     const WALL_H = 10;
     const backWall = group(root), leftWall = group(root), rightWall = group(root), frontWall = group(root);
     const wallC = 0xdce8f2, panelC = 0x5f7da3;
+    const wallMat = plasterMat(wallC); // (soft plaster: see plasterMat)
     // the glass is nearly clear, with a couple of shiny streaks
     const glassTex = canvasTexture(128, 128, (ctx, w, h) => {
       ctx.fillStyle = "rgba(200,235,255,0.08)"; ctx.fillRect(0, 0, w, h);
@@ -1868,7 +2094,7 @@
       const panelD = face + inward * 0.05, trimD = face + inward * 0.11;
       let u = from;
       const solid = (u0, u1) => {
-        piece(wallC, u0, u1, 0, WALL_H, core, 0.5, 0.02);
+        piece(wallMat, u0, u1, 0, WALL_H, core, 0.5, 0.02);
         const p0 = Math.max(u0, from + pad), p1 = Math.min(u1, to - pad);
         piece(panelC, p0, p1, 0, 2.2, panelD, 0.12, 0.02);
         piece(0xffffff, p0, p1, 2.18, 2.32, trimD, 0.1, 0.03);
@@ -1877,13 +2103,13 @@
       for (const op of ops) {
         const a = op.c - op.w / 2, b = op.c + op.w / 2;
         solid(u, a);
-        piece(wallC, a, b, op.y1, WALL_H, core, 0.5, 0.02); // above the opening
+        piece(wallMat, a, b, op.y1, WALL_H, core, 0.5, 0.02); // above the opening
         if (op.door) {
           // white door frame
           piece(0xffffff, a, a + 0.2, 0, op.y1, core, 0.62, 0.03);
           piece(0xffffff, b - 0.2, b, 0, op.y1, core, 0.62, 0.03);
         } else {
-          piece(wallC, a, b, 0, op.y0, core, 0.5, 0.02); // below the window
+          piece(wallMat, a, b, 0, op.y0, core, 0.5, 0.02); // below the window
           if (op.y0 > 2.2) {
             piece(panelC, a, b, 0, 2.2, panelD, 0.12, 0.02);
             piece(0xffffff, a, b, 2.18, 2.32, trimD, 0.1, 0.03);
@@ -1924,7 +2150,25 @@
     for (const op of backWindows.slice(0, 2)) {
       cylinder(backWall, 0xffffff, op.c + 2, 1.15, W.back + 0.3, 0.16, 0.3);
       ball(backWall, 0x5cc84a, op.c + 2, 1.45, W.back + 0.3, 0.25);
+      ball(backWall, 0x46b04a, op.c + 2.15, 1.62, W.back + 0.32, 0.14);
     }
+    // blinds half way down the big windows: white slats on a headrail, with a pull cord
+    // (the same white as the frames, so they're drawn together with them)
+    const blinds = (wall, along, at, op, inward, drop) => {
+      const a = op.c - op.w / 2 + 0.1, w = op.w - 0.2;
+      const slat = (y, h, tilt) => along === "x"
+        ? block(wall, 0xffffff, op.c, y, at + inward * 0.33, w, h, 0.05, 0.01, { rx: tilt, shadow: false })
+        : block(wall, 0xffffff, at + inward * 0.33, y, op.c, 0.05, h, w, 0.01, { rz: tilt, shadow: false });
+      slat(op.y1 - 0.1, 0.14, 0);
+      for (let y = op.y1 - 0.26; y > op.y1 - drop; y -= 0.13) slat(y, 0.11, 0.35);
+      slat(op.y1 - drop - 0.02, 0.06, 0); // the bottom bar
+      const cordAt = a + w - 0.15;
+      if (along === "x") cylinder(wall, 0xffffff, cordAt, op.y1 - drop - 0.6, at + inward * 0.37, 0.012, 1.2, { seg: 4, shadow: false });
+      else cylinder(wall, 0xffffff, at + inward * 0.37, op.y1 - drop - 0.6, cordAt, 0.012, 1.2, { seg: 4, shadow: false });
+    };
+    blinds(backWall, "x", W.back - 0.25, backWindows[0], 1, 2.1);
+    blinds(backWall, "x", W.back - 0.25, backWindows[1], 1, 1.4);
+    blinds(leftWall, "z", -W.side, leftWindows[0], 1, 1.8);
     cylinder(leftWall, 0xff9ec7, -W.side + 0.55, 1.15, 7.4, 0.16, 0.3);
     ball(leftWall, 0x5cc84a, -W.side + 0.55, 1.45, 7.4, 0.25);
 
@@ -1970,7 +2214,16 @@
       { x: 0, z: -4.5, colors: [0xffcf5a, 0x5cc84a], kinds: [2, 3] },
       { x: 8, z: -4.5, colors: [0xb58cff, 0x4a90e2], kinds: [1, 0] },
     ];
-    pods.forEach((p) => deskPod(root, p.x, p.z, p.colors, p.kinds));
+    // (every screen shares one picture, and every PC its power light: see screenSheet)
+    const shared = { screens: screenSheet(), led: glow(0x5cc8ff, 1) };
+    pods.forEach((p) => deskPod(root, p.x, p.z, p.colors, p.kinds, shared));
+    // a cable tray hanging over the desks: a ladder of rails and rungs full of cables
+    const TRAY = { y: 8.9, z: -3.88, x0: -10.6, x1: 10.6 };
+    const trayLen = TRAY.x1 - TRAY.x0, trayX = (TRAY.x0 + TRAY.x1) / 2;
+    for (const dz of [-0.28, 0.28]) block(root, 0x8f96a3, trayX, TRAY.y, TRAY.z + dz, trayLen, 0.14, 0.04, 0.01);
+    for (let x = TRAY.x0 + 0.3; x < TRAY.x1; x += 0.6) block(root, 0x8f96a3, x, TRAY.y - 0.06, TRAY.z, 0.05, 0.03, 0.56, 0.01);
+    for (let x = TRAY.x0 + 1.5; x < TRAY.x1; x += 4) for (const dz of [-0.28, 0.28]) cylinder(root, 0x8f96a3, x, TRAY.y + 0.6, TRAY.z + dz, 0.015, 1.2, { seg: 4 });
+    for (let i = 0; i < 4; i++) cylinder(root, [0x4a90e2, 0xff5a64, 0x5cc84a, 0xffcf3a][i], trayX, TRAY.y - 0.01 + (i % 2) * 0.03, TRAY.z - 0.18 + i * 0.12, 0.035, trayLen - 0.1, { rz: Math.PI / 2, shadow: false, seg: 6 });
 
     // ===== the help desk (front left) =====
     const H = { x: -11.5, z: 3.2 };
@@ -1986,7 +2239,7 @@
     put(desk, new THREE.PlaneGeometry(2.6, 0.5), toon(0xffffff, { map: deskSign }), { y: 0.62, z: 0.5, shadow: false });
     for (const sx of [-1.4, 1.4]) {
       block(desk, 0x2f3542, sx, 1.55, -0.1, 0.8, 0.5, 0.05, 0.03);                       // monitor (faces the agent)
-      put(desk, new THREE.PlaneGeometry(0.72, 0.42), new THREE.MeshBasicMaterial({ map: screenTexture(3), toneMapped: false }), { x: sx, y: 1.55, z: -0.13, ry: Math.PI, shadow: false });
+      put(desk, shared.screens.plane(0.72, 0.42, sx < 0 ? 5 : 3), shared.screens.mat, { x: sx, y: 1.55, z: -0.13, ry: Math.PI, shadow: false });
       block(desk, 0x2f3542, sx, 1.25, -0.08, 0.1, 0.25, 0.1, 0.03);
       block(desk, 0xf4f4f4, sx, 1.22, -0.35, 0.6, 0.03, 0.2, 0.02);
       officeChair(desk, sx, -1.15, 0, 0x3a78c8);
@@ -2121,7 +2374,7 @@
     const lap = group(bench, 0.6, 1.08, 0.1);
     block(lap, 0xc9d2dc, 0, 0.02, 0, 0.8, 0.04, 0.55, 0.02);
     block(lap, 0xc9d2dc, 0, 0.3, -0.27, 0.8, 0.55, 0.03, 0.02, { rx: -0.25 });
-    put(lap, new THREE.PlaneGeometry(0.7, 0.45), new THREE.MeshBasicMaterial({ map: screenTexture(1), toneMapped: false }), { y: 0.3, z: -0.25, rx: -0.25, shadow: false });
+    put(lap, shared.screens.plane(0.7, 0.45, 4), shared.screens.mat, { y: 0.3, z: -0.25, rx: -0.25, shadow: false });
     // toolbox and screwdrivers
     block(bench, 0xe23b3b, 1.7, 1.25, -0.2, 0.7, 0.35, 0.35, 0.05);
     for (let i = 0; i < 3; i++) {
@@ -2277,16 +2530,42 @@
     cylinder(cafe, 0x8f96a3, 0, 0.03, 0, 0.35, 0.05);
     cylinder(cafe, 0xff7a59, 0.15, 1.08, 0.1, 0.07, 0.14);
 
-    // plants in the corners
+    // plants in the corners: a white pot with a colored band, soil and long leaves
     const plantAt = (x, z, s) => {
       const pl = group(root, x, 0, z, 0, s);
       cylinder(pl, 0xffffff, 0, 0.45, 0, 0.45, 0.9);
+      put(pl, G.torus(0.45, 0.04), toon(0x7fc4ec), { y: 0.78, rx: Math.PI / 2 });
+      disc(pl, toon(0x6b4a2a), 0, 0.91, 0, 0.4);
       for (let i = 0; i < 9; i++) {
         const a = (i / 9) * TAU;
         put(pl, G.sphere(), toon(i % 2 ? 0x46b04a : 0x5cc84a), { x: Math.cos(a) * 0.4, y: 1.7 + (i % 3) * 0.3, z: Math.sin(a) * 0.4, sx: 0.22, sy: 0.85, sz: 0.22, rx: Math.sin(a) * 0.6, rz: -Math.cos(a) * 0.6 });
       }
     };
     plantAt(-16.6, 9.6, 1); plantAt(-7.6, 8.6, 0.8); plantAt(16.6, 9.8, 0.9); plantAt(-3.4, -9.9, 0.8);
+    // a tall snake plant by the printer and a coat stand by the door
+    const SP = { x: 7.6, z: -10.0 };
+    put(root, G.taper(0.32, 0.26), toon(0xff7a59), { x: SP.x, y: 0.35, z: SP.z, sy: 0.7 });
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * TAU;
+      put(root, G.cone(6), toon(i % 2 ? 0x3f8f3a : 0x5cb85c), { x: SP.x + Math.cos(a) * 0.12, y: 1.25 + (i % 3) * 0.15, z: SP.z + Math.sin(a) * 0.12, sx: 0.09, sy: 1.3 + (i % 3) * 0.3, sz: 0.04, ry: -a, rx: Math.sin(a) * 0.12, rz: -Math.cos(a) * 0.12 });
+    }
+    const CS = { x: -2.5, z: 10.1 };
+    const cs = group(root, CS.x, 0, CS.z);
+    cylinder(cs, 0x8a5a3a, 0, 1.0, 0, 0.05, 2.0);
+    for (let i = 0; i < 3; i++) block(cs, 0x8a5a3a, Math.cos(i * 2.1) * 0.18, 0.06, Math.sin(i * 2.1) * 0.18, 0.4, 0.05, 0.06, 0.02, { ry: -i * 2.1 });
+    for (let i = 0; i < 4; i++) cylinder(cs, 0x8a5a3a, Math.cos(i * 1.57) * 0.12, 1.9, Math.sin(i * 1.57) * 0.12, 0.02, 0.3, { rz: Math.cos(i * 1.57) * 0.7, rx: -Math.sin(i * 1.57) * 0.7, seg: 5 });
+    block(cs, 0xff7a59, 0.16, 1.45, 0.05, 0.36, 0.8, 0.14, 0.07, { rz: 0.08 });   // a jacket...
+    ball(cs, 0x4a90e2, -0.14, 1.82, -0.06, 0.13, { sy: 0.7 });                     // ...and a cap
+    // soft shadows on the carpet under the furniture (see blobShadows)
+    blobShadows(root, [
+      ...pods.map((p) => ({ x: p.x, z: p.z - 0.4, r: 1.9, sz: 1.2 })),
+      { x: H.x, z: H.z - 0.4, r: 3.4, sz: 1.3 }, { x: WA.x, z: WA.z, r: 2.7, sz: 0.7 }, { x: WA.x + 3.5, z: WA.z, r: 0.8 },
+      { x: SR.x, z: SR.z, r: 4.0, sz: 1.0 }, { x: RB.x - 0.1, z: RB.z, r: 0.9, sz: 2.7 }, { x: shelfX + 0.2, z: -7.4, r: 0.8, sz: 2.7 },
+      { x: -12.6, z: -8.6, r: 1.1, sz: 0.7, ry: 0.3 }, { x: 4, z: W.back + 1.0, r: 0.9, sz: 0.7 }, { x: 6.05, z: W.back + 0.9, r: 1.0, sz: 0.5 },
+      { x: K.x, z: K.z, r: 2.1, sz: 0.7 }, { x: K.x + 2.6, z: K.z + 0.1, r: 0.55 }, { x: 16.8, z: 6.2, r: 0.7, sz: 1.1 }, { x: 9.2, z: 5.2, r: 0.6 },
+      { x: -16.6, z: 9.6, r: 0.6 }, { x: -7.6, z: 8.6, r: 0.5 }, { x: 16.6, z: 9.8, r: 0.55 }, { x: -3.4, z: -9.9, r: 0.5 },
+      { x: SP.x, z: SP.z, r: 0.45 }, { x: CS.x, z: CS.z, r: 0.35 }, { x: -4.2, z: 1.0, r: 1.4, sz: 0.5, ry: -0.15 }, { x: -15.6, z: -3.8, r: 0.75 },
+    ], 0.2, 0x1a2440);
 
     const walls = [
       { group: backWall, axis: "z", at: W.back, outside: -1 },
@@ -2355,6 +2634,7 @@
           { x: 16.8, z: 6.2, w: 1.0, d: 1.9 },                        // vending machine
           { x: 9.2, z: 5.2, r: 0.7 },                                 // café table
           { x: -16.6, z: 9.6, r: 0.95 }, { x: -7.6, z: 8.6, r: 0.8 }, { x: 16.6, z: 9.8, r: 0.85 }, { x: -3.4, z: -9.9, r: 0.8 },
+          { x: SP.x, z: SP.z, r: 0.45 }, { x: CS.x, z: CS.z, r: 0.35 },                          // snake plant, coat stand
         ]),
       spots: deskSpots.concat(agentSpots, waitSeats, [
         { x: H.x - 1.0, z: H.z + 1.5, yaw: Math.PI, emoji: "😩", activity: "asking for help",
@@ -2576,6 +2856,15 @@
         ctx.fillStyle = rr() < 0.5 ? "rgba(150,138,190,0.28)" : "rgba(225,220,245,0.3)";
         ctx.beginPath(); ctx.arc(rr() * w, rr() * h, 2 + rr() * 6, 0, TAU); ctx.fill();
       }
+      // fine regolith: tiny craters with a lit rim, grit and pebbles (the shared dust details)
+      ctx.globalCompositeOperation = "multiply";
+      ctx.drawImage(surfaceTexture("dust").image, 0, 0, w, h);
+      ctx.globalCompositeOperation = "source-over";
+      for (let i = 0; i < 30; i++) { // little pebbles with a shadow on one side
+        const x = rr() * w, y = rr() * h, s = 1.2 + rr() * 1.6;
+        ctx.fillStyle = "rgba(90,75,140,0.35)"; ctx.beginPath(); ctx.arc(x + 0.8, y + 0.9, s, 0, TAU); ctx.fill();
+        ctx.fillStyle = "rgba(235,230,250,0.9)"; ctx.beginPath(); ctx.arc(x, y, s, 0, TAU); ctx.fill();
+      }
     }, [29, 29]);
     // how high the ground is at (x, z)
     const moonY = (x, z) => {
@@ -2632,7 +2921,9 @@
     // the base: a glass dome with a little garden, a tunnel, and a module
     const D = { x: 6, z: -5 };
     const dome = group(root, D.x, 0, D.z);
-    cylinder(dome, 0xe8e6f2, 0, 0.2, 0, 3.4, 0.4, { seg: 40 });
+    // (the base is made of metal panels with seams and rivets: see SURFACES.panel)
+    const hull = detailMat("panel", 0xe8e6f2);
+    put(dome, cachedGeo("domeRing", () => uvScaled(G.cyl(40), 10, 0.5)), hull, { y: 0.2, sx: 3.4, sy: 0.4, sz: 3.4 });
     disc(dome, toon(0x7fd65a), 0, 0.41, 0, 3.1);
     roundTree(dome, 0, 0, 0.55, [0x5cc84a, 0x8ae065], 0xff4b3a);
     bush(dome, -1.6, 1, 0.8, 0x4fbf47, 0xff6fa5);
@@ -2642,11 +2933,26 @@
     // ribs: half rings over the dome
     const ribs = dome.children.slice(-6);
     ribs.forEach((rb, i) => { rb.geometry = new THREE.TorusGeometry(3.3, 0.06, 8, 40, Math.PI); rb.rotation.set(0, (i / 6) * Math.PI, 0); });
-    put(root, G.cyl(24), toon(0xe8e6f2), { x: D.x + 5.2, y: 1.0, z: D.z - 0.5, sx: 0.8, sy: 3.5, sz: 0.8, rz: Math.PI / 2 });
+    put(root, uvScaled(G.cyl(24), 3, 2), hull, { x: D.x + 5.2, y: 1.0, z: D.z - 0.5, sx: 0.8, sy: 3.5, sz: 0.8, rz: Math.PI / 2 });
+    for (const dx of [-1.2, 1.2]) put(root, G.torus(0.82, 0.07), toon(0xc9c6dc), { x: D.x + 5.2 + dx, y: 1.0, z: D.z - 0.5, ry: Math.PI / 2 }); // (collars on the tunnel)
     const mod = group(root, D.x + 8.3, 0, D.z - 0.5);
-    put(mod, G.capsule(), toon(0xf5f3fb), { y: 1.4, sx: 2.6, sy: 2.2, sz: 2.6, rz: Math.PI / 2 });
-    for (const dx of [-1.0, 0, 1.0]) ball(mod, glow(0x8fd3ff, 0.6), dx, 1.6, 1.28, 0.3, { sz: 0.3 });
+    put(mod, uvScaled(G.capsule(), 4, 2), detailMat("panel", 0xf5f3fb), { y: 1.4, sx: 2.6, sy: 2.2, sz: 2.6, rz: Math.PI / 2 });
+    const winGlow = glow(0x8fd3ff, 0.6); // (one shared glow, so the windows are drawn in one go)
+    for (const dx of [-1.0, 0, 1.0]) {
+      ball(mod, 0xc9c6dc, dx, 1.6, 1.22, 0.36, { sz: 0.3 }); // window frames
+      ball(mod, winGlow, dx, 1.6, 1.28, 0.3, { sz: 0.3 });
+    }
     block(mod, 0xff7a59, 0, 0.2, 0, 3.0, 0.4, 2.0, 0.1);
+    // the airlock at the far end: a round hatch with a wheel, a step and a warning stripe
+    const hatch = group(mod, 2.22, 1.35, 0, Math.PI / 2);
+    cylinder(hatch, 0xc9c6dc, 0, 0, 0, 0.78, 0.16, { rx: Math.PI / 2 });
+    cylinder(hatch, 0x9aa0b8, 0, 0, 0.06, 0.62, 0.1, { rx: Math.PI / 2 });
+    put(hatch, G.torus(0.26, 0.04), toon(0xffcf3a), { z: 0.13 });
+    for (const a of [0, Math.PI / 2]) block(hatch, 0xffcf3a, 0, 0, 0.13, 0.5, 0.05, 0.04, 0.02, { rz: a });
+    block(mod, 0x5a5f73, 2.75, 0.2, 0, 0.6, 0.12, 1.0, 0.03); // step
+    // an antenna mast on the roof
+    cylinder(mod, 0x8f96a3, -0.6, 3.25, 0, 0.04, 1.2, { seg: 6 });
+    for (let i = 0; i < 3; i++) cylinder(mod, 0x8f96a3, -0.6, 3.0 + i * 0.25, 0, 0.02, 0.5 - i * 0.12, { rz: Math.PI / 2, seg: 5 });
 
     // rocket on a launch pad, with blinking lights
     const R = { x: -11, z: -4 };
@@ -2654,19 +2960,25 @@
     cylinder(pad, 0x5a5f73, 0, 0.12, 0, 3.0, 0.24, { seg: 8 });
     disc(pad, toon(0xffcf3a), 0, 0.25, 0, 2.2);
     disc(pad, toon(0x3a3f4a), 0, 0.26, 0, 1.8);
-    const blinkers = [];
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * TAU;
-      blinkers.push(dynamic(ball(pad, toon(0xff3b3b, { emissive: 0xff3b3b, emissiveIntensity: 1 }), Math.cos(a) * 2.7, 0.3, Math.sin(a) * 2.7, 0.1)));
+    // hazard stripes round the edge of the pad
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * TAU;
+      block(pad, i % 2 ? 0xffcf3a : 0x2a2f38, Math.cos(a) * 2.45, 0.255, Math.sin(a) * 2.45, 0.5, 0.02, 0.22, 0.01, { ry: -a + Math.PI / 2, shadow: false });
     }
-    anim.push((t) => blinkers.forEach((b, i) => { b.material.emissiveIntensity = (Math.floor(t * 2) + i) % 2 ? 1 : 0.1; }));
+    // the blinking lights round the pad: one shape drawn 8 times (see lightDots)
+    const blinkRed = new THREE.Color(0xff3b3b), blinkOff = new THREE.Color(0x5a1820);
+    const blinkers = lightDots(root, Array.from({ length: 8 }, (_, i) => ({ x: R.x + Math.cos((i / 8) * TAU) * 2.7, y: 0.3, z: R.z + Math.sin((i / 8) * TAU) * 2.7, s: 0.1, color: 0xff3b3b })));
+    anim.push((t) => {
+      for (let i = 0; i < 8; i++) blinkers.setColorAt(i, (Math.floor(t * 2) + i) % 2 ? blinkRed : blinkOff);
+      blinkers.instanceColor.needsUpdate = true;
+    });
     const rocket = group(root, R.x, 0.25, R.z);
-    put(rocket, G.capsule(), toon(0xffffff), { y: 3.6, sx: 2.0, sy: 4.4, sz: 2.0 });
+    put(rocket, uvScaled(G.capsule(), 3, 3), detailMat("panel", 0xffffff), { y: 3.6, sx: 2.0, sy: 4.4, sz: 2.0 });
     put(rocket, G.cone(32), toon(0xff5a64), { y: 7.0, s: 0.95, sy: 1.6 });
     put(rocket, G.cyl(32), toon(0xff5a64), { y: 2.2, sx: 1.03, sy: 0.4, sz: 1.03 });
     for (const y of [4.4, 3.3]) {
       ball(rocket, 0x8f96a3, 0, y, 0.88, 0.38, { sz: 0.3 });
-      ball(rocket, glow(0x8fd3ff, 0.5), 0, y, 0.95, 0.28, { sz: 0.25 });
+      ball(rocket, winGlow, 0, y, 0.95, 0.28, { sz: 0.25 });
     }
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * TAU + Math.PI / 6;
@@ -2694,17 +3006,42 @@
       p.material.opacity = 0.6 * (1 - k);
     }));
 
-    // solar panels
+    // solar panels (all three share one picture, so they're drawn in one go)
+    const panelTex = canvasTexture(128, 128, (ctx, w, h) => {
+      ctx.fillStyle = "#2e5fd6"; ctx.fillRect(0, 0, w, h);
+      for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { // the cells, each with a soft shine
+        const g = ctx.createLinearGradient(x * 32, y * 32, x * 32 + 32, y * 32 + 32);
+        g.addColorStop(0, "#3f74ea"); g.addColorStop(0.5, "#2c58cc"); g.addColorStop(1, "#244bb4");
+        ctx.fillStyle = g; ctx.fillRect(x * 32 + 2, y * 32 + 2, 28, 28);
+        ctx.fillStyle = "rgba(160,200,255,0.5)"; for (let k = 1; k < 4; k++) ctx.fillRect(x * 32 + 2, y * 32 + k * 7 + 2, 28, 1);
+      }
+      ctx.strokeStyle = "#cfe0ff"; ctx.lineWidth = 3; ctx.strokeRect(1, 1, w - 2, h - 2);
+    });
+    const panelMat = toon(0xffffff, { map: panelTex });
     for (let i = 0; i < 3; i++) {
       const sp2 = group(root, -3 + i * 2.6, 0, -9.5);
       cylinder(sp2, 0x8f96a3, 0, 0.6, 0, 0.07, 1.2);
-      const panelTex = canvasTexture(64, 64, (ctx) => {
-        ctx.fillStyle = "#2e5fd6"; ctx.fillRect(0, 0, 64, 64);
-        ctx.strokeStyle = "#9fc3ff"; ctx.lineWidth = 2;
-        for (let k = 0; k <= 64; k += 16) { ctx.beginPath(); ctx.moveTo(k, 0); ctx.lineTo(k, 64); ctx.moveTo(0, k); ctx.lineTo(64, k); ctx.stroke(); }
-      });
-      block(sp2, toon(0xffffff, { map: panelTex }), 0, 1.3, 0, 2.2, 0.06, 1.4, 0.02, { rx: 0.5 });
+      block(sp2, 0x8f96a3, 0, 1.25, 0.04, 0.5, 0.1, 0.12, 0.02); // the hinge
+      block(sp2, panelMat, 0, 1.3, 0, 2.2, 0.06, 1.4, 0.02, { rx: 0.5 });
+      cylinder(sp2, 0x8f96a3, 0, 0.05, 0, 0.35, 0.1);
     }
+    // a cable from the panels to the dome, lying in the dust (one material: drawn with the rest)
+    const cableMat = toon(0x4a4f63);
+    const cablePts = [[-3, -9.2], [-0.4, -9.05], [2.2, -9.15], [3.6, -8.9], [4.8, -8.45], [5.6, -8.35]];
+    for (let i = 0; i < cablePts.length - 1; i++) {
+      const [x0, z0] = cablePts[i], [x1, z1] = cablePts[i + 1];
+      put(root, G.cyl(6), cableMat, { x: (x0 + x1) / 2, y: 0.05, z: (z0 + z1) / 2, sx: 0.05, sy: Math.hypot(x1 - x0, z1 - z0), sz: 0.05, rz: Math.PI / 2, ry: -Math.atan2(z1 - z0, x1 - x0), shadow: false });
+    }
+    // oxygen tanks on a rack behind the base
+    const OX = { x: 9.6, z: -9.2 };
+    const ox = group(root, OX.x, 0, OX.z, 0.15);
+    for (const sx of [-0.9, 0.9]) block(ox, 0x8f96a3, sx, 0.55, 0, 0.12, 1.1, 0.9, 0.03);
+    for (let i = 0; i < 3; i++) {
+      const y = 0.32 + (i === 2 ? 0.5 : 0), z = i === 2 ? 0 : (i ? 0.24 : -0.24);
+      cylinder(ox, detailMat("panel", [0xffffff, 0x8fd3ff, 0xffffff][i]), 0, y, z, 0.24, 1.9, { rz: Math.PI / 2 });
+      put(ox, G.sphere(), toon(0xd5d8e3), { x: 0.95, y, z, s: 0.24, sx: 0.4 });
+    }
+    block(ox, 0xffcf3a, -0.3, 0.6, 0.25, 0.3, 0.12, 0.02, 0.01); // (a label)
 
     // satellite dish that slowly turns
     const dishG = group(root, 14, 0, -8);
@@ -2718,13 +3055,14 @@
     const rover = group(root, 11, 0, 5, -0.6);
     block(rover, 0xffcf3a, 0, 1.0, 0, 2.6, 0.7, 1.6, 0.25);
     block(rover, 0xffffff, 0.3, 1.55, 0, 1.2, 0.5, 1.2, 0.2);
-    ball(rover, glow(0x8fd3ff, 0.5), 0.95, 1.6, 0, 0.18, { sx: 0.3 });
+    ball(rover, winGlow, 0.95, 1.6, 0, 0.18, { sx: 0.3 });
+    block(rover, 0xe0a820, 0, 1.36, 0, 2.62, 0.05, 1.62, 0.02); // trim
+    block(rover, 0xd5d8e3, -1.0, 1.42, 0, 0.5, 0.12, 1.3, 0.04); // a tool box on the back
     for (const [x, z] of [[-0.9, 0.85], [0.9, 0.85], [-0.9, -0.85], [0.9, -0.85]]) {
       put(rover, G.cyl(20), toon(0x3a3f4a), { x, y: 0.42, z, sx: 0.42, sy: 0.3, sz: 0.42, rx: Math.PI / 2 });
       put(rover, G.cyl(12), toon(0xd5d8e3), { x, y: 0.42, z: z * 1.17, sx: 0.18, sy: 0.05, sz: 0.18, rx: Math.PI / 2 });
     }
-    cylinder(rover, 0x8f96a3, -0.8, 1.8, 0, 0.03, 0.9);
-    ball(rover, toon(0xff3b3b, { emissive: 0xff3b3b, emissiveIntensity: 0.8 }), -0.8, 2.28, 0, 0.08);
+    cylinder(rover, 0x8f96a3, -0.8, 1.8, 0, 0.03, 0.9); // (its light is with the base's, below)
 
     // flag that waves
     const flagGroup = group(root, 0.5, 0, 1);
@@ -2749,20 +3087,114 @@
 
     // crates, rocks and glowing crystals
     const crates = [[13.5, -1.5], [14.6, -1.4], [14.0, -1.2, 1]];
-    crates.forEach(([x, z, top]) => block(root, 0xff9a3a, x, top ? 1.3 : 0.45, z, 0.9, 0.9, 0.9, 0.1, { ry: x }));
+    crates.forEach(([x, z, top]) => {
+      const c = group(root, x, top ? 1.3 : 0.45, z, x);
+      block(c, detailMat("panel", 0xff9a3a), 0, 0, 0, 0.9, 0.9, 0.9, 0.1);
+      for (const sy of [-0.36, 0.36]) block(c, 0xd5d8e3, 0, sy, 0, 0.94, 0.1, 0.94, 0.03); // metal bands
+    });
     const rocks = [[-3.5, 8.5, 0.9], [16, 4, 0.8], [-16, 6, 1.1], [3, 9, 0.6], [-17, -7, 1.3]];
     rocks.forEach(([x, z, s]) => rock(root, x, z, s, 0x9a90bd));
     const crystals = [[-6, 6.5, 0x7ff0ff], [15.2, 3.4, 0xff8ad8], [-16.5, 4.8, 0xb58cff], [-16, -8, 0x7ff0ff]];
-    const crystalMeshes = [];
+    // (each cluster shares one glowing material, so its spikes are drawn in one go and glow together)
+    const crystalMats = [];
     crystals.forEach(([x, z, c], ci) => {
+      const mat = toon(c, { emissive: c, emissiveIntensity: 0.5 });
+      crystalMats.push(mat);
       for (let i = 0; i < 4; i++) {
         const a = i * 1.7 + ci;
-        const m = put(root, G.cone(6), toon(c, { emissive: c, emissiveIntensity: 0.5 }), { x: x + Math.cos(a) * 0.35, y: 0.5, z: z + Math.sin(a) * 0.35, sx: 0.22, sy: 1.0 + (i % 2) * 0.5, sz: 0.22, rz: Math.cos(a) * 0.3, rx: Math.sin(a) * 0.3 });
-        dynamic(m);
-        crystalMeshes.push(m);
+        put(root, G.cone(6), mat, { x: x + Math.cos(a) * 0.35, y: 0.5, z: z + Math.sin(a) * 0.35, sx: 0.22, sy: 1.0 + (i % 2) * 0.5, sz: 0.22, rz: Math.cos(a) * 0.3, rx: Math.sin(a) * 0.3 });
       }
+      put(root, G.cone(6), mat, { x: x - 0.55, y: 0.2, z: z + 0.25, sx: 0.12, sy: 0.4, sz: 0.12, rz: 0.6 }); // a little one leaning out
     });
-    anim.push((t) => crystalMeshes.forEach((m, i) => { m.material.emissiveIntensity = 0.4 + Math.sin(t * 2 + i) * 0.25; }));
+    anim.push((t) => crystalMats.forEach((m, i) => { m.emissiveIntensity = 0.4 + Math.sin(t * 2 + i * 1.7) * 0.25; }));
+
+    // ---------- little details: lights on the base, pebbles, boot prints and rover tracks ----------
+    // the base's lights: a chasing strip along the module, a ring round the dome, beacons on top
+    const baseLights = [];
+    for (let i = 0; i < 6; i++) baseLights.push({ x: D.x + 7.0 + i * 0.52, y: 0.2, z: D.z + 0.52, s: 0.06, color: 0x7fe0ff });
+    for (let i = 0; i < 14; i++) { const a = (i / 14) * TAU; baseLights.push({ x: D.x + Math.cos(a) * 3.42, y: 0.3, z: D.z + Math.sin(a) * 3.42, s: 0.055, color: 0xbff0ff }); }
+    baseLights.push({ x: D.x + 7.7, y: 3.9, z: D.z - 0.5, s: 0.09, color: 0xff3b3b });        // the antenna
+    baseLights.push({ x: R.x - 3.2, y: 7.1, z: R.z - 0.8, s: 0.1, color: 0xff3b3b });          // the gantry
+    baseLights.push({ x: 11 - Math.cos(0.6) * 0.8, y: 2.28, z: 5 - Math.sin(0.6) * 0.8, s: 0.08, color: 0xff3b3b }); // the rover's aerial
+    baseLights.push({ x: 14, y: 1.25, z: -7.85, s: 0.05, color: 0x5cff8a });                   // the dish
+    const lights = lightDots(root, baseLights);
+    const lc = new THREE.Color();
+    let lightNext = 0;
+    anim.push((t) => {
+      if (t < lightNext) return;
+      lightNext = t + 0.1;
+      baseLights.forEach((b, i) => {
+        let k = 1;
+        if (i < 6) k = (Math.floor(t * 6) % 6) === i ? 1 : 0.3;                 // chasing along the module
+        else if (i < 20) k = 0.8 + 0.2 * Math.sin(t * 2 + i * 0.45);            // a slow glow round the dome
+        else k = (Math.floor(t * 1.5) + i) % 2 ? 1 : 0.15;                     // blinking beacons
+        lights.setColorAt(i, lc.set(b.color).multiplyScalar(k));
+      });
+      lights.instanceColor.needsUpdate = true;
+    });
+
+    // keep the little extras out of the way of the bigger things
+    const busy = [[D.x, D.z, 4], [D.x + 5.2, D.z - 0.5, 2], [D.x + 8.3, D.z - 0.5, 3.2], [R.x, R.z, 3.4], [R.x - 3.2, R.z - 0.8, 1.2],
+      [11, 5, 2], [14, -1.4, 1.4], [14, -8, 1], [0.5, 1, 0.4], [OX.x, OX.z, 1.4]]
+      .concat(rocks.map(([x, z, s]) => [x, z, s * 1.3]), crystals.map(([x, z]) => [x, z, 0.9]), [[-0.4, -9.5, 4.2]]);
+    const free = (x, z, pad) => !busy.some(([bx, bz, br]) => Math.hypot(x - bx, z - bz) < br + (pad || 0));
+    const inCrater = (x, z) => craters.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + 0.3);
+    // pebbles scattered over the dust (one shape drawn many times)
+    const pr = seeded(19), pebbles = [];
+    for (let i = 0; i < 400 && pebbles.length < 140; i++) {
+      const x = (pr() - 0.5) * 40, z = (pr() - 0.5) * 26, s = 0.05 + pr() * pr() * 0.2;
+      if (!free(x, z, 0.2)) continue;
+      pebbles.push({ x, y: s * 0.3, z, sx: s * (1 + pr() * 0.5), sy: s * 0.6, sz: s, ry: pr() * 3, color: [0xa79dc8, 0x9a90bd, 0xc2b9e0, 0x8f85b4][i % 4] });
+    }
+    extras(root, G.lowSphere(), toon(0xffffff), pebbles, true);
+    // boot prints and rover tracks pressed into the dust: see-through dark marks, each drawn in one go
+    const markTex = canvasTexture(128, 64, (ctx) => {
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.ellipse(32, 22, 11, 16, 0, 0, TAU); ctx.fill(); // the sole...
+      ctx.beginPath(); ctx.ellipse(32, 50, 9, 10, 0, 0, TAU); ctx.fill();  // ...and the heel
+      ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.fillRect(68, 0, 60, 64);
+      ctx.fillStyle = "#fff";
+      for (let k = 0; k < 6; k++) ctx.fillRect(70, 3 + k * 10.5, 56, 5);    // tread
+    });
+    const markMat = new THREE.MeshBasicMaterial({ color: 0x5a4a8a, alphaMap: markTex, transparent: true, opacity: 0.3, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const halfPlane = (u0) => {
+      const g = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), uv = g.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setX(i, u0 + uv.getX(i) * 0.5);
+      return g;
+    };
+    const prints = [], trail = [[-8.0, -2.4], [-5.5, -0.6], [-2.4, 0.6], [0.1, 1.9], [2.2, 0.8], [3.6, -1.2]];
+    let step = 0;
+    for (let i = 0; i < trail.length - 1; i++) {
+      const [x0, z0] = trail[i], [x1, z1] = trail[i + 1], len = Math.hypot(x1 - x0, z1 - z0), ang = Math.atan2(x1 - x0, z1 - z0);
+      for (let d = 0; d < len; d += 0.42, step++) {
+        const side = step % 2 ? 0.13 : -0.13, k = d / len;
+        const x = x0 + (x1 - x0) * k + Math.cos(ang) * side, z = z0 + (z1 - z0) * k - Math.sin(ang) * side;
+        if (!inCrater(x, z)) prints.push({ x, y: 0.03, z, sx: 0.3, sz: 0.36, ry: ang + Math.PI }); // (the toe first)
+      }
+    }
+    const tracks = [];
+    for (let k = 0; k < 18; k++) { // behind the rover, curving away
+      const a = -0.6 + k * 0.035, d = 1.8 + k * 0.6;
+      for (const side of [-0.85, 0.85]) {
+        const x = 11 - Math.cos(a) * d - Math.sin(a) * side, z = 5 + Math.sin(a) * d - Math.cos(a) * side;
+        if (Math.abs(x) < 17.5 && Math.abs(z) < 10.5 && !inCrater(x, z)) tracks.push({ x, y: 0.03, z, sx: 0.34, sz: 0.62, ry: Math.PI / 2 + a });
+      }
+    }
+    for (const [geo, items] of [[halfPlane(0), prints], [halfPlane(0.5), tracks]]) {
+      const m = extras(root, geo, markMat, items, false);
+      m.receiveShadow = false;
+      m.renderOrder = -1;
+    }
+    // soft purple shadows on the dust under things (see blobShadows)
+    blobShadows(root, [
+      { x: D.x, z: D.z, r: 4.0 }, { x: D.x + 5.2, z: D.z - 0.5, r: 2.2, sz: 1.0 }, { x: D.x + 8.3, z: D.z - 0.5, r: 3.0, sz: 1.7 },
+      { x: R.x, z: R.z, r: 3.5 }, { x: R.x - 3.2, z: R.z - 0.8, r: 0.9 }, { x: 11, z: 5, r: 1.9, sz: 1.3, ry: 0.6 },
+      { x: 14, z: -8, r: 0.6 }, { x: 0.5, z: 1, r: 0.35 }, { x: OX.x, z: OX.z, r: 1.3, sz: 0.7, ry: -0.15 },
+      { x: 14.0, z: -1.4, r: 1.6, sz: 1.0 },
+      ...[-3, -0.4, 2.2].map((x) => ({ x, z: -9.3, r: 1.3, sz: 0.8 })),
+      ...rocks.map(([x, z, s]) => ({ x, z, r: s * 1.15 })),
+      ...crystals.map(([x, z]) => ({ x, z, r: 0.75 })),
+    ], 0.3, 0x2a1a5a);
 
     // a UFO that zooms past now and then
     const ufo = dynamic(group(root, 0, 0, 0));
@@ -2858,6 +3290,8 @@
         { x: R.x, z: R.z, r: 3.0 }, { x: R.x - 3.2, z: R.z - 0.8, w: 1.2, d: 1.2 },
         { x: 0.5, z: 1, r: 0.25 }, { x: 14, z: -8, r: 0.6 }, { x: 11, z: 5, w: 3.0, d: 2.5, rot: 0.6 },
         { x: 14.0, z: -1.4, w: 2.2, d: 1.1 }, { x: -0.4, z: -9.5, w: 8.0, d: 1.7 },
+        { x: OX.x, z: OX.z, w: 2.2, d: 1.2, rot: -0.15 },                                                  // oxygen tanks
+        { x: D.x + 10.8, z: D.z - 0.5, w: 0.8, d: 1.2 },                                                   // the airlock step
       ].concat(rocks.map(([x, z, s]) => ({ x, z, r: s * 1.05 })))
         .concat(crystals.map(([x, z]) => ({ x, z, r: 0.6 }))),
       spots: [
@@ -2924,6 +3358,7 @@
     skyDome, addLights, mergeStatic, scatter, roundTree, palmTree, bush, parkBench, lampPost, rock,
     bakeGeo, paintedMat,
     surfaceTexture, detailMat, blobShadows, litterBin, // (surface details, soft ground shadows, a bin)
+    optional, lightDots, extras, cachedGeo, uvScaled, sharedGlow, plasterMat,
   };
 
   root.World3D = { build, dispose, list, debug, kit, addPlace, markFar, FAR_LAYER, SMALL_LAYER };

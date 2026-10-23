@@ -276,10 +276,12 @@
   // fx:          how much rain, snow, petals and leaves (see weather3d.js)
   // farSphere:   how round the far-away puffs (clouds, treetops...) are
   // cap:         30 frames a second while the window isn't the one in front
+  // detail:      the little extras a place marks as optional (pebbles, desk clutter,
+  //              worn grass...: see World3D.kit.optional) are shown
   const QUALITY_LEVELS = {
-    high: { name: "high", pr: 2, shadows: true, shadowSize: 2048, shadowEvery: 1, soft: true, fx: 1, farSphere: "sphere", cap: false },
-    medium: { name: "medium", pr: 1.25, shadows: true, shadowSize: 1024, shadowEvery: 2, soft: false, fx: 0.6, farSphere: "midSphere", cap: true },
-    low: { name: "low", pr: 0.85, shadows: false, shadowSize: 1024, shadowEvery: 4, soft: false, fx: 0.3, farSphere: "lowSphere", cap: true },
+    high: { name: "high", pr: 2, shadows: true, shadowSize: 2048, shadowEvery: 1, soft: true, fx: 1, farSphere: "sphere", cap: false, detail: true },
+    medium: { name: "medium", pr: 1.25, shadows: true, shadowSize: 1024, shadowEvery: 2, soft: false, fx: 0.6, farSphere: "midSphere", cap: true, detail: true },
+    low: { name: "low", pr: 0.85, shadows: false, shadowSize: 1024, shadowEvery: 4, soft: false, fx: 0.3, farSphere: "lowSphere", cap: true, detail: false },
   };
   // Auto goes down these rungs one at a time when frames are slow (and back up when they're quick).
   const AUTO_LADDER = [
@@ -2910,6 +2912,8 @@
             o.shadow.mapSize.set(size, size);
             if (o.shadow.map) { o.shadow.map.dispose(); o.shadow.map = null; }
           }
+        } else if (o.userData.qDetail) {
+          o.visible = q.detail !== false; // (optional extras: left out at Low)
         } else if (o.isInstancedMesh && !o.frustumCulled && (o.geometry === hiSphere || o.userData.qSphere)) {
           // far-away scenery made of lots of round puffs: they're tiny on screen anyway
           if (!o.userData.qSphere) o.userData.qSphere = true;
