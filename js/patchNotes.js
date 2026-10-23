@@ -11,7 +11,17 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-22", title: "Back to school",
+      v: null, date: "2026-10-23", title: "Smoother and prettier",
+      notes: [
+        "🎨 Every place got a detail pass: textured grass, wood, brick, sand and moon dust, soft shadows under things, and lots of little touches (curtains in Café Street's windows, desks full of stuff at the office, lockers and posters at the college, blinking lights on the Moon base, cables and speakers at the stage).",
+        "🏠 Homes look nicer too: real wood floors, patterned wallpaper, trim, warm lamp light, and more detailed furniture (and they draw much faster than before).",
+        "🚲 The cyclists on Café Street really ride now: sitting on the saddle, hands on the handlebars and feet pedaling.",
+        "✨ Smoother Miis: they ease between poses, turn naturally, breathe, look at each other, blink, and squash a little when they land. Speech bubbles pop in, the camera glides into homes and photos, and the wheel zoom is smooth. Double-click a Mii to glide the camera to it.",
+        "⚙️ New Graphics quality setting (Settings → Look): Auto adjusts itself to keep things smooth, or pick High, Medium or Low. The game also rests while its window is hidden, and a slow memory leak when switching places is fixed.",
+      ],
+    },
+    {
+      v: "1.2.14", date: "2026-10-22", title: "Back to school",
       notes: [
         "Students at the college don't wear graduation caps any more (they haven't graduated yet!).",
       ],
