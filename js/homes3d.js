@@ -1259,6 +1259,260 @@
   const ROOM = { x: 6, z: 4.5, h: 5.2 };
   const TILE = 2; // one wallpaper / floor picture covers 2 x 2 units
 
+  // ---------- fine detail (only inside a Mii's home) ----------
+  // Furniture is also built, small, in the little rooms seen through the apartment
+  // windows (flatContents). Those stay plain and light: FINE is only switched on
+  // while a home is being built, and the extra touches below check it.
+  let FINE = false;
+
+  // Soft surface pictures, multiplied by a part's color: wood grain, woven cloth,
+  // padded cushions (a stitched seam round each face), brushed metal, and pleats
+  // for curtains. Each is drawn once and shared; each (picture, color) pair is one
+  // material shared by every piece, so parts still merge into a few draw calls.
+  // (They're mostly white, so the colors stay as bright as before.)
+  const SURF = {
+    wood(c, w, h) {
+      c.fillStyle = "#fff"; c.fillRect(0, 0, w, h);
+      const r = seeded(41);
+      // long grain lines, drawn twice (one tile apart) so they wrap round
+      for (let i = 0; i < 34; i++) {
+        const y = r() * h, a = 1.5 + r() * 3.5, ph = r() * TAU, k = 1 + Math.floor(r() * 2);
+        c.strokeStyle = "rgba(110,64,30," + (0.05 + r() * 0.08).toFixed(3) + ")"; c.lineWidth = 0.6 + r() * 1.2;
+        for (const dy of [-h, 0, h]) {
+          c.beginPath();
+          for (let x = 0; x <= w; x += 4) { const yy = y + dy + Math.sin((x / w) * TAU * k + ph) * a; if (x) c.lineTo(x, yy); else c.moveTo(x, yy); }
+          c.stroke();
+        }
+      }
+      // one little knot
+      for (let k = 2; k >= 1; k--) { c.strokeStyle = "rgba(110,64,30,0.1)"; c.lineWidth = 1; c.beginPath(); c.ellipse(w * 0.7, h * 0.62, k * 4, k * 1.5, 0, 0, TAU); c.stroke(); }
+      c.fillStyle = "rgba(110,64,30,0.14)"; c.beginPath(); c.ellipse(w * 0.7, h * 0.62, 2.5, 1, 0, 0, TAU); c.fill();
+    },
+    fabric(c, w, h) {
+      c.fillStyle = "#fff"; c.fillRect(0, 0, w, h);
+      // a soft basket weave
+      for (let y = 0; y < h; y += 4) for (let x = 0; x < w; x += 4) {
+        c.fillStyle = ((x + y) / 4) % 2 ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.0)";
+        c.fillRect(x, y, 4, 4);
+      }
+      const r = seeded(5);
+      for (let i = 0; i < 180; i++) { c.fillStyle = "rgba(0,0,0," + (0.03 + r() * 0.04).toFixed(3) + ")"; c.fillRect(r() * w, r() * h, 1 + r() * 2, 1); }
+    },
+    cushion(c, w, h) {
+      SURF.fabric(c, w, h);
+      // darker toward the edges (a padded, puffy look) and a stitched seam
+      const e = 14;
+      for (const [x, y, gw, gh, x0, y0, x1, y1] of [[0, 0, w, e, 0, 0, 0, e], [0, h - e, w, e, 0, h, 0, h - e], [0, 0, e, h, 0, 0, e, 0], [w - e, 0, e, h, w, 0, w - e, 0]]) {
+        const gr = c.createLinearGradient(x0, y0, x1, y1);
+        gr.addColorStop(0, "rgba(40,20,10,0.16)"); gr.addColorStop(1, "rgba(40,20,10,0)");
+        c.fillStyle = gr; c.fillRect(x, y, gw, gh);
+      }
+      c.strokeStyle = "rgba(40,20,10,0.28)"; c.lineWidth = 1.6; c.setLineDash([5, 4]);
+      c.strokeRect(9, 9, w - 18, h - 18);
+      c.setLineDash([]);
+      c.strokeStyle = "rgba(255,255,255,0.35)"; c.lineWidth = 1; c.strokeRect(11, 11, w - 22, h - 22);
+    },
+    metal(c, w, h) {
+      // brushed: fine streaks, with a bright band and a soft dark band (round a pole, a shine)
+      const gr = c.createLinearGradient(0, 0, w, 0);
+      gr.addColorStop(0, "#d4d4d4"); gr.addColorStop(0.18, "#ffffff"); gr.addColorStop(0.26, "#f2f2f2");
+      gr.addColorStop(0.55, "#c4c4c4"); gr.addColorStop(0.8, "#e8e8e8"); gr.addColorStop(1, "#d4d4d4");
+      c.fillStyle = gr; c.fillRect(0, 0, w, h);
+      const r = seeded(8);
+      for (let i = 0; i < 50; i++) { c.fillStyle = "rgba(255,255,255," + (0.1 + r() * 0.2).toFixed(3) + ")"; c.fillRect(r() * w, 0, 1, h); }
+    },
+    pleat(c, w, h) {
+      // soft vertical folds
+      const gr = c.createLinearGradient(0, 0, w, 0);
+      for (let k = 0; k <= 4; k++) { gr.addColorStop(k / 4, "#ffffff"); if (k < 4) gr.addColorStop(k / 4 + 0.125, "#d8d8d8"); }
+      c.fillStyle = gr; c.fillRect(0, 0, w, h);
+      SURF.fabricNoise(c, w, h);
+    },
+    fabricNoise(c, w, h) {
+      const r = seeded(9);
+      for (let i = 0; i < 120; i++) { c.fillStyle = "rgba(0,0,0,0.04)"; c.fillRect(r() * w, r() * h, 1, 2 + r() * 3); }
+    },
+  };
+  const surfTex = {}, surfMats = new Map();
+  function surface(kind) {
+    if (!surfTex[kind]) surfTex[kind] = canvasTexture(128, 128, SURF[kind], [1, 1]);
+    return surfTex[kind];
+  }
+  // A material with a surface picture (plain color outside a home: see FINE).
+  // (paintRoom later swaps it for one material per picture, with the color kept
+  // in the shape, so wood of every color is drawn in one go.)
+  function fine(kind, color) {
+    if (!FINE) return toon(color);
+    const key = kind + ":" + color;
+    if (!surfMats.has(key)) {
+      const m = toon(color, { map: surface(kind) });
+      m.userData.keep = true;
+      m.userData.surface = kind;
+      surfMats.set(key, m);
+    }
+    return surfMats.get(key);
+  }
+  const kindMats = {};
+  function kindMat(kind) {
+    if (!kindMats[kind]) {
+      kindMats[kind] = toon(0xffffff, { map: surface(kind), vertexColors: true });
+      kindMats[kind].userData.keep = true;
+    }
+    return kindMats[kind];
+  }
+
+  // Gives every plain-colored part under g (but not the moving ones) the shared
+  // "colors in the shape" material (and parts with a surface picture the shared one
+  // for that picture), so mergeStatic joins a whole room into a handful of draw
+  // calls instead of one per color. It looks exactly the same.
+  function paintRoom(g) {
+    if (W3D.debug && W3D.debug.noMerge) return;
+    const skip = new Set();
+    g.traverse((o) => { if (o !== g && o.userData.dynamic) o.traverse((c) => skip.add(c)); });
+    g.traverse((o) => {
+      if (!o.isMesh || o.isInstancedMesh || skip.has(o)) return;
+      const m = o.material;
+      if (Array.isArray(m) || !m.isMeshToonMaterial || m.vertexColors || m.transparent || m.alphaTest || m.side !== THREE.FrontSide || (m.emissive && m.emissive.getHex())) return;
+      const kind = m.userData.surface;
+      if (m.map && !kind) return;
+      const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      const n = geo.attributes.position.count, col = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { col[i * 3] = m.color.r; col[i * 3 + 1] = m.color.g; col[i * 3 + 2] = m.color.b; }
+      geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+      if (!geo.attributes.uv) geo.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(n * 2), 2));
+      o.geometry = geo;
+      o.material = kind ? kindMat(kind) : W3D.kit.paintedMat;
+    });
+  }
+  const woody = (c) => fine("wood", c), cloth = (c) => fine("fabric", c), padded = (c) => fine("cushion", c), shiny = (c) => fine("metal", c);
+
+  // Lots of little colored bits (books, buttons, stitches...) as ONE painted shape
+  // that keeps their colors: every painted bit in a room is drawn in one go.
+  // build(p) adds the parts to p with the usual helpers. Only inside a home.
+  // Small balls and rings for those bits (much lighter than ball and G.torus).
+  function bead(p, color, x, y, z, r, o) {
+    return put(p, r > 0.06 ? G.lowSphere() : G.tinySphere(), typeof color === "object" ? color : toon(color), Object.assign({ x, y, z, s: r }, o));
+  }
+  const lowTori = new Map();
+  function lowTorus(r, tube) {
+    const k = r + "," + tube;
+    if (!lowTori.has(k)) lowTori.set(k, new THREE.TorusGeometry(r, tube, 6, 18));
+    return lowTori.get(k);
+  }
+  // A plain box for those bits (a rounded block has ~50 times the triangles).
+  function slab(p, color, x, y, z, w, h, d, r, o) { return bx(p, color, x, y, z, w, h, d, o); }
+  function bits(g, build, o) {
+    if (!FINE) return null;
+    const geo = W3D.kit.bakeGeo(build);
+    if (!geo) return null;
+    return put(g, geo, W3D.kit.paintedMat, Object.assign({ shadow: false }, o));
+  }
+
+  // ---------- soft shadows and light pools (cheap, baked) ----------
+  // Shadows that sit on the floor under furniture (and in the corners), and warm
+  // pools of light under lamps: flat shapes whose edges fade out (the fading is in
+  // the vertex colors, no pictures), all sharing two materials, so all of them
+  // together are only a couple of draw calls.
+  let decalMats = null;
+  function decals() {
+    if (!decalMats) {
+      const base = { vertexColors: true, transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
+      decalMats = {
+        shade: new THREE.MeshBasicMaterial(Object.assign({ color: 0x3a2414 }, base)),
+        light: new THREE.MeshBasicMaterial(Object.assign({ color: 0xffffff, blending: THREE.AdditiveBlending }, base)),
+      };
+      decalMats.shade.userData.keep = decalMats.light.userData.keep = true;
+    }
+    return decalMats;
+  }
+  // A flat rectangle (w x d, lying on the floor) whose edges fade out over `soft`:
+  // a 4 x 4 grid, solid in the middle, clear round the outside. rgb = its tint.
+  function fadeRectGeo(w, d, soft, a, rgb) {
+    const xs = [-w / 2 - soft, -w / 2 + soft * 0.4, w / 2 - soft * 0.4, w / 2 + soft];
+    const zs = [-d / 2 - soft, -d / 2 + soft * 0.4, d / 2 - soft * 0.4, d / 2 + soft];
+    if (xs[1] > xs[2]) xs[1] = xs[2] = 0;
+    if (zs[1] > zs[2]) zs[1] = zs[2] = 0;
+    const pos = [], col = [], idx = [];
+    for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
+      pos.push(xs[i], 0, zs[j]);
+      const inner = i > 0 && i < 3 && j > 0 && j < 3;
+      col.push(rgb[0], rgb[1], rgb[2], inner ? a : 0);
+    }
+    for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
+      const p = j * 4 + i;
+      idx.push(p, p + 4, p + 1, p + 1, p + 4, p + 5);
+    }
+    return decalGeo(pos, col, idx);
+  }
+  // A round pool: solid middle (inner part of r), fading out to r.
+  function fadeDiscGeo(r, inner, a, rgb) {
+    const n = 20, pos = [0, 0, 0], col = [rgb[0], rgb[1], rgb[2], a], idx = [];
+    for (const [rr, aa] of [[r * inner, a * 0.75], [r, 0]]) for (let k = 0; k < n; k++) {
+      const t = (k / n) * TAU;
+      pos.push(Math.cos(t) * rr, 0, Math.sin(t) * rr);
+      col.push(rgb[0], rgb[1], rgb[2], aa);
+    }
+    for (let k = 0; k < n; k++) {
+      const a1 = 1 + k, a2 = 1 + ((k + 1) % n), b1 = a1 + n, b2 = a2 + n;
+      idx.push(0, a2, a1, a1, a2, b2, a1, b2, b1);
+    }
+    return decalGeo(pos, col, idx);
+  }
+  function decalGeo(pos, col, idx) {
+    const g = new THREE.BufferGeometry();
+    g.setIndex(idx);
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("normal", new THREE.Float32BufferAttribute(pos.map((v, i) => (i % 3 === 1 ? 1 : 0)), 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array((pos.length / 3) * 2), 2));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(col, 4));
+    return g;
+  }
+  const WARM = [1, 0.82, 0.5];
+  // o = { x, y, z, ry, rx, rz } (the shape lies flat: turn it with rx to stand it on a wall)
+  function shadeRect(p, w, d, o, a, soft) {
+    return put(p, fadeRectGeo(w, d, soft || 0.35, a === undefined ? 0.32 : a, [1, 1, 1]), decals().shade, Object.assign({ shadow: false, receive: false }, o));
+  }
+  function shadeDisc(p, r, o, a) {
+    return put(p, fadeDiscGeo(r, 0.55, a === undefined ? 0.32 : a, [1, 1, 1]), decals().shade, Object.assign({ shadow: false, receive: false }, o));
+  }
+  function lightPool(p, r, o, a, rgb) {
+    return put(p, fadeDiscGeo(r, 0.25, a === undefined ? 0.22 : a, rgb || WARM), decals().light, Object.assign({ shadow: false, receive: false }, o));
+  }
+  function lightRect(p, w, d, o, a, rgb, soft) {
+    return put(p, fadeRectGeo(w, d, soft || 0.4, a === undefined ? 0.16 : a, rgb || WARM), decals().light, Object.assign({ shadow: false, receive: false }, o));
+  }
+
+  // A wall or floor rectangle like patchGeo, cut into a grid that is finer near the
+  // edges, with a shade (0..1) per corner from shade(x, y) (x, y from its bottom-left,
+  // in units): darker into the corners and along the floor, a cheap "ambient occlusion".
+  function shadedPatch(w, h, u0, v0, shade, cuts) {
+    const steps = (len, a0, a1) => {
+      const s = new Set([0, len]);
+      for (const c of cuts) { if (a0 && c < len) s.add(c); if (a1 && len - c > 0) s.add(len - c); }
+      return [...s].filter((v) => v >= 0 && v <= len).sort((a, b) => a - b);
+    };
+    const xs = steps(w, true, true), ys = steps(h, true, true);
+    const pos = [], uv = [], col = [], idx = [];
+    for (const y of ys) for (const x of xs) {
+      pos.push(x - w / 2, y - h / 2, 0);
+      uv.push((u0 + x) / TILE, (v0 + y) / TILE);
+      const s = shade(x, y);
+      col.push(s, s, s);
+    }
+    const nx = xs.length;
+    for (let j = 0; j < ys.length - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      const p = j * nx + i;
+      idx.push(p, p + 1, p + nx, p + 1, p + nx + 1, p + nx);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setIndex(idx);
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("normal", new THREE.Float32BufferAttribute(pos.map((v, i) => (i % 3 === 2 ? 1 : 0)), 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    return g;
+  }
+
   // Wallpaper and floor pictures (they repeat across the walls and floor).
   // (size: the picture is drawn at 256 x 256 and scaled down to size x size)
   // The picture tiles, so anything drawn near an edge is drawn again on the other
@@ -1320,24 +1574,53 @@
           wrap(cx, cy, (px, py) => damask(ctx, px, py));
         }
       } else if (pat === "planks") {
+        // long boards (two units), their ends staggered row by row, each a slightly
+        // different shade, with wavy grain, the odd knot and a soft bevel at the joins
+        const tones = ["#c98a52", "#c28149", "#d0935c", "#bd7c45", "#c68650", "#cf9058", "#ba7943", "#c48450"];
+        const ends = [40, 168, 104, 232];
         for (let row = 0; row < 4; row++) {
-          const off = (row % 2) * 96 + row * 37;
-          for (let k = -1; k < 3; k++) {
-            const x0 = ((k * 128 + off) % 256 + 256) % 256 - 128;
-            ctx.fillStyle = ["#c98a52", "#c28149", "#d0935c", "#bd7c45"][(row + k + 4) % 4];
-            if (it.color) ctx.globalAlpha = 0.55;
-            ctx.fillRect(x0, row * 64, 128, 64);
-            ctx.fillRect(x0 + 256, row * 64, 128, 64);
-            ctx.globalAlpha = 1;
-            ctx.fillStyle = acc; ctx.fillRect(x0, row * 64, 3, 64); ctx.fillRect(x0 + 256, row * 64, 3, 64);
+          const y0 = row * 64, e = ends[row];
+          ctx.fillStyle = tones[row * 2 % tones.length];
+          if (it.color) ctx.globalAlpha = 0.55;
+          ctx.fillRect(0, y0, w, 64);
+          ctx.globalAlpha = 1;
+          // grain: wavy lines along each board (they wrap round with the tile)
+          for (let g = 0; g < 6; g++) {
+            const y = y0 + 7 + g * 9 + r() * 5, a = 1.5 + r() * 2.5, ph = r() * TAU;
+            ctx.strokeStyle = "rgba(110,60,25," + (0.12 + r() * 0.12).toFixed(3) + ")"; ctx.lineWidth = 1 + r() * 1.2;
+            ctx.beginPath();
+            for (let x = 0; x <= w; x += 8) { const yy = y + Math.sin((x / w) * TAU * 2 + ph) * a; if (x) ctx.lineTo(x, yy); else ctx.moveTo(x, yy); }
+            ctx.stroke();
           }
-          ctx.fillStyle = acc; ctx.fillRect(0, row * 64, w, 3);
-          ctx.strokeStyle = "rgba(120,70,30,0.25)"; ctx.lineWidth = 2;
-          for (let g = 0; g < 3; g++) { const y = row * 64 + 14 + g * 16 + r() * 6; ctx.beginPath(); ctx.moveTo(0, y); ctx.bezierCurveTo(80, y + 6, 160, y - 6, w, y); ctx.stroke(); }
+          // a knot now and then
+          const kx = (e + 60 + r() * 120) % w, ky = y0 + 20 + r() * 24;
+          wrap(kx, ky, (px, py) => {
+            ctx.strokeStyle = "rgba(110,60,25,0.25)"; ctx.lineWidth = 1.2;
+            for (let k = 1; k <= 3; k++) { ctx.beginPath(); ctx.ellipse(px, py, 4 + k * 4, 2 + k * 1.6, 0, 0, TAU); ctx.stroke(); }
+            ctx.fillStyle = "rgba(110,60,25,0.35)"; ctx.beginPath(); ctx.ellipse(px, py, 4, 2, 0, 0, TAU); ctx.fill();
+          });
+          // the joins: a dark gap with a little light edge beside it
+          ctx.fillStyle = acc; ctx.fillRect(0, y0, w, 3);
+          ctx.fillStyle = "rgba(255,240,215,0.28)"; ctx.fillRect(0, y0 + 3, w, 2);
+          ctx.fillStyle = "rgba(80,40,15,0.14)"; ctx.fillRect(0, y0 + 58, w, 6);
+          wrap(e, y0, (px, py) => {
+            ctx.fillStyle = acc; ctx.fillRect(px - 1, py, 3, 64);
+            ctx.fillStyle = "rgba(255,240,215,0.28)"; ctx.fillRect(px + 2, py + 3, 2, 61);
+          });
         }
       } else if (pat === "checker") {
         ctx.fillStyle = acc;
         for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) if ((x + y) % 2 === 0) ctx.fillRect(x * 64, y * 64, 64, 64);
+        // glazed tiles: a soft shine in one corner of each, and thin grout lines
+        for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+          const gr = ctx.createRadialGradient(x * 64 + 18, y * 64 + 16, 2, x * 64 + 18, y * 64 + 16, 34);
+          gr.addColorStop(0, "rgba(255,255,255,0.35)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+          ctx.fillStyle = gr; ctx.fillRect(x * 64, y * 64, 64, 64);
+          ctx.fillStyle = "rgba(0,0,0,0.06)"; ctx.fillRect(x * 64 + 4, y * 64 + 58, 58, 3); ctx.fillRect(x * 64 + 58, y * 64 + 4, 3, 56);
+        }
+        ctx.fillStyle = "rgba(150,150,165,0.55)";
+        for (let k = 0; k < 4; k++) { ctx.fillRect(k * 64 - 1, 0, 2, h); ctx.fillRect(0, k * 64 - 1, w, 2); }
+        ctx.fillRect(w - 1, 0, 1, h); ctx.fillRect(0, h - 1, w, 1);
       } else if (pat === "marble") {
         // veins start and end at the same height, so they carry on into the next tile
         ctx.strokeStyle = acc; ctx.lineWidth = 2.5; ctx.globalAlpha = 0.8;
@@ -1426,6 +1709,13 @@
       } else {
         // plain: a soft speckle (carpet, or grass blades for fake grass)
         const grass = /grass/.test(it.id || "");
+        if (isFloor && !grass) {
+          // carpet: rows of little woven loops
+          for (let y = 0; y < h; y += 6) for (let x = (y / 6) % 2 ? 3 : 0; x < w; x += 6) {
+            ctx.fillStyle = "rgba(0,0,0,0.07)"; ctx.fillRect(x, y + 3, 4, 2);
+            ctx.fillStyle = "rgba(255,255,255,0.1)"; ctx.fillRect(x, y, 4, 2);
+          }
+        }
         for (let i = 0; i < (grass ? 260 : 400); i++) {
           const x = r() * w, y = r() * h;
           ctx.fillStyle = r() < 0.5 ? acc : "rgba(255,255,255,0.18)";
@@ -1434,6 +1724,15 @@
         if (!isFloor) {
           ctx.fillStyle = acc;
           for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) dot(x * 64 + (y % 2) * 32 + 16, y * 64 + 32, 4);
+        }
+      }
+      // a fine grain over everything, like paper (walls) or a worn surface (floors)
+      // (only on the big pictures in a home: the little ones are too small to see it)
+      if (S >= 512) {
+        const n = seeded(77);
+        for (let i = 0; i < 700; i++) {
+          ctx.fillStyle = n() < 0.5 ? "rgba(0,0,0,0.035)" : "rgba(255,255,255,0.06)";
+          ctx.fillRect(n() * w, n() * h, 0.6 + n(), isFloor ? 0.6 + n() : 1.5 + n() * 3);
         }
       }
     }, [1, 1]);
@@ -1534,26 +1833,43 @@
     "bed-basic": {
       obs: [{ cx: 0, cz: 0, w: 2.2, d: 3.0 }], spot: { lx: 2.05, lz: 0.5, yaw: -PI / 2 }, lie: { lx: 0, lz: 0.1, h: 0.82, yaw: PI },
       build(g) {
-        const wood = toon(0xc98b4a);
+        const wood = woody(0xc98b4a);
         block(g, wood, 0, 0.3, 0, 2.0, 0.36, 2.95, 0.08);
         for (const [x, z] of [[-0.9, -1.35], [0.9, -1.35], [-0.9, 1.35], [0.9, 1.35]]) block(g, wood, x, 0.08, z, 0.16, 0.16, 0.16, 0.04);
-        block(g, 0xffffff, 0, 0.6, 0.02, 1.86, 0.3, 2.85, 0.12);
+        block(g, padded(0xffffff), 0, 0.6, 0.02, 1.86, 0.3, 2.85, 0.12);
         block(g, wood, 0, 0.9, -1.44, 2.1, 1.4, 0.14, 0.1);
-        block(g, 0xe2a35e, 0, 1.45, -1.44, 1.5, 0.3, 0.16, 0.1);
+        block(g, woody(0xe2a35e), 0, 1.45, -1.44, 1.5, 0.3, 0.16, 0.1);
         block(g, wood, 0, 0.55, 1.45, 2.1, 0.7, 0.12, 0.08);
-        block(g, 0xfff8ee, 0, 0.84, -1.05, 1.2, 0.22, 0.55, 0.11);
-        block(g, 0x7fb8f0, 0, 0.78, 0.4, 1.95, 0.08, 2.0, 0.04);
-        block(g, 0xffffff, 0, 0.83, -0.55, 1.95, 0.06, 0.22, 0.03);
+        block(g, padded(0xfff8ee), 0, 0.84, -1.05, 1.2, 0.22, 0.55, 0.11);
+        block(g, padded(0x7fb8f0), 0, 0.78, 0.4, 1.95, 0.08, 2.0, 0.04);
+        block(g, cloth(0xffffff), 0, 0.83, -0.55, 1.95, 0.06, 0.22, 0.03);
         for (let k = 0; k < 4; k++) ball(g, 0xffffff, -0.6 + k * 0.4, 0.83, 0.6 + (k % 2) * 0.5, 0.08, { sy: 0.3 });
+        bits(g, (p) => {
+          // a blanket hem, round knobs on the posts, a heart on the footboard and a little plush bunny
+          slab(p, 0x5f9ad8, 0, 0.78, 1.4, 1.97, 0.1, 0.06, 0.03);
+          for (const x of [-0.98, 0.98]) { bead(p, 0xe2a35e, x, 1.64, -1.44, 0.09); bead(p, 0xe2a35e, x, 0.94, 1.45, 0.08); }
+          bead(p, 0xff8a9a, -0.06, 0.58, 1.52, 0.08, { sz: 0.35 });
+          bead(p, 0xff8a9a, 0.06, 0.58, 1.52, 0.08, { sz: 0.35 });
+          put(p, G.cone(4), toon(0xff8a9a), { y: 0.5, z: 1.52, s: 0.11, sy: 0.12, rx: PI, ry: PI / 4, sz: 0.04 });
+          bead(p, 0xffffff, 0.6, 0.95, -0.95, 0.12, { sy: 0.9 });
+          bead(p, 0xffffff, 0.6, 1.1, -0.95, 0.1);
+          for (const s of [-1, 1]) put(p, G.capsule(), toon(0xffffff), { x: 0.6 + s * 0.04, y: 1.24, z: -0.95, sx: 0.04, sy: 0.12, sz: 0.03, rz: -s * 0.2 });
+          bead(p, 0xff9ec7, 0.6, 1.08, -0.86, 0.02);
+        });
       },
     },
     "bed-canopy": {
       obs: [{ cx: 0, cz: 0, w: 2.4, d: 3.05 }], spot: { lx: 2.15, lz: 0.5, yaw: -PI / 2 }, lie: { lx: 0, lz: 0.1, h: 0.9, yaw: PI },
       build(g, ctx) {
-        const white = toon(0xfff6fa), pink = toon(0xffa8c8), gold = toon(0xffcf3a);
+        const white = woody(0xfff6fa), pink = cloth(0xffa8c8), gold = shiny(0xffcf3a);
         block(g, white, 0, 0.32, 0, 2.1, 0.4, 2.95, 0.1);
-        block(g, 0xfff0f6, 0, 0.66, 0.02, 1.95, 0.34, 2.85, 0.14);
-        block(g, 0xff8ab8, 0, 0.85, 0.45, 2.02, 0.08, 1.95, 0.05);
+        block(g, padded(0xfff0f6), 0, 0.66, 0.02, 1.95, 0.34, 2.85, 0.14);
+        block(g, padded(0xff8ab8), 0, 0.85, 0.45, 2.02, 0.08, 1.95, 0.05);
+        bits(g, (p) => {
+          // little hearts along the blanket's hem, and a lacy frill round the mattress
+          for (let k = 0; k < 6; k++) bead(p, 0xffffff, -0.75 + k * 0.3, 0.9, 1.35, 0.045, { sy: 0.4 });
+          for (let k = 0; k < 8; k++) bead(p, 0xffffff, -0.95 + k * 0.27, 0.5, 1.49, 0.08, { sy: 0.55, sz: 0.4 });
+        });
         block(g, white, 0, 1.05, -1.44, 2.15, 1.7, 0.14, 0.3);
         ball(g, 0xff8ab8, 0, 1.4, -1.36, 0.3, { sz: 0.25 });
         for (let k = 0; k < 3; k++) put(g, G.cone(), gold, { x: -0.3 + k * 0.3, y: 2.1 + (k === 1 ? 0.12 : 0), z: -1.44, s: 0.1, sy: 0.3 });
@@ -1582,9 +1898,17 @@
     "bed-race": {
       obs: [{ cx: 0, cz: 0.2, w: 2.5, d: 3.45 }], spot: { lx: 2.2, lz: 0.6, yaw: -PI / 2 }, lie: { lx: 0, lz: 0.0, h: 0.86, yaw: PI },
       build(g) {
-        const red = toon(0xff3b3b);
+        const red = shiny(0xff3b3b);
         block(g, red, 0, 0.5, 0.2, 2.2, 0.75, 3.4, 0.28);
-        block(g, 0xffffff, 0, 0.75, -0.15, 1.7, 0.2, 2.4, 0.08);
+        block(g, padded(0xffffff), 0, 0.75, -0.15, 1.7, 0.2, 2.4, 0.08);
+        bits(g, (p) => {
+          // racing number on each side, a grille, and bolts on the wheels
+          for (const sx of [-1, 1]) {
+            for (const [x, z] of [[-1.13, -0.95], [1.13, -0.95], [-1.13, 1.3], [1.13, 1.3]]) if (Math.sign(x) === sx) for (let k = 0; k < 5; k++) bead(p, 0x9aa3b0, x * 1.12, 0.38 + Math.cos(k * 1.26) * 0.09, z + Math.sin(k * 1.26) * 0.09, 0.025);
+            slab(p, 0x2f3542, sx * 0.015 + sx * 1.1, 0.48, 0.25, 0.02, 0.06, 0.16, 0.01);
+          }
+          for (let k = 0; k < 5; k++) slab(p, 0x2f3542, -0.4 + k * 0.2, 0.55, 1.91, 0.08, 0.2, 0.02, 0.01);
+        });
         block(g, 0x4a90e2, 0, 0.84, 0.55, 1.72, 0.06, 1.2, 0.03);
         ball(g, 0xffffff, 0, 0.92, -1.0, 0.3, { sx: 1.8, sy: 0.4 });
         block(g, red, 0, 0.88, 1.45, 2.2, 0.22, 0.7, 0.1, { rx: -0.2 }); // the hood
@@ -1608,12 +1932,20 @@
       // (a gentle sag, and the Mii lies just on top of it: head and feet stay above the cloth)
       obs: [{ cx: 0, cz: 0.05, w: 1.7, d: 3.3 }], spot: { lx: 1.85, lz: 0.4, yaw: -PI / 2 }, lie: { lx: 0, lz: 0.05, h: 1.07, yaw: PI },
       build(g) {
-        const wood = toon(0xa47a48);
+        const wood = woody(0xa47a48);
         for (const z of [-1.45, 1.55]) {
           block(g, wood, 0, 1.0, z, 0.2, 2.0, 0.2, 0.06);
           block(g, wood, 0, 0.06, z, 1.2, 0.12, 0.3, 0.05);
           ball(g, 0x5cc84a, 0, 2.15, z, 0.18);
         }
+        bits(g, (p) => {
+          // leaves round the post tops, rope lashings and a hook at each end
+          for (const z of [-1.45, 1.55]) {
+            for (let k = 0; k < 5; k++) { const a = (k / 5) * TAU; ball(p, k % 2 ? 0x46b04a : 0x7fdc5c, Math.cos(a) * 0.17, 2.12, z + Math.sin(a) * 0.17, 0.09, { sy: 0.6 }); }
+            for (let k = 0; k < 3; k++) put(p, lowTorus(0.12, 0.02), toon(0xf4efe4), { y: 1.82 + k * 0.05, z, rx: PI / 2 });
+            put(p, lowTorus(0.05, 0.015), toon(0x8f96a3), { y: 1.9, z: z - Math.sign(z) * 0.12 });
+          }
+        });
         // the cloth: a curved, striped sheet sagging in the middle
         const stripes = canvasTexture(64, 128, (ctx, w, h) => {
           const cols = ["#ff7a59", "#ffcf5a", "#5cc8b8", "#ffffff"];
@@ -1648,35 +1980,53 @@
     "sofa-basic": {
       obs: [{ cx: 0, cz: 0, w: 1.4, d: 1.2 }], spot: { lx: 0, lz: 1.3, yaw: 0 }, seat: { lx: 0, lz: 0.02, h: 0.56, legs: "out" },
       build(g) {
-        const c = toon(0xffb84a);
+        const c = cloth(0xffb84a);
         block(g, c, 0, 0.3, 0, 1.3, 0.4, 1.1, 0.12);
-        block(g, 0xffd27a, 0, 0.5, 0.05, 1.0, 0.14, 0.92, 0.07);
+        block(g, padded(0xffd27a), 0, 0.5, 0.05, 1.0, 0.14, 0.92, 0.07);
         block(g, c, 0, 0.9, -0.45, 1.3, 0.85, 0.24, 0.12);
         for (const sx of [-0.56, 0.56]) block(g, c, sx, 0.62, 0.02, 0.22, 0.42, 1.05, 0.1);
-        for (const [x, z] of [[-0.5, -0.4], [0.5, -0.4], [-0.5, 0.4], [0.5, 0.4]]) block(g, 0x8a5a3a, x, 0.06, z, 0.1, 0.12, 0.1, 0.03);
-        ball(g, 0xff7a8a, 0.35, 0.78, -0.25, 0.2, { sz: 0.5, rz: 0.4 });
+        for (const [x, z] of [[-0.5, -0.4], [0.5, -0.4], [-0.5, 0.4], [0.5, 0.4]]) block(g, woody(0x8a5a3a), x, 0.06, z, 0.1, 0.12, 0.1, 0.03);
+        ball(g, cloth(0xff7a8a), 0.35, 0.78, -0.25, 0.2, { sz: 0.5, rz: 0.4 });
+        bits(g, (p) => {
+          // buttons tufted into the back, piping round the arms, and a little knitted throw
+          for (const [x, y] of [[-0.3, 1.0], [0, 1.0], [0.3, 1.0], [-0.15, 0.78], [0.15, 0.78]]) bead(p, 0xe89a30, x, y, -0.33, 0.03, { sz: 0.5 });
+          for (const sx of [-0.56, 0.56]) slab(p, 0xffd27a, sx, 0.835, 0.02, 0.2, 0.02, 1.0, 0.01);
+          slab(p, 0x8fd3ff, -0.38, 1.1, -0.3, 0.42, 0.2, 0.05, 0.02, { rx: -0.2, rz: 0.08 });
+          for (let k = 0; k < 4; k++) slab(p, 0xffffff, -0.38, 1.03 + k * 0.045, -0.27 + k * 0.009, 0.4, 0.012, 0.01, 0.003, { rx: -0.2, rz: 0.08 });
+        });
       },
     },
     "sofa-comfy": {
       obs: [{ cx: 0, cz: 0, w: 2.75, d: 1.25 }], spot: { lx: 0, lz: 1.35, yaw: 0 }, seat: { lx: 0, lz: 0.05, h: 0.6, legs: "out" },
       build(g) {
-        const c = toon(0x4fb8b0), c2 = toon(0x7fd6cc);
+        const c = cloth(0x4fb8b0), c2 = padded(0x7fd6cc);
+        bits(g, (p) => {
+          // tufted buttons on the back cushions, and the piping along the front of the seat
+          for (const sx of [-0.6, 0.6]) for (const [x, y] of [[-0.25, 1.08], [0.25, 1.08], [0, 0.86]]) bead(p, 0x3a9a92, sx + x, y, -0.2 - (1.08 - y) * 0.12, 0.035, { sz: 0.5 });
+          slab(p, 0x3a9a92, 0, 0.42, 0.6, 2.3, 0.03, 0.03, 0.01);
+        });
         block(g, c, 0, 0.3, 0, 2.6, 0.42, 1.2, 0.14);
         for (const sx of [-0.6, 0.6]) block(g, c2, sx, 0.53, 0.07, 1.15, 0.18, 1.0, 0.09);
         block(g, c, 0, 0.95, -0.5, 2.6, 0.9, 0.3, 0.15);
         for (const sx of [-0.6, 0.6]) block(g, c2, sx, 0.95, -0.32, 1.1, 0.65, 0.2, 0.1, { rx: -0.12 });
         for (const sx of [-1.25, 1.25]) put(g, G.capsule(), c, { x: sx, y: 0.62, z: 0.0, sx: 0.32, sy: 0.75, sz: 0.32, rx: PI / 2 });
-        ball(g, 0xff9ec7, -0.95, 0.85, -0.2, 0.22, { sz: 0.5, rz: -0.4 });
-        ball(g, 0xffe25a, 0.95, 0.85, -0.2, 0.22, { sz: 0.5, rz: 0.4 });
-        for (const [x, z] of [[-1.15, -0.45], [1.15, -0.45], [-1.15, 0.45], [1.15, 0.45]]) ball(g, 0x8a5a3a, x, 0.06, z, 0.07);
+        ball(g, cloth(0xff9ec7), -0.95, 0.85, -0.2, 0.22, { sz: 0.5, rz: -0.4 });
+        ball(g, cloth(0xffe25a), 0.95, 0.85, -0.2, 0.22, { sz: 0.5, rz: 0.4 });
+        for (const [x, z] of [[-1.15, -0.45], [1.15, -0.45], [-1.15, 0.45], [1.15, 0.45]]) ball(g, woody(0x8a5a3a), x, 0.06, z, 0.07);
       },
     },
     "sofa-beanbag": {
       obs: [{ cx: 0, cz: -0.05, r: 0.85 }], spot: { lx: 0, lz: 1.45, yaw: 0 }, seat: { lx: 0, lz: 0.0, h: 0.45, legs: "out" },
       build(g) {
-        ball(g, 0xb58cff, 0, 0.36, -0.05, 0.8, { sy: 0.48 });
-        ball(g, 0xb58cff, 0, 0.62, -0.42, 0.55, { sy: 0.65, sz: 0.6 });
-        ball(g, 0xc9a8ff, 0, 0.46, 0.05, 0.5, { sy: 0.25 });
+        ball(g, cloth(0xb58cff), 0, 0.36, -0.05, 0.8, { sy: 0.48 });
+        ball(g, cloth(0xb58cff), 0, 0.62, -0.42, 0.55, { sy: 0.65, sz: 0.6 });
+        ball(g, cloth(0xc9a8ff), 0, 0.46, 0.05, 0.5, { sy: 0.25 });
+        bits(g, (p) => {
+          // a sewn-on label, a star patch and a seam round the middle
+          slab(p, 0xffffff, 0.55, 0.3, 0.48, 0.16, 0.1, 0.02, 0.01, { ry: 0.7 });
+          put(p, G.cone(5), toon(0xffe25a), { x: -0.52, y: 0.42, z: 0.52, s: 0.09, sy: 0.02, rx: PI / 2 - 0.5, ry: -0.6 });
+          put(p, lowTorus(0.79, 0.012), toon(0x9a70e0), { y: 0.36, z: -0.05, sy: 0.48, rx: PI / 2 });
+        });
         ball(g, 0xffffff, 0.45, 0.75, -0.55, 0.06);
         ball(g, 0xffffff, -0.55, 0.58, -0.35, 0.05);
       },
@@ -1684,7 +2034,12 @@
     "sofa-throne": {
       obs: [{ cx: 0, cz: -0.05, w: 1.9, d: 1.7 }], spot: { lx: 0, lz: 1.6, yaw: 0 }, seat: { lx: 0, lz: 0.05, h: 0.81, legs: "out" },
       build(g) {
-        const gold = toon(0xffcf3a), red = toon(0xd8344a);
+        const gold = shiny(0xffcf3a), red = padded(0xd8344a);
+        bits(g, (p) => {
+          // gold studs round the red back panel
+          for (let k = 0; k < 8; k++) { const t = k / 7; bead(p, 0xffe27a, -0.45 + t * 0.9, 2.15, -0.37, 0.025); bead(p, 0xffe27a, -0.45 + t * 0.9, 0.75, -0.37, 0.025); }
+          for (let k = 0; k < 6; k++) for (const sx of [-0.45, 0.45]) bead(p, 0xffe27a, sx, 0.95 + k * 0.2, -0.37, 0.025);
+        });
         block(g, red, 0, 0.12, -0.05, 1.8, 0.24, 1.6, 0.06);
         block(g, gold, 0, 0.25, -0.05, 1.84, 0.04, 1.64, 0.02);
         block(g, gold, 0, 0.5, 0.0, 1.15, 0.5, 0.95, 0.08);
@@ -1708,9 +2063,20 @@
     "table-basic": {
       obs: [{ cx: 0, cz: 0, w: 1.6, d: 1.1 }], spot: { lx: 0, lz: -1.2, yaw: 0 },
       build(g) {
-        const wood = toon(0xe0a868);
+        const wood = woody(0xe0a868);
         block(g, wood, 0, 0.82, 0, 1.6, 0.1, 1.1, 0.05);
         for (const [x, z] of [[-0.65, -0.4], [0.65, -0.4], [-0.65, 0.4], [0.65, 0.4]]) block(g, wood, x, 0.4, z, 0.1, 0.8, 0.1, 0.03);
+        bits(g, (p) => {
+          // a lace runner, a rail under the top, a fork, a napkin, a rim on the plate and a leaf on the flower
+          slab(p, 0xfff6ea, 0, 0.873, 0, 0.42, 0.008, 1.14, 0.003);
+          for (let k = 0; k < 5; k++) bead(p, 0xfff6ea, -0.16 + k * 0.08, 0.86, 0.57, 0.025, { sy: 0.3 });
+          for (const z of [-0.47, 0.47]) slab(p, 0xc98b4a, 0, 0.72, z, 1.2, 0.08, 0.03, 0.01);
+          slab(p, 0xff9ec7, 0.62, 0.877, 0.3, 0.2, 0.008, 0.2, 0.003, { ry: 0.3 });
+          slab(p, 0xdfe4ea, 0.66, 0.885, 0.0, 0.03, 0.006, 0.24, 0.002);
+          put(p, lowTorus(0.27, 0.012), toon(0xff9ec7), { x: 0.35, y: 0.912, z: 0.05, rx: PI / 2 });
+          bead(p, 0x5cb840, -0.34, 1.3, 0, 0.06, { sx: 1.5, sy: 0.4, rz: -0.5 });
+          put(p, lowTorus(0.12, 0.012), toon(0xffffff), { x: -0.4, y: 1.18, rx: PI / 2 });
+        });
         cylinder(g, 0x7cc6e8, -0.4, 1.05, 0.0, 0.12, 0.35);
         cylinder(g, 0x4f9e35, -0.4, 1.35, 0.0, 0.02, 0.4);
         ball(g, 0xff6fa5, -0.4, 1.58, 0.0, 0.12);
@@ -1722,7 +2088,7 @@
     "table-picnic": {
       obs: [{ cx: 0, cz: 0, w: 2.4, d: 2.25 }], spot: { lx: 0, lz: -1.7, yaw: 0 },
       build(g) {
-        const wood = toon(0xc98b4a);
+        const wood = woody(0xc98b4a);
         const check = canvasTexture(64, 64, (ctx) => {
           ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 64, 64);
           ctx.fillStyle = "#ff5a64";
@@ -1746,7 +2112,17 @@
     "table-desk": {
       obs: [{ cx: 0, cz: 0.05, w: 2.15, d: 1.0 }], spot: { lx: 0, lz: -1.15, yaw: 0 },
       build(g, ctx) {
-        const top = toon(0xf4f4f4), legs = toon(0x8f96a3);
+        const top = woody(0xf4f4f4), legs = shiny(0x8f96a3);
+        bits(g, (p) => {
+          // keys on the keyboard, sticky notes on the screen, a mug, pens and a stack of paper
+          for (let row = 0; row < 3; row++) for (let k = 0; k < 10; k++) slab(p, 0xb8bcc8, -0.34 + k * 0.075, 1.085, -0.27 + row * 0.06, 0.055, 0.015, 0.045, 0.006);
+          slab(p, 0xffe25a, 0.52, 1.82, 0.215, 0.14, 0.14, 0.01, 0.004, { rz: 0.08 });
+          slab(p, 0xff9ec7, 0.48, 1.68, 0.215, 0.12, 0.12, 0.01, 0.004, { rz: -0.1 });
+          cylinder(p, 0x8fd3ff, 0.6, 1.1, 0.12, 0.06, 0.13);
+          put(p, lowTorus(0.04, 0.012), toon(0x8fd3ff), { x: 0.67, y: 1.1, z: 0.12 });
+          for (const [dx, col] of [[-0.02, 0x4a90e2], [0.02, 0xe8424f], [0, 0x2f3542]]) cylinder(p, col, -0.8 + dx, 1.26, -0.15 + dx, 0.012, 0.18, { rz: dx * 6 });
+          for (let k = 0; k < 4; k++) slab(p, k % 2 ? 0xffffff : 0xf4efe4, -0.5, 1.05 + k * 0.012, 0.18, 0.3, 0.012, 0.38, 0.003, { ry: k * 0.05 });
+        });
         block(g, top, 0, 1.0, 0, 2.1, 0.08, 0.9, 0.04);
         for (const sx of [-0.98, 0.98]) block(g, legs, sx, 0.5, 0, 0.08, 1.0, 0.8, 0.03);
         block(g, 0x2f3542, 0, 1.55, 0.25, 1.2, 0.75, 0.06, 0.04);
@@ -1767,10 +2143,17 @@
     "table-tea": {
       obs: [{ cx: 0, cz: 0, r: 0.8 }], spot: { lx: 0, lz: -1.35, yaw: 0 },
       build(g) {
-        cylinder(g, 0xffffff, 0, 0.82, 0, 0.75, 0.06, { seg: 32 });
-        put(g, G.taper(0.76, 0.84), toon(0xfff0f6), { y: 0.6, sy: 0.42 });
-        cylinder(g, 0xd9a441, 0, 0.3, 0, 0.06, 0.6);
-        cylinder(g, 0xd9a441, 0, 0.03, 0, 0.4, 0.05);
+        cylinder(g, cloth(0xffffff), 0, 0.82, 0, 0.75, 0.06, { seg: 32 });
+        put(g, G.taper(0.76, 0.84), fine("pleat", 0xfff0f6), { y: 0.6, sy: 0.42 });
+        cylinder(g, shiny(0xd9a441), 0, 0.3, 0, 0.06, 0.6);
+        cylinder(g, shiny(0xd9a441), 0, 0.03, 0, 0.4, 0.05);
+        bits(g, (p) => {
+          // a lacy scalloped edge on the tablecloth, and a sugar bowl with a spoon
+          for (let k = 0; k < 24; k++) { const a = (k / 24) * TAU; bead(p, 0xffd6e6, Math.cos(a) * 0.84, 0.39, Math.sin(a) * 0.84, 0.05, { sy: 0.5 }); }
+          bead(p, 0xffd6e6, 0.42, 0.92, 0.0, 0.07, { sy: 0.8 });
+          bead(p, 0xffffff, 0.42, 0.98, 0.0, 0.03);
+          slab(p, 0xdfe4ea, 0.3, 0.87, 0.18, 0.02, 0.006, 0.12, 0.002, { ry: 0.5 });
+        });
         // teapot
         ball(g, 0xffffff, -0.25, 1.05, 0.0, 0.22, { sy: 0.85 });
         ball(g, 0xff9ec7, -0.25, 1.05, 0.0, 0.225, { sy: 0.2 });
@@ -1796,10 +2179,19 @@
     "tv-none": {
       obs: [{ cx: 0, cz: -0.15, w: 1.0, d: 0.8 }], spot: { lx: 0, lz: 1.2, yaw: PI },
       build(g, ctx) {
-        const wood = toon(0xc98b4a);
+        const wood = woody(0xc98b4a);
         block(g, wood, 0, 0.7, -0.15, 0.9, 0.08, 0.7, 0.03);
         for (const [x, z] of [[-0.38, -0.42], [0.38, -0.42], [-0.38, 0.12], [0.38, 0.12]]) block(g, wood, x, 0.35, z, 0.07, 0.7, 0.07, 0.02);
-        block(g, 0xff7a59, 0, 1.0, -0.15, 0.8, 0.52, 0.38, 0.12);
+        block(g, shiny(0xff7a59), 0, 1.0, -0.15, 0.8, 0.52, 0.38, 0.12);
+        bits(g, (p) => {
+          // a carry handle, a tuning window with its needle, a lower shelf with a few records
+          for (const s of [-1, 1]) slab(p, 0x8f96a3, s * 0.25, 1.3, -0.15, 0.04, 0.12, 0.04, 0.01);
+          slab(p, 0x8f96a3, 0, 1.36, -0.15, 0.54, 0.04, 0.05, 0.015);
+          slab(p, 0xfff1dc, 0.2, 1.18, 0.045, 0.3, 0.06, 0.01, 0.01);
+          slab(p, 0xe8424f, 0.16, 1.18, 0.05, 0.01, 0.05, 0.01, 0.002);
+          slab(p, 0xc98b4a, 0, 0.18, -0.15, 0.8, 0.04, 0.6, 0.01);
+          for (let k = 0; k < 4; k++) slab(p, [0x2f3542, 0xe8424f, 0x4a90e2, 0xffcf3a][k], -0.25 + k * 0.05, 0.38, -0.2, 0.025, 0.34, 0.34, 0.01, { rz: k === 3 ? -0.2 : 0 });
+        });
         disc(g, toon(0xfff1dc), -0.15, 1.0, 0.045, 0.17, { rx: 0 });
         for (let k = 0; k < 4; k++) block(g, 0xc98b4a, -0.15, 0.9 + k * 0.065, 0.05, 0.28, 0.02, 0.01, 0.005);
         ball(g, 0xffcf5a, 0.22, 1.08, 0.05, 0.06, { sz: 0.5 });
@@ -1826,8 +2218,16 @@
     "tv-retro": {
       obs: [{ cx: 0, cz: -0.05, w: 1.75, d: 1.05 }], spot: { lx: 0, lz: 1.85, yaw: PI },
       build(g, ctx) {
-        const wood = toon(0xa86b32);
+        const wood = woody(0xa86b32);
         block(g, wood, 0, 0.95, -0.1, 1.65, 1.25, 0.95, 0.14);
+        bits(g, (p) => {
+          // a speaker grille, a lace doily with a vase on top
+          for (let k = 0; k < 4; k++) slab(p, 0x8a5a2a, 0.55, 1.52 - k * 0.04, 0.37, 0.24, 0.015, 0.01, 0.004);
+          cylinder(p, 0xfff6ea, 0.3, 1.58, -0.1, 0.28, 0.01);
+          for (let k = 0; k < 12; k++) { const a = (k / 12) * TAU; bead(p, 0xfff6ea, 0.3 + Math.cos(a) * 0.28, 1.58, -0.1 + Math.sin(a) * 0.28, 0.03, { sy: 0.3 }); }
+          cylinder(p, 0x8fd3ff, 0.3, 1.7, -0.1, 0.06, 0.24);
+          for (const [dx, col] of [[-0.04, 0xff6fa5], [0.05, 0xffe25a]]) { cylinder(p, 0x4f9e35, 0.3 + dx, 1.9, -0.1, 0.008, 0.2); ball(p, col, 0.3 + dx, 2.0, -0.1, 0.05); }
+        });
         for (const sx of [-0.65, 0.65]) block(g, 0x6b4423, sx, 0.15, -0.1, 0.1, 0.3, 0.1, 0.03, { rz: sx * 0.3 });
         block(g, 0xe8dcc8, -0.2, 0.98, 0.37, 1.05, 0.85, 0.04, 0.12);
         const shows = [tvShow(0), tvShow(1), tvShow(2)];
@@ -1847,9 +2247,17 @@
     "tv-console": {
       obs: [{ cx: 0, cz: -0.2, w: 2.1, d: 0.75 }], spot: { lx: 0, lz: 1.5, yaw: PI },
       build(g, ctx) {
-        block(g, 0xf4f4f4, 0, 0.3, -0.2, 2.0, 0.6, 0.6, 0.08);
+        block(g, woody(0xf4f4f4), 0, 0.3, -0.2, 2.0, 0.6, 0.6, 0.08);
         block(g, 0x3a3f4a, 0, 0.3, 0.11, 1.8, 0.4, 0.02, 0.02);
-        block(g, 0x2f3542, 0, 1.35, -0.3, 1.9, 1.1, 0.08, 0.05);
+        block(g, shiny(0x2f3542), 0, 1.35, -0.3, 1.9, 1.1, 0.08, 0.05);
+        bits(g, (p) => {
+          // game boxes on the shelf, the console's vents and a power light on the TV
+          for (let k = 0; k < 7; k++) slab(p, [0xe8424f, 0x4a90e2, 0x5cc84a, 0xffcf3a, 0x9b6bff, 0xff9a3a, 0xffffff][k], -0.75 + k * 0.07, 0.27, 0.0, 0.05, 0.3, 0.2, 0.01);
+          slab(p, 0x9b6bff, 0.4, 0.13, 0.0, 0.36, 0.05, 0.22, 0.01);
+          slab(p, 0xffcf3a, 0.42, 0.18, 0.0, 0.34, 0.05, 0.2, 0.01, { ry: 0.1 });
+          for (let k = 0; k < 4; k++) slab(p, 0xb8bcc8, -0.6 + k * 0.05, 0.73, -0.15, 0.02, 0.005, 0.3, 0.002);
+          bead(p, 0x5cff8a, 0.88, 0.84, -0.255, 0.012);
+        });
         block(g, 0x2f3542, 0, 0.7, -0.3, 0.3, 0.2, 0.25, 0.04);
         const game = gameScreen();
         const scr = dynamic(plane(g, 1.8, 1.0, basic(game), { y: 1.35, z: -0.255 }));
@@ -1865,7 +2273,13 @@
     "tv-treadmill": {
       obs: [{ cx: 0, cz: 0.4, w: 1.1, d: 2.1 }], spot: { lx: 0, lz: 2.15, yaw: PI }, stand: { lx: 0, lz: 0.45, h: 0.3 },
       build(g, ctx) {
-        block(g, 0x3a3f4a, 0, 0.15, 0.45, 1.0, 0.25, 2.0, 0.08);
+        block(g, shiny(0x3a3f4a), 0, 0.15, 0.45, 1.0, 0.25, 2.0, 0.08);
+        bits(g, (p) => {
+          // a towel over the rail, and a rubber mat under it all
+          slab(p, 0x5cc8b8, 0.48, 1.12, -0.05, 0.03, 0.26, 0.24, 0.01);
+          slab(p, 0x5cc8b8, 0.5, 1.26, -0.05, 0.08, 0.03, 0.24, 0.01);
+          slab(p, 0x2a2e36, 0, 0.01, 0.45, 1.25, 0.02, 2.25, 0.01);
+        });
         const belt = canvasTexture(32, 128, (c, w, h) => {
           c.fillStyle = "#2a2e36"; c.fillRect(0, 0, w, h);
           c.fillStyle = "#454b57"; for (let y = 0; y < h; y += 16) c.fillRect(0, y, w, 4);
@@ -1886,8 +2300,15 @@
     "tv-piano": {
       obs: [{ cx: 0, cz: -0.05, w: 2.1, d: 1.05 }], spot: { lx: 0, lz: 1.2, yaw: PI },
       build(g) {
-        const black = toon(0x2a2430);
+        const black = shiny(0x2a2430);
         block(g, black, 0, 0.85, -0.25, 2.0, 1.7, 0.6, 0.08);
+        bits(g, (p) => {
+          // gold pedals, a little bench cushion edge and a metronome on top
+          for (let k = 0; k < 3; k++) slab(p, 0xd9a441, -0.15 + k * 0.15, 0.06, 0.15, 0.06, 0.03, 0.14, 0.01);
+          slab(p, 0x3a3440, 0, 0.3, 0.02, 1.7, 0.5, 0.02, 0.02);
+          put(p, G.cone(4), toon(0x9a6a3c), { x: 0.65, y: 1.88, z: -0.25, s: 0.12, sy: 0.24, ry: PI / 4 });
+          slab(p, 0xd9a441, 0.65, 1.92, -0.17, 0.01, 0.16, 0.01, 0.002, { rz: 0.3 });
+        });
         block(g, black, 0, 0.75, 0.2, 2.0, 0.12, 0.6, 0.04);
         const keys = canvasTexture(256, 32, (c, w, h) => {
           c.fillStyle = "#fffdf5"; c.fillRect(0, 0, w, h);
@@ -1953,10 +2374,18 @@
       // a floor lamp standing by the left wall, between the bed and the sofa
       at: { x: -5.45, z: -0.55 }, obs: [{ cx: 0, cz: 0, r: 0.32 }],
       build(g) {
-        cylinder(g, 0x8f96a3, 0, 0.04, 0, 0.3, 0.08);
-        cylinder(g, 0x8f96a3, 0, 1.2, 0, 0.035, 2.3);
+        cylinder(g, shiny(0x8f96a3), 0, 0.04, 0, 0.3, 0.08);
+        cylinder(g, shiny(0x8f96a3), 0, 1.2, 0, 0.035, 2.3);
         ball(g, glow(0xfff1b8, 1), 0, 2.25, 0, 0.13);
         put(g, G.taper(0.25, 0.45), toon(0xfff1dc, { emissive: 0xffe0a0, emissiveIntensity: 0.35 }), { y: 2.35, sy: 0.5 });
+        bits(g, (p) => {
+          // a foot switch, a collar on the pole, trim round the shade and a pull chain with a bead
+          cylinder(p, 0x5a606e, 0.16, 0.1, 0.0, 0.05, 0.04);
+          for (const y of [0.12, 1.15, 2.08]) cylinder(p, 0xd9a441, 0, y, 0, 0.05, 0.04);
+          for (const [y, r] of [[2.11, 0.45], [2.59, 0.25]]) put(p, lowTorus(r, 0.018), toon(0xd9a441), { y, rx: PI / 2 });
+          cylinder(p, 0xd9a441, 0.18, 1.98, 0, 0.004, 0.24);
+          bead(p, 0xd9a441, 0.18, 1.85, 0, 0.022);
+        });
       },
     },
     "lamp-lava": {
@@ -2014,10 +2443,27 @@
         put(g, G.taper(0.45, 0.32), toon(0xe0784a), { y: 0.35, sy: 0.7 });
         cylinder(g, 0xd06a3e, 0, 0.7, 0, 0.47, 0.1);
         disc(g, toon(0x6b4423), 0, 0.72, 0, 0.42);
+        bits(g, (p) => {
+          // a painted band round the pot, a saucer, and pebbles on the soil
+          cylinder(p, 0xfff1dc, 0, 0.42, 0, 0.405, 0.06);
+          for (let k = 0; k < 8; k++) { const a = (k / 8) * TAU; bead(p, 0xfff1dc, Math.cos(a) * 0.39, 0.3, Math.sin(a) * 0.39, 0.03); }
+          cylinder(p, 0xc85e34, 0, 0.02, 0, 0.42, 0.04);
+          for (let k = 0; k < 6; k++) { const a = k * 2.4; ball(p, [0xd8d0c0, 0xb8b0a0][k % 2], Math.cos(a) * 0.3, 0.73, Math.sin(a) * 0.3, 0.04, { sy: 0.5 }); }
+        });
         const leaves = dynamic(group(g, 0, 0.7, 0));
         for (let i = 0; i < 9; i++) {
           const a = (i / 9) * TAU;
           put(leaves, G.sphere(), toon(i % 2 ? 0x46b04a : 0x5cc84a), { x: Math.cos(a) * 0.3, y: 0.55 + (i % 3) * 0.2, z: Math.sin(a) * 0.3, sx: 0.18, sy: 0.6, sz: 0.18, rx: Math.sin(a) * 0.6, rz: -Math.cos(a) * 0.6 });
+        }
+        if (FINE) {
+          // a midrib down each leaf, some smaller leaves in between, and a couple of curly new shoots
+          for (let i = 0; i < 9; i++) {
+            const a = (i / 9) * TAU;
+            put(leaves, G.lowSphere(), toon(0x8fdc6a), { x: Math.cos(a) * 0.34, y: 0.55 + (i % 3) * 0.2, z: Math.sin(a) * 0.34, sx: 0.02, sy: 0.55, sz: 0.02, rx: Math.sin(a) * 0.6, rz: -Math.cos(a) * 0.6 });
+            const b = a + TAU / 18;
+            put(leaves, G.lowSphere(), toon([0x3a9a3e, 0x7fd65c, 0x5cb840][i % 3]), { x: Math.cos(b) * 0.2, y: 0.35 + (i % 2) * 0.12, z: Math.sin(b) * 0.2, sx: 0.11, sy: 0.32, sz: 0.11, rx: Math.sin(b) * 0.9, rz: -Math.cos(b) * 0.9 });
+          }
+          for (const s of [-1, 1]) put(leaves, lowTorus(0.06, 0.015), toon(0x8fdc6a), { x: s * 0.08, y: 1.15, z: 0.05 * s, ry: s, rx: 0.4 });
         }
         ctx.anim.push((t) => { leaves.rotation.z = Math.sin(t * 1.3) * 0.04; leaves.rotation.x = Math.cos(t * 1.1) * 0.03; });
       },
@@ -2051,14 +2497,29 @@
       obs: [{ cx: 0, cz: 0, r: 0.6 }], spot: { wx: -3.6, wz: 3.45, toward: true },
       build(g, ctx) {
         put(g, G.taper(0.55, 0.42), toon(0xfff1dc), { y: 0.4, sy: 0.8 });
-        cylinder(g, 0xd9a441, 0, 0.6, 0, 0.53, 0.06);
+        cylinder(g, shiny(0xd9a441), 0, 0.6, 0, 0.53, 0.06);
         disc(g, toon(0x6b4423), 0, 0.81, 0, 0.5);
-        put(g, G.taper(0.09, 0.14), toon(0x9a6a3c), { y: 1.9, sy: 2.2 });
+        put(g, G.taper(0.09, 0.14), woody(0x9a6a3c), { y: 1.9, sy: 2.2 });
+        bits(g, (p) => {
+          // bark rings on the trunk, a side branch, and moss on the soil
+          for (let k = 0; k < 6; k++) put(p, lowTorus(0.13 - k * 0.006, 0.012), toon(0x7a5230), { y: 1.0 + k * 0.32, rx: PI / 2 + (k % 2 ? 0.1 : -0.1) });
+          rod(p, 0x9a6a3c, 0, 2.2, 0, 0.42, 2.62, 0.1, 0.035);
+          for (let k = 0; k < 7; k++) { const a = k * 0.9; ball(p, k % 2 ? 0x5cb840 : 0x7fd65c, Math.cos(a) * 0.32, 0.83, Math.sin(a) * 0.32, 0.08, { sy: 0.4 }); }
+        });
         const crown = dynamic(group(g, 0, 3.0, 0));
         ball(crown, 0x5cc84a, 0, 0.1, 0, 0.75);
         ball(crown, 0x4fbf47, -0.55, -0.15, 0.15, 0.5);
         ball(crown, 0x4fbf47, 0.55, -0.1, -0.1, 0.52);
         ball(crown, 0x7fdc5c, 0.1, 0.5, 0.3, 0.45);
+        if (FINE) {
+          // little leaf tufts poking out all over the crown, in a few greens
+          const r = seeded(31);
+          for (let i = 0; i < 26; i++) {
+            const a = r() * TAU, e = (r() - 0.3) * 1.2, d = 0.72 + r() * 0.12;
+            const x = Math.cos(a) * Math.cos(e) * d, y = 0.1 + Math.sin(e) * d * 0.9, z = Math.sin(a) * Math.cos(e) * d;
+            put(crown, G.lowSphere(), toon([0x46b04a, 0x6fd25a, 0x8fe06a, 0x3f9e40][i % 4]), { x, y, z, sx: 0.16, sy: 0.08, sz: 0.11, rx: r() * 2, ry: a, rz: r() * 2 });
+          }
+        }
         for (let i = 0; i < 5; i++) ball(crown, 0xffa21c, Math.cos(i * 1.3) * 0.65, -0.1 + (i % 2) * 0.3, Math.sin(i * 1.3) * 0.65, 0.08);
         ctx.anim.push((t) => { crown.rotation.z = Math.sin(t * 0.9) * 0.03; });
       },
@@ -2079,8 +2540,14 @@
           c.fillStyle = "#3a2a4a"; c.beginPath(); c.moveTo(20, h); c.quadraticCurveTo(30, h * 0.5, 60, h * 0.42); c.lineTo(64, h * 0.46); c.quadraticCurveTo(38, h * 0.55, 34, h); c.fill();
           for (let k = 0; k < 5; k++) { c.beginPath(); c.ellipse(60 + Math.cos(k * 1.25) * 18, h * 0.42 + Math.sin(k * 1.25) * 8, 22, 6, k * 1.25, 0, TAU); c.fill(); }
         });
-        block(g, 0xc98b4a, 0, 0, 0, 2.0, 1.45, 0.1, 0.05);
+        block(g, woody(0xc98b4a), 0, 0, 0, 2.0, 1.45, 0.1, 0.05);
         plane(g, 1.8, 1.25, toon(0xffffff, { map: tex }), { z: 0.06 });
+        bits(g, (p) => {
+          // an inner gold lip, a nail and the picture wire above it
+          for (const [x, y, w, h] of [[0, 0.64, 1.82, 0.03], [0, -0.64, 1.82, 0.03], [0.9, 0, 0.03, 1.28], [-0.9, 0, 0.03, 1.28]]) slab(p, 0xd9a441, x, y, 0.06, w, h, 0.02, 0.008);
+          bead(p, 0x8f96a3, 0, 0.98, -0.02, 0.03);
+          for (const s of [-1, 1]) rod(p, 0x8f96a3, 0, 0.97, -0.03, s * 0.6, 0.7, -0.03, 0.006);
+        });
       },
     },
     "art-poster": {
@@ -2096,6 +2563,8 @@
           c.fillStyle = "#fff"; c.font = "bold 18px 'Nunito', sans-serif"; c.fillText("MII CUP CHAMPIONS", w / 2, 225);
         });
         plane(g, 1.3, 1.85, toon(0xffffff, { map: tex }), { z: 0.03, rz: 0.03 });
+        // a curling corner
+        bits(g, (p) => put(p, G.cone(3), toon(0xe8e4d8), { x: 0.61, y: -0.88, z: 0.045, s: 0.07, sy: 0.08, sz: 0.01, rz: 2.4 }));
         for (const [x, y] of [[-0.6, 0.86], [0.6, 0.86], [-0.6, -0.86], [0.6, -0.86]]) block(g, 0xfff6c2, x, y, 0.04, 0.22, 0.08, 0.01, 0.005, { rz: x * y > 0 ? 0.7 : -0.7 });
       },
     },
@@ -2162,9 +2631,13 @@
           check(0);
           ctx.anim.push(check);
         }
-        const gold = toon(0xffcf3a);
+        const gold = shiny(0xffcf3a);
         block(g, gold, 0, 0, 0, 1.45, 1.8, 0.12, 0.08);
-        block(g, 0xd9a441, 0, 0, 0.04, 1.25, 1.6, 0.06, 0.04);
+        block(g, shiny(0xd9a441), 0, 0, 0.04, 1.25, 1.6, 0.06, 0.04);
+        bits(g, (p) => {
+          // carved beads round the frame
+          for (let k = 0; k < 9; k++) for (const s of [-1, 1]) { bead(p, 0xffe27a, -0.56 + k * 0.14, s * 0.86, 0.065, 0.025); bead(p, 0xffe27a, s * 0.69, -0.72 + k * 0.18, 0.065, 0.025); }
+        });
         plane(g, 1.12, 1.4, toon(0xffffff, { map: tex }), { z: 0.08 });
         for (const [x, y] of [[-0.72, 0.9], [0.72, 0.9], [-0.72, -0.9], [0.72, -0.9]]) ball(g, gold, x, y, 0.06, 0.1);
         ball(g, gold, 0, 1.0, 0.04, 0.16, { sz: 0.5 });
@@ -2180,9 +2653,22 @@
     "special-fishtank": {
       obs: [{ cx: 0, cz: -0.6, w: 2.3, d: 0.9 }], spot: { lx: 0, lz: 0.55, yaw: PI },
       build(g, ctx) {
-        block(g, 0x8a5a3a, 0, 0.42, -0.6, 2.2, 0.84, 0.8, 0.06);
+        block(g, woody(0x8a5a3a), 0, 0.42, -0.6, 2.2, 0.84, 0.8, 0.06);
         for (const sx of [-0.55, 0.55]) ball(g, 0xffcf5a, sx, 0.45, -0.19, 0.05);
-        block(g, 0x2f3542, 0, 2.08, -0.6, 2.18, 0.1, 0.8, 0.03);
+        block(g, shiny(0x2f3542), 0, 2.08, -0.6, 2.18, 0.1, 0.8, 0.03);
+        bits(g, (p) => {
+          // the cabinet's doors, the tank's frame, pebbles, a treasure chest and a little castle
+          for (const sx of [-0.55, 0.55]) slab(p, 0x6b4423, sx, 0.42, -0.2, 0.98, 0.68, 0.02, 0.02);
+          for (const [x, z] of [[-1.05, -0.97], [1.05, -0.97], [-1.05, -0.23], [1.05, -0.23]]) slab(p, 0x2f3542, x, 1.45, z, 0.04, 1.15, 0.04, 0.01);
+          slab(p, 0x2f3542, 0, 0.9, -0.6, 2.18, 0.05, 0.8, 0.01);
+          const r = seeded(19);
+          for (let k = 0; k < 18; k++) ball(p, [0xb8b0a0, 0x8a8aa0, 0xd8c8a0, 0xff9ec7][k % 4], -0.95 + r() * 1.9, 1.0, -0.9 + r() * 0.6, 0.03 + r() * 0.025, { sy: 0.6 });
+          slab(p, 0x8a5a3a, -0.35, 1.06, -0.5, 0.2, 0.12, 0.14, 0.02);
+          slab(p, 0xffcf3a, -0.35, 1.13, -0.5, 0.21, 0.03, 0.15, 0.01);
+          slab(p, 0xc8c0d8, 0.25, 1.15, -0.85, 0.22, 0.3, 0.16, 0.02);
+          for (let k = 0; k < 3; k++) slab(p, 0xc8c0d8, 0.17 + k * 0.08, 1.33, -0.85, 0.05, 0.06, 0.16, 0.01);
+          slab(p, 0x3a3f4a, 0.25, 1.08, -0.765, 0.08, 0.12, 0.01, 0.02);
+        });
         put(g, G.box(), toon(0x8fd8ff, { transparent: true, opacity: 0.35, emissive: 0x2a8acc, emissiveIntensity: 0.25 }), { y: 1.45, z: -0.6, sx: 2.1, sy: 1.15, sz: 0.74, shadow: false });
         block(g, 0xf3dd9a, 0, 0.94, -0.6, 2.05, 0.12, 0.7, 0.02);
         for (let k = 0; k < 8; k++) ball(g, [0xff9ec7, 0xffffff, 0x8fd3ff][k % 3], -0.9 + k * 0.25, 1.0, -0.45 - (k % 2) * 0.25, 0.05);
@@ -2220,7 +2706,15 @@
     "special-drums": {
       obs: [{ cx: 0, cz: 0.85, w: 2.2, d: 1.0 }], spot: { lx: 0, lz: -0.42, yaw: 0 },
       build(g, ctx) {
-        const shell = toon(0xff3b5a), chrome = toon(0xdfe4ea);
+        const shell = shiny(0xff3b5a), chrome = shiny(0xdfe4ea);
+        bits(g, (p) => {
+          // tension lugs round the bass drum, a stool and a pair of sticks
+          for (let k = 0; k < 8; k++) { const a = (k / 8) * TAU; slab(p, 0xdfe4ea, Math.cos(a) * 0.46, 0.48 + Math.sin(a) * 0.46, 0.9, 0.04, 0.04, 0.4, 0.01); }
+          cylinder(p, 0x2f3542, 0, 0.55, -0.0, 0.22, 0.08);
+          cylinder(p, 0xb8bcc8, 0, 0.27, 0.0, 0.03, 0.5);
+          for (let k = 0; k < 3; k++) { const a = (k / 3) * TAU; rod(p, 0xb8bcc8, 0, 0.1, 0, Math.cos(a) * 0.22, 0, Math.sin(a) * 0.22, 0.015); }
+          for (const s of [-1, 1]) rod(p, 0xe8c896, 0.2 + s * 0.05, 1.2, 0.68, 0.32 + s * 0.08, 1.22, 0.3, 0.012);
+        });
         const logo = canvasTexture(128, 128, (c, w, h) => {
           c.fillStyle = "#ffffff"; c.beginPath(); c.arc(64, 64, 62, 0, TAU); c.fill();
           c.fillStyle = "#ff3b5a"; c.font = "bold 40px 'Nunito', sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("MII", 64, 54);
@@ -2310,7 +2804,8 @@
         cylinder(g, 0x3a3f4a, 0.5, 2.8, -0.42, 0.05, 0.8, { rx: PI / 2 });
         const bag = dynamic(group(g, 0.5, 2.8, 0.0));
         cylinder(bag, 0x8f96a3, 0, -0.2, 0, 0.012, 0.4);
-        put(bag, G.capsule(), toon(0xe2384a), { y: -1.05, sx: 0.62, sy: 1.0, sz: 0.62 });
+        put(bag, G.capsule(), padded(0xe2384a), { y: -1.05, sx: 0.62, sy: 1.0, sz: 0.62 });
+        if (FINE) for (const y of [-0.55, -1.5]) block(bag, 0x2f3542, 0, y, 0, 0.64, 0.06, 0.64, 0.03);
         block(bag, 0x2f3542, 0, -0.95, 0, 0.64, 0.12, 0.64, 0.05);
         for (const s of [-1, 1]) ball(g, 0xff3b3b, -0.2 + s * 0.15, 0.12, -0.6, 0.13, { sx: 1.2 });
         ctx.anim.push((t) => { bag.rotation.z = Math.sin(t * 2.2) * 0.06; bag.rotation.x = Math.sin(t * 1.7) * 0.04; });
@@ -2349,9 +2844,17 @@
       obs: [{ cx: 0, cz: 0, w: 2.2, d: 3.0 }], spot: { lx: 1.95, lz: 0.5, yaw: -PI / 2 }, lie: { lx: 0, lz: 0.1, h: 0.34, yaw: PI },
       build(g) {
         // a low tatami platform with a futon, a quilt and a roll pillow
-        block(g, 0xd8d39a, 0, 0.06, 0, 2.2, 0.12, 3.0, 0.03);
+        block(g, cloth(0xd8d39a), 0, 0.06, 0, 2.2, 0.12, 3.0, 0.03);
         for (const s of [-1, 1]) block(g, 0x4a6a3a, s * 1.07, 0.065, 0, 0.08, 0.125, 3.0, 0.02);
-        block(g, 0xfffaf0, 0, 0.21, -0.05, 1.7, 0.2, 2.6, 0.09);
+        block(g, padded(0xfffaf0), 0, 0.21, -0.05, 1.7, 0.2, 2.6, 0.09);
+        bits(g, (p) => {
+          // the tatami's woven lines, and a cup of tea on a tray beside the pillow
+          for (let k = 0; k < 9; k++) slab(p, 0xc4bf86, -0.92 + k * 0.23, 0.121, 1.38, 0.012, 0.004, 0.22, 0.002);
+          slab(p, 0x6b4423, -0.85, 0.135, -1.3, 0.34, 0.03, 0.24, 0.01);
+          cylinder(p, 0xf4efe4, -0.92, 0.19, -1.3, 0.05, 0.08);
+          cylinder(p, 0x7aa84a, -0.92, 0.226, -1.3, 0.042, 0.005);
+          bead(p, 0xff9ec7, -0.74, 0.18, -1.28, 0.04, { sy: 0.6 });
+        });
         const quilt = canvasTexture(128, 128, (c, w, h) => {
           c.fillStyle = "#3f6fb5"; c.fillRect(0, 0, w, h);
           c.strokeStyle = "rgba(255,255,255,0.75)"; c.lineWidth = 2;
@@ -2369,7 +2872,12 @@
     "bed-pirate": {
       obs: [{ cx: 0, cz: 0.3, w: 2.3, d: 3.6 }], spot: { lx: 2.15, lz: 0.6, yaw: -PI / 2 }, lie: { lx: 0, lz: 0.05, h: 1.0, yaw: PI },
       build(g, ctx) {
-        const wood = toon(0x8a5a3a), gold = toon(0xffcf3a);
+        const wood = woody(0x8a5a3a), gold = shiny(0xffcf3a);
+        bits(g, (p) => {
+          // the hull's planks, and rivets along the gold band
+          for (const s of [-1, 1]) for (const y of [0.18, 0.32, 0.56]) slab(p, 0x6b4423, s * 1.1, y, -0.1, 0.012, 0.015, 2.6, 0.004);
+          for (let k = 0; k < 9; k++) for (const s of [-1, 1]) bead(p, 0xd9a441, s * 1.12, 0.7, -1.4 + k * 0.32, 0.02);
+        });
         // the hull, with a pointy bow at the foot
         block(g, wood, 0, 0.42, -0.1, 2.2, 0.84, 2.8, 0.16);
         put(g, G.box(), wood, { y: 0.42, z: 1.3, sx: 1.1, sy: 0.84, sz: 1.1, ry: PI / 4 });
@@ -2381,7 +2889,7 @@
           put(g, G.torus(0.12, 0.025), gold, { x: s * 1.105, y: 0.4, z, ry: s * PI / 2 });
         }
         // the mattress and a striped blanket
-        block(g, 0xffffff, 0, 0.88, -0.15, 1.9, 0.12, 2.6, 0.05);
+        block(g, padded(0xffffff), 0, 0.88, -0.15, 1.9, 0.12, 2.6, 0.05);
         const stripes = canvasTexture(32, 64, (c, w, h) => { for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? "#ffffff" : "#e8424f"; c.fillRect(0, i * 8, w, 8); } }, [1, 2]);
         block(g, toon(0xffffff, { map: stripes }), 0, 0.97, 0.35, 1.94, 0.06, 1.6, 0.03);
         ball(g, 0xffffff, 0, 1.03, -1.0, 0.28, { sx: 1.5, sy: 0.4 });
@@ -2412,17 +2920,22 @@
     "sofa-rocking": {
       obs: [{ cx: 0, cz: -0.05, w: 1.15, d: 1.45 }], spot: { lx: 0, lz: 1.25, yaw: 0 }, seat: { lx: 0, lz: 0.04, h: 0.63, legs: "out" },
       build(g) {
-        const wood = toon(0xb07a45), dark = toon(0x8a5a32);
+        const wood = woody(0xb07a45), dark = woody(0x8a5a32);
         // the rockers: two long curves resting on the floor
         for (const sx of [-0.45, 0.45]) put(g, new THREE.TorusGeometry(2.0, 0.05, 6, 24, 0.72), dark, { x: sx, y: 2.05, rz: -PI / 2 - 0.36, ry: PI / 2 });
         for (const [x, z] of [[-0.45, -0.32], [0.45, -0.32], [-0.45, 0.32], [0.45, 0.32]]) cylinder(g, wood, x, 0.3, z, 0.04, 0.44);
         block(g, wood, 0, 0.5, 0.0, 0.96, 0.08, 0.86, 0.03);
-        block(g, 0xff9a8a, 0, 0.58, 0.02, 0.84, 0.09, 0.76, 0.04);
+        block(g, padded(0xff9a8a), 0, 0.58, 0.02, 0.84, 0.09, 0.76, 0.04);
         // the tall back with spindles
         for (const sx of [-0.43, 0.43]) cylinder(g, wood, sx, 1.08, -0.42, 0.045, 1.2);
         block(g, wood, 0, 1.68, -0.42, 1.0, 0.12, 0.08, 0.04);
         for (let k = 0; k < 4; k++) cylinder(g, wood, -0.24 + k * 0.16, 1.1, -0.43, 0.022, 1.1);
-        block(g, 0xff9a8a, 0, 1.0, -0.36, 0.74, 0.7, 0.07, 0.035);
+        block(g, padded(0xff9a8a), 0, 1.0, -0.36, 0.74, 0.7, 0.07, 0.035);
+        bits(g, (p) => {
+          // the blanket's knitted rows and fringe
+          for (let k = 0; k < 5; k++) slab(p, 0xffffff, -0.15, 1.46 + k * 0.07, -0.345, 0.5, 0.012, 0.012, 0.004, { rz: 0.06 });
+          for (let k = 0; k < 7; k++) slab(p, 0x7fc8ff, -0.36 + k * 0.07, 1.39, -0.345, 0.02, 0.07, 0.02, 0.005, { rz: 0.06 });
+        });
         // a knitted blanket over the top, and arms
         block(g, 0x7fc8ff, -0.15, 1.6, -0.38, 0.5, 0.36, 0.06, 0.03, { rz: 0.06 });
         for (const sx of [-0.47, 0.47]) {
@@ -2437,7 +2950,7 @@
     "sofa-egg": {
       obs: [{ cx: 0, cz: -0.2, r: 0.82 }], spot: { lx: 0, lz: 1.3, yaw: 0 }, seat: { lx: 0, lz: 0.06, h: 0.76, legs: "out" },
       build(g) {
-        const metal = toon(0xdfe4ea);
+        const metal = shiny(0xdfe4ea);
         // the stand: a heavy base, a pole and an arm over the top
         cylinder(g, metal, 0, 0.04, -0.62, 0.28, 0.08);
         cylinder(g, metal, 0, 1.47, -0.62, 0.045, 2.86);
@@ -2453,15 +2966,15 @@
         }, [6, 4]);
         const shell = new THREE.SphereGeometry(1, 28, 18, PI / 2 + 1.35, TAU - 2.7);
         put(g, shell, toon(0xffffff, { map: wick, side: THREE.DoubleSide }), { y: 1.2, z: -0.05, sx: 0.72, sy: 0.95, sz: 0.7 });
-        ball(g, 0xff9ec7, 0, 0.66, 0.0, 0.58, { sy: 0.18 });
-        ball(g, 0xffc6dc, 0, 1.15, -0.45, 0.4, { sy: 0.55, sz: 0.2 });
-        ball(g, 0xffffff, 0.25, 0.85, -0.3, 0.16, { sz: 0.5, rz: 0.4 });
+        ball(g, cloth(0xff9ec7), 0, 0.66, 0.0, 0.58, { sy: 0.18 });
+        ball(g, cloth(0xffc6dc), 0, 1.15, -0.45, 0.4, { sy: 0.55, sz: 0.2 });
+        ball(g, cloth(0xffffff), 0.25, 0.85, -0.3, 0.16, { sz: 0.5, rz: 0.4 });
       },
     },
     "sofa-gaming": {
       obs: [{ cx: 0, cz: -0.05, r: 0.6 }], spot: { lx: 0, lz: 1.2, yaw: 0 }, seat: { lx: 0, lz: 0.05, h: 0.63, legs: "out" },
       build(g) {
-        const black = toon(0x2f3542), red = toon(0xff3b5a);
+        const black = padded(0x2f3542), red = padded(0xff3b5a);
         // five-star base on wheels, and the gas lift
         for (let k = 0; k < 5; k++) {
           const a = (k / 5) * TAU + 0.3;
@@ -2541,8 +3054,14 @@
         });
         block(g, 0x245f45, 0, 0.77, 0, 2.6, 0.06, 1.45, 0.02);
         plane(g, 2.58, 1.43, toon(0xffffff, { map: top }), { y: 0.802, rx: -PI / 2 });
-        for (const [x, z] of [[-1.1, -0.58], [1.1, -0.58], [-1.1, 0.58], [1.1, 0.58]]) block(g, 0x3a3f4a, x, 0.37, z, 0.07, 0.74, 0.07, 0.02);
-        for (const x of [-1.1, 1.1]) block(g, 0x3a3f4a, x, 0.2, 0, 0.05, 0.05, 1.16, 0.02);
+        for (const [x, z] of [[-1.1, -0.58], [1.1, -0.58], [-1.1, 0.58], [1.1, 0.58]]) block(g, shiny(0x3a3f4a), x, 0.37, z, 0.07, 0.74, 0.07, 0.02);
+        for (const x of [-1.1, 1.1]) block(g, shiny(0x3a3f4a), x, 0.2, 0, 0.05, 0.05, 1.16, 0.02);
+        bits(g, (p) => {
+          // little wheels on the legs, and a spare ball and a towel on the floor
+          for (const [x, z] of [[-1.1, -0.58], [1.1, -0.58], [-1.1, 0.58], [1.1, 0.58]]) cylinder(p, 0x2f3542, x, 0.04, z, 0.05, 0.04, { rz: PI / 2 });
+          slab(p, 0xffffff, 0.95, 0.805, -0.6, 0.3, 0.01, 0.18, 0.004, { ry: 0.3 });
+          for (let k = 0; k < 3; k++) slab(p, 0x4a90e2, 0.95, 0.808, -0.6 - 0.06 + k * 0.06, 0.3, 0.004, 0.015, 0.002, { ry: 0.3 });
+        });
         // the net across the middle
         const net = canvasTexture(128, 16, (c, w, h) => {
           c.strokeStyle = "rgba(30,30,40,0.85)"; c.lineWidth = 1;
@@ -2584,7 +3103,11 @@
     "tv-arcade": {
       obs: [{ cx: 0, cz: -0.12, w: 1.05, d: 0.95 }], spot: { lx: 0, lz: 1.1, yaw: PI },
       build(g, ctx) {
-        const body = toon(0x6a3df0), pink = toon(0xff4fd8);
+        const body = shiny(0x6a3df0), pink = toon(0xff4fd8);
+        bits(g, (p) => {
+          // star stickers down the sides, and a coin slot plate
+          for (const s of [-1, 1]) for (let k = 0; k < 3; k++) put(p, G.cone(5), toon([0xffe25a, 0x5cc8ff, 0xff9ec7][k]), { x: s * 0.515, y: 0.5 + k * 0.4, z: -0.25 + (k % 2) * 0.2, s: 0.08, sy: 0.02, rz: s * PI / 2 });
+        });
         block(g, body, 0, 0.95, -0.2, 0.95, 1.9, 0.75, 0.06);
         for (const s of [-1, 1]) block(g, pink, s * 0.49, 0.95, -0.2, 0.04, 1.92, 0.77, 0.015);
         block(g, 0x1a1530, 0, 1.36, 0.17, 0.8, 0.64, 0.04, 0.02, { rx: -0.22 });
@@ -2621,8 +3144,8 @@
     "tv-bookshelf": {
       obs: [{ cx: 0, cz: -0.33, w: 1.95, d: 0.6 }], spot: { lx: 0, lz: 0.95, yaw: PI },
       build(g) {
-        const wood = toon(0x9a6a3c);
-        block(g, 0x7a5230, 0, 1.1, -0.56, 1.9, 2.2, 0.04, 0.01);
+        const wood = woody(0x9a6a3c);
+        block(g, woody(0x7a5230), 0, 1.1, -0.56, 1.9, 2.2, 0.04, 0.01);
         for (const sx of [-0.92, 0.92]) block(g, wood, sx, 1.1, -0.33, 0.08, 2.2, 0.5, 0.02);
         for (const y of [0.05, 0.6, 1.15, 1.7, 2.17]) block(g, wood, 0, y, -0.33, 1.9, 0.07, 0.5, 0.02);
         // rows of books (some leaning), with gaps for a globe, a trophy and a plant
@@ -2638,6 +3161,11 @@
           }
         }
         scatter(g, G.box(), toon(0xffffff), books, true);
+        // bands and titles on the spines (on every other book)
+        bits(g, (p) => books.forEach((b, i) => {
+          if (i % 2) return;
+          for (const dy of [0.32, -0.3]) slab(p, i % 4 ? 0xffe9a8 : 0xffffff, b.x, b.y + b.sy * dy, b.z + 0.181, b.sx * 0.9, 0.018, 0.004, 0.002, { rz: b.rz });
+        }));
         // a globe
         cylinder(g, 0x9a6a3c, 0.62, 0.66, -0.33, 0.08, 0.03);
         put(g, G.torus(0.17, 0.012), toon(0xd9a441), { x: 0.62, y: 0.85, z: -0.33, ry: PI / 2 });
@@ -2657,15 +3185,23 @@
       obs: [{ cx: 0, cz: -0.3, w: 1.95, d: 0.6 }], spot: { lx: 0, lz: 1.65, yaw: PI },
       build(g, ctx) {
         // a low media unit with a big, thin TV on it
-        for (const [x, z] of [[-0.85, -0.5], [0.85, -0.5], [-0.85, -0.1], [0.85, -0.1]]) cylinder(g, 0x9a6a3c, x, 0.05, z, 0.03, 0.1);
-        block(g, 0xf4efe4, 0, 0.34, -0.3, 1.9, 0.48, 0.55, 0.04);
+        for (const [x, z] of [[-0.85, -0.5], [0.85, -0.5], [-0.85, -0.1], [0.85, -0.1]]) cylinder(g, woody(0x9a6a3c), x, 0.05, z, 0.03, 0.1);
+        block(g, woody(0xf4efe4), 0, 0.34, -0.3, 1.9, 0.48, 0.55, 0.04);
         for (const x of [-0.47, 0.47]) {
-          block(g, 0xe0a868, x, 0.34, -0.02, 0.86, 0.36, 0.03, 0.02);
-          block(g, 0x8f96a3, x, 0.42, 0.0, 0.2, 0.025, 0.02, 0.01);
+          block(g, woody(0xe0a868), x, 0.34, -0.02, 0.86, 0.36, 0.03, 0.02);
+          block(g, shiny(0x8f96a3), x, 0.42, 0.0, 0.2, 0.025, 0.02, 0.01);
         }
+        bits(g, (p) => {
+          // a little plant and a photo frame on the unit, and the soundbar's grille
+          put(p, G.taper(0.07, 0.05), toon(0xffffff), { x: -0.45, y: 0.64, z: -0.4, sy: 0.12 });
+          for (let k = 0; k < 5; k++) { const a = (k / 5) * TAU; ball(p, k % 2 ? 0x46b04a : 0x6fcf5a, -0.45 + Math.cos(a) * 0.05, 0.76, -0.4 + Math.sin(a) * 0.05, 0.05, { sy: 1.6, rx: Math.sin(a) * 0.5, rz: -Math.cos(a) * 0.5 }); }
+          slab(p, 0xd9a441, 0.42, 0.7, -0.45, 0.2, 0.16, 0.02, 0.01, { rx: -0.15 });
+          slab(p, 0x9fd8ff, 0.42, 0.7, -0.438, 0.15, 0.11, 0.005, 0.002, { rx: -0.15 });
+          for (let k = 0; k < 10; k++) bead(p, 0x4a5060, -0.36 + k * 0.08, 0.62, -0.06, 0.012);
+        });
         // a big TV mounted on the wall above the unit, playing a movie (widescreen, with black bars)
         block(g, 0x3a3f4a, 0, 1.62, -0.6, 0.5, 0.36, 0.05, 0.01); // wall bracket
-        block(g, 0x1e1e24, 0, 1.62, -0.55, 2.5, 1.45, 0.06, 0.03);
+        block(g, shiny(0x1e1e24), 0, 1.62, -0.55, 2.5, 1.45, 0.06, 0.03);
         const movie = canvasTexture(512, 256, (c, w, h) => {
           // a road movie at sunset: sky, sun, hills, a road and a little car, letterboxed
           const sky = c.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, "#2b2a63"); sky.addColorStop(0.45, "#ff7a59"); sky.addColorStop(0.7, "#ffd27a");
@@ -2893,8 +3429,14 @@
           c.fillStyle = "#14261c";
           c.beginPath(); c.moveTo(30, h); c.bezierCurveTo(10, 120, 40, 60, 46, 20); c.bezierCurveTo(56, 70, 76, 120, 64, h); c.fill();
         });
-        block(g, 0x3a2a1a, 0, 0, 0, 2.0, 1.45, 0.1, 0.05);
-        block(g, 0xd9a441, 0, 0, 0.03, 1.86, 1.31, 0.06, 0.02);
+        block(g, woody(0x3a2a1a), 0, 0, 0, 2.0, 1.45, 0.1, 0.05);
+        block(g, shiny(0xd9a441), 0, 0, 0.03, 1.86, 1.31, 0.06, 0.02);
+        // a little brass picture light above it, and its glow on the painting
+        bits(g, (p) => {
+          rod(p, 0xd9a441, 0, 0.72, 0.04, 0, 0.86, 0.2, 0.015);
+          cylinder(p, 0xd9a441, 0, 0.86, 0.22, 0.05, 0.9, { rz: PI / 2 });
+        });
+        if (FINE) lightRect(g, 1.5, 0.7, { y: 0.35, z: 0.075, rx: PI / 2 }, 0.12, WARM, 0.35);
         plane(g, 1.8, 1.25, toon(0xffffff, { map: tex }), { z: 0.065 });
       },
     },
@@ -2958,7 +3500,7 @@
       obs: [{ cx: 0.55, cz: -0.62, w: 1.05, d: 0.9 }], spot: { lx: 0.45, lz: 0.4, yaw: PI },
       build(g) {
         // a rounded retro fridge covered in magnets and a drawing
-        const blue = toon(0x9fd8f0);
+        const blue = shiny(0x9fd8f0);
         block(g, blue, 0.55, 1.1, -0.62, 1.0, 2.2, 0.85, 0.14);
         block(g, 0x7fb8d0, 0.55, 1.45, -0.19, 0.96, 0.03, 0.02, 0.01);
         for (const [y, h] of [[1.8, 0.4], [1.0, 0.5]]) block(g, 0xdfe4ea, 0.14, y, -0.16, 0.05, h, 0.06, 0.02);
@@ -3005,6 +3547,10 @@
         });
         block(e, 0xfffdf5, 0, 1.3, 0.08, 0.9, 0.72, 0.04, 0.01, { rx: -0.08 });
         plane(e, 0.86, 0.68, toon(0xffffff, { map: art }), { y: 1.3, z: 0.104, rx: -0.08 });
+        // paint splats on the floor
+        bits(g, (p) => {
+          for (const [x, z, s, col] of [[0.1, 0.25, 0.08, 0xff7ab8], [0.55, 0.1, 0.06, 0x4a90e2], [0.25, -0.05, 0.05, 0xffd23f]]) cylinder(p, col, x, 0.012, z, s, 0.004);
+        });
         // a stool with the palette and a jar of brushes
         const st = group(g, 1.0, 0, 0.05);
         cylinder(st, 0xb07a45, 0, 0.5, 0, 0.24, 0.06);
@@ -3020,7 +3566,7 @@
       build(g, ctx) {
         // a friendly little robot that looks around and waves
         const r = group(g, 0.45, 0, -0.5, -0.35);
-        const metal = toon(0xdfe4ea), dark = toon(0x3a3f4a);
+        const metal = shiny(0xdfe4ea), dark = toon(0x3a3f4a);
         for (const s of [-1, 1]) {
           block(r, dark, s * 0.15, 0.06, 0.04, 0.2, 0.12, 0.3, 0.05);
           cylinder(r, 0xb8bcc8, s * 0.15, 0.3, 0, 0.06, 0.38);
@@ -3299,7 +3845,7 @@
   // Joins the plain-colored shapes under c (but not inside its moving parts)
   // into one shape that keeps their colors.
   const tmpInv = new THREE.Matrix4(), tmpM = new THREE.Matrix4();
-  function paintTogether(c) {
+  function paintTogether(c, cast) {
     if (!flatPaint) flatPaint = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: toon(0xffffff).gradientMap, vertexColors: true });
     tmpInv.copy(c.matrixWorld).invert();
     const geos = [], remove = [];
@@ -3328,8 +3874,17 @@
     for (const o of remove) o.parent.remove(o);
     const mesh = new THREE.Mesh(THREE.BufferGeometryUtils.mergeBufferGeometries(geos, false), flatPaint);
     geos.forEach((x) => x.dispose());
-    mesh.castShadow = mesh.receiveShadow = false;
+    mesh.castShadow = mesh.receiveShadow = !!cast;
     c.add(dynamic(mesh)); // (dynamic: it's already in place, mergeStatic must leave it alone)
+  }
+
+  // The moving parts under g: each one's plain-colored parts become one shape.
+  function paintMovers(g) {
+    if (W3D.debug && W3D.debug.noMerge) return;
+    const movers = [];
+    g.updateMatrixWorld(true);
+    g.traverse((o) => { if (o !== g && o.userData.dynamic && !o.isMesh && !o.isSprite) movers.push(o); });
+    for (const m of movers) paintTogether(m, true);
   }
 
   // Frees a little room's contents (keeps the shapes and materials that are shared).
@@ -3609,6 +4164,10 @@
   }
 
   function buildHome(opts) {
+    FINE = true; // (the finer touches: only in a home, see FINE)
+    try { return buildHomeRoom(opts); } finally { FINE = false; }
+  }
+  function buildHomeRoom(opts) {
     const record = (opts && opts.record) || { name: "Mii", home: root.MiiHomes ? root.MiiHomes.starterHome() : { items: {} } };
     const items = resolveItems(record);
     const ctx = { anim: [], record, portrait: portraitSource(opts, record) };
@@ -3664,11 +4223,13 @@
 
     // ---------- the room: floor, walls, window, door ----------
     const wallIt = items.wallpaper || {}, floorIt = items.floor || {};
-    const wallTex = patternTexture(wallIt, false);
-    const floorTex = patternTexture(floorIt, true);
-    const wallMat = toon(0xffffff, { map: wallTex });
-    const floorMat = toon(0xffffff, { map: floorTex });
-    put(rootG, patchGeo(RX * 2, RZ * 2, 0, 0), floorMat, { y: 0.005, rx: -PI / 2, shadow: false });
+    const wallTex = patternTexture(wallIt, false, 512);
+    const floorTex = patternTexture(floorIt, true, 512);
+    // (vertex colors: the walls and floor get a little darker into the corners, see shadedPatch)
+    const wallMat = toon(0xffffff, { map: wallTex, vertexColors: true });
+    const floorMat = toon(0xffffff, { map: floorTex, vertexColors: true });
+    const nearEdge = (d, k, s) => 1 - k * Math.exp(-Math.max(0, d) / s);
+    put(rootG, shadedPatch(RX * 2, RZ * 2, 0, 0, (x, y) => nearEdge(Math.min(x, RX * 2 - x), 0.2, 0.45) * nearEdge(Math.min(y, RZ * 2 - y), 0.2, 0.45), [0.25, 0.6, 1.1, 1.8]), floorMat, { y: 0.005, rx: -PI / 2, shadow: false });
     const dark = wallIt.id === "wall-dark" || wallIt.id === "wall-stars", fancy = wallIt.id === "wall-gold";
     const trimC = dark ? 0x4a4570 : fancy ? 0xd9a441 : 0xffffff;
     const shellC = 0xf6efe4;
@@ -3691,7 +4252,12 @@
       }
       for (const [u0, u1, v0, v1] of pieces) {
         const w = u1 - u0, h = v1 - v0;
-        put(g, patchGeo(w, h, u0 + len / 2, v0), wallMat, { x: (u0 + u1) / 2, y: (v0 + v1) / 2, z: 0.005, shadow: false });
+        // a little darker down by the floor, into the corners and up under the ceiling line
+        const shade = (x, y) => {
+          const u = u0 + x, v = v0 + y;
+          return nearEdge(v - 0.3, 0.2, 0.5) * nearEdge(len / 2 - Math.abs(u), 0.17, 0.45) * nearEdge(RH - 0.36 - v, 0.08, 0.35);
+        };
+        put(g, shadedPatch(w, h, u0 + len / 2, v0, shade, [0.3, 0.55, 0.9, 1.5]), wallMat, { x: (u0 + u1) / 2, y: (v0 + v1) / 2, z: 0.005, shadow: false });
         // the outside of the wall, a little wider so the corners close up
         const ext = (u0 <= -len / 2 + 0.01 ? T : 0) + (u1 >= len / 2 - 0.01 ? T : 0);
         const shift = (u0 <= -len / 2 + 0.01 ? -T / 2 : 0) + (u1 >= len / 2 - 0.01 ? T / 2 : 0);
@@ -3699,9 +4265,15 @@
       }
       // skirting board along the bottom and a trim along the top
       const skirts = hole && hole.v0 === 0 ? [[-len / 2, hole.u0], [hole.u1, len / 2]] : [[-len / 2, len / 2]];
-      for (const [a, b] of skirts) block(g, trimC, (a + b) / 2, 0.14, 0.04, b - a, 0.28, 0.08, 0.02, { shadow: false });
+      for (const [a, b] of skirts) {
+        block(g, trimC, (a + b) / 2, 0.14, 0.04, b - a, 0.28, 0.08, 0.02, { shadow: false });
+        bx(g, trimC, (a + b) / 2, 0.3, 0.05, b - a, 0.05, 0.1, { shadow: false }); // its rounded top lip
+      }
       block(g, trimC, 0, RH + 0.06, -T / 2, len + 2 * T + 0.02, 0.12, T + 0.14, 0.03, { shadow: false });
       block(g, trimC, 0, RH - 0.1, 0.03, len, 0.14, 0.06, 0.02, { shadow: false });
+      // crown molding: a rounded cove under the top trim, and a thin step below it
+      put(g, G.cyl(12), toon(trimC), { x: 0, y: RH - 0.22, z: 0, sx: 0.11, sy: len, sz: 0.11, rz: PI / 2, shadow: false });
+      bx(g, trimC, 0, RH - 0.35, 0.025, len, 0.04, 0.05, { shadow: false });
       return g;
     }
     const winHole = { u0: WINDOW.x - WINDOW.w / 2, u1: WINDOW.x + WINDOW.w / 2, v0: WINDOW.y0, v1: WINDOW.y1 };
@@ -3721,15 +4293,35 @@
       block(backWall, trimC, wx, wy, -0.12, 0.08, wh, 0.06, 0.02, { shadow: false });
       block(backWall, trimC, wx, wy, -0.12, ww, 0.08, 0.06, 0.02, { shadow: false });
       block(backWall, trimC, wx, WINDOW.y0 - 0.06, 0.15, ww + 0.5, 0.1, 0.35, 0.03); // sill
+      // under the sill: an apron board and two little brackets; a latch on the frame
+      bx(backWall, trimC, wx, WINDOW.y0 - 0.2, 0.04, ww + 0.2, 0.16, 0.07, { shadow: false });
+      for (const s of [-1, 1]) bx(backWall, trimC, wx + s * (ww / 2 - 0.05), WINDOW.y0 - 0.2, 0.15, 0.08, 0.2, 0.18, { shadow: false });
+      bx(backWall, 0xd9a441, wx, wy + 0.12, -0.08, 0.05, 0.16, 0.04, { shadow: false });
       cylinder(backWall, 0xe0784a, wx + 0.8, WINDOW.y0 + 0.1, 0.15, 0.12, 0.2);
       ball(backWall, 0xff6fa5, wx + 0.8, WINDOW.y0 + 0.3, 0.15, 0.13);
+      bits(backWall, (p) => {
+        // the pot gets a rim and some leaves; a tiny cactus keeps it company
+        cylinder(p, 0xd06a3e, wx + 0.8, WINDOW.y0 + 0.2, 0.15, 0.135, 0.04);
+        for (const s of [-1, 1]) bead(p, 0x5cb840, wx + 0.8 + s * 0.12, WINDOW.y0 + 0.25, 0.17, 0.07, { sx: 1.4, sy: 0.5, rz: s * 0.4 });
+        cylinder(p, 0x8fd3ff, wx - 0.85, WINDOW.y0 + 0.06, 0.15, 0.07, 0.12);
+        put(p, G.capsule(), toon(0x4fae5a), { x: wx - 0.85, y: WINDOW.y0 + 0.2, z: 0.15, sx: 0.09, sy: 0.14, sz: 0.09 });
+        bead(p, 0xffe25a, wx - 0.85, WINDOW.y0 + 0.31, 0.15, 0.03);
+      });
       cylinder(backWall, 0xb98a5e, wx, WINDOW.y1 + 0.25, 0.15, 0.03, ww + 1.2, { rz: PI / 2 });
+      for (const s of [-1, 1]) {
+        bead(backWall, 0xd9a441, wx + s * (ww / 2 + 0.66), WINDOW.y1 + 0.25, 0.15, 0.06, { shadow: false }); // rod ends
+        bx(backWall, 0xb98a5e, wx + s * (ww / 2 + 0.5), WINDOW.y1 + 0.25, 0.06, 0.05, 0.08, 0.16, { shadow: false }); // its brackets
+      }
       const curtainC = dark ? 0x7a5aff : fancy ? 0xd9a441 : 0xff9ec7;
       if (opts && opts.empty) closedCurtains(backWall, wx, wy, ww, wh, curtainC); // (nobody's home)
       else for (const s of [-1, 1]) {
-        put(backWall, G.capsule(), toon(curtainC), { x: wx + s * (ww / 2 + 0.25), y: wy - 0.05, z: 0.15, sx: 0.4, sy: (wh + 0.3) / 2, sz: 0.14 });
+        put(backWall, G.capsule(), fine("pleat", curtainC), { x: wx + s * (ww / 2 + 0.25), y: wy - 0.05, z: 0.15, sx: 0.4, sy: (wh + 0.3) / 2, sz: 0.14 });
         put(backWall, G.torus(0.12, 0.025), toon(trimC), { x: wx + s * (ww / 2 + 0.25), y: wy - 0.3, z: 0.15 });
+        // a ring at the top where it hangs from the rod
+        for (let k = 0; k < 3; k++) put(backWall, lowTorus(0.05, 0.012), toon(0xd9a441), { x: wx + s * (ww / 2 + 0.12 + k * 0.13), y: WINDOW.y1 + 0.2, z: 0.15, shadow: false });
       }
+      // daylight from the window: a soft bright patch on the floor in front of it
+      lightRect(rootG, ww + 0.3, 1.7, { x: wx, y: 0.02, z: -RZ + 1.15 }, 0.13, [1, 0.96, 0.82], 0.55);
     }
     // the front door (on the right wall, near the front)
     {
@@ -3764,13 +4356,26 @@
     {
       const p = SLOT_PLACES.lamp;
       const ns = group(rootG, p.x, 0, p.z);
-      block(ns, 0xc98b4a, 0, 0.36, 0, 0.75, 0.72, 0.65, 0.06);
-      block(ns, 0xe0a868, 0, 0.42, 0.33, 0.6, 0.25, 0.02, 0.03);
+      block(ns, woody(0xc98b4a), 0, 0.36, 0, 0.75, 0.72, 0.65, 0.06);
+      block(ns, woody(0xe0a868), 0, 0.42, 0.33, 0.6, 0.25, 0.02, 0.03);
       ball(ns, 0xffcf5a, 0, 0.42, 0.36, 0.04);
+      bits(ns, (p) => {
+        slab(p, 0xe0a868, 0, 0.15, 0.33, 0.6, 0.12, 0.02, 0.02); // a lower drawer
+        bead(p, 0xffcf5a, 0, 0.15, 0.35, 0.03);
+        for (const [x, z] of [[-0.3, -0.25], [0.3, -0.25], [-0.3, 0.25], [0.3, 0.25]]) cylinder(p, 0x9a6a3c, x, 0.01, z, 0.05, 0.02);
+      });
       if (!NIGHTSTAND_LAMPS.includes(items.lamp.id)) {
         block(ns, 0xff8a7a, -0.12, 0.85, 0.05, 0.3, 0.26, 0.15, 0.06); // alarm clock
         disc(ns, toon(0xffffff), -0.12, 0.85, 0.13, 0.09, { rx: 0 });
         block(ns, 0x4a90e2, 0.2, 0.76, -0.05, 0.25, 0.06, 0.32, 0.02); // a book
+        bits(ns, (p) => {
+          // the clock's bells, feet and hands; the book's pages and a bookmark
+          for (const s of [-1, 1]) { bead(p, 0xffcf5a, -0.12 + s * 0.1, 1.0, 0.05, 0.05); slab(p, 0x9a6a3c, -0.12 + s * 0.1, 0.72, 0.05, 0.04, 0.03, 0.06, 0.01); }
+          slab(p, 0x333333, -0.12, 0.87, 0.14, 0.012, 0.06, 0.005, 0.002);
+          slab(p, 0x333333, -0.1, 0.85, 0.14, 0.05, 0.012, 0.005, 0.002);
+          slab(p, 0xfff8ea, 0.21, 0.76, -0.05, 0.25, 0.04, 0.33, 0.01);
+          slab(p, 0xe8424f, 0.25, 0.74, 0.12, 0.03, 0.08, 0.005, 0.002);
+        });
       }
     }
 
@@ -3835,6 +4440,30 @@
     // things other files add to the room (the wardrobe: see rooms3d.js)
     if (root.MiiRooms3D && root.MiiRooms3D.decorateMain) root.MiiRooms3D.decorateMain({ group: rootG, record, obstacles, spots, items, ctx });
 
+    // soft shadows on the floor under everything that stands there (the first four
+    // obstacles are the walls), a touch bigger than the piece and fading out
+    for (const o of obstacles.slice(4)) {
+      if (o.r !== undefined) shadeDisc(rootG, o.r + 0.35, { x: o.x, y: 0.02, z: o.z }, 0.42);
+      else shadeRect(rootG, o.w + 0.05, o.d + 0.05, { x: o.x, y: 0.02, z: o.z, ry: -(o.rot || 0) }, 0.42, 0.4);
+    }
+    // warm pools of light round the lamps (on the floor, and up the wall behind)
+    {
+      const id = items.lamp && items.lamp.id, def = FURNITURE[id] || {};
+      const at = def.at || SLOT_PLACES.lamp;
+      if (id === "lamp-basic") {
+        lightPool(rootG, 1.5, { x: at.x + 0.2, y: 0.025, z: at.z }, 0.2);
+        lightPool(leftWall, 1.1, { x: -at.z, y: 2.4, z: 0.03, rx: PI / 2 }, 0.22);
+      } else if (id === "lamp-lava" || id === "lamp-moon") {
+        const rgb = id === "lamp-lava" ? [1, 0.55, 0.85] : [1, 0.9, 0.6];
+        lightPool(rootG, 1.1, { x: at.x, y: 0.025, z: at.z + 0.4 }, 0.16, rgb);
+        lightPool(backWall, 0.9, { x: at.x, y: 1.2, z: 0.03, rx: PI / 2 }, 0.2, rgb);
+      } else if (id === "lamp-chandelier") {
+        lightPool(rootG, 2.6, { x: at.x, y: 0.025, z: at.z }, 0.18);
+      } else if (id === "lamp-disco") {
+        lightPool(rootG, 2.2, { x: at.x, y: 0.025, z: at.z }, 0.1, [0.9, 0.6, 1]);
+      }
+    }
+
     // hide any wall that's between the camera and the room (like a dollhouse)
     const walls = [
       { group: backWall.userData.outer, axis: "z", at: -RZ, outside: -1 },
@@ -3842,7 +4471,12 @@
       { group: leftWall.userData.outer, axis: "x", at: -RX, outside: -1 },
       { group: rightWall.userData.outer, axis: "x", at: RX, outside: 1 },
     ];
-    for (const w of walls) { mergeStatic(w.group); dynamic(w.group); }
+    for (const w of walls) { paintRoom(w.group); mergeStatic(w.group); }
+    // things that move (swaying leaves, a waving robot...) can't join the rest, but
+    // the plain-colored parts of each one are joined into one shape (see bakeFlat)
+    paintMovers(rootG);
+    for (const w of walls) dynamic(w.group);
+    paintRoom(rootG);
     mergeStatic(rootG);
 
     const name = record.name || "I";
@@ -3880,5 +4514,11 @@
   root.World3D.addPlace({ id: "home", name: "Home", icon: "🏠" }, buildHome, true);
   // for tests and other files
   // portraitFor(record) -> picture URL: set by the app, used by the self-portrait painting
-  root.MiiHomes3D = { FURNITURE, SLOT_PLACES, unitInfo, APT, floorsFor, MAX_FLOORS, portraitFor: null, patternTexture };
+  root.MiiHomes3D = { FURNITURE, SLOT_PLACES, unitInfo, APT, floorsFor, MAX_FLOORS, portraitFor: null, patternTexture,
+    // the finer touches, for the extra rooms (rooms3d.js): build(fn) runs fn with them on
+    detail: {
+      build(fn) { const was = FINE; FINE = true; try { return fn(); } finally { FINE = was; } },
+      fine, bits, bead, slab, paintRoom, paintMovers, shadeRect, shadeDisc, lightPool, lightRect,
+    },
+  };
 })(typeof self !== "undefined" ? self : this);
