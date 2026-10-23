@@ -26,6 +26,11 @@
     THREE, TAU, toon, glow, G, put, ball, cylinder, block, disc, group, dynamic, canvasTexture, seeded,
     skyDome, addLights, mergeStatic, scatter, palmTree, bush, parkBench, lampPost,
   } = root.World3D.kit;
+  // (newer kit parts: plain stand-ins if the kit doesn't have them)
+  const kit = root.World3D.kit;
+  const detailMat = kit.detailMat || ((kind, color) => toon(color));
+  const blobShadows = kit.blobShadows || (() => null);
+  const litterBin = kit.litterBin || (() => null);
   const PI = Math.PI;
 
   // =====================================================================
@@ -273,20 +278,39 @@
         "vWinN = normalize(mat3(modelMatrix) * winN);",
       ].join("\n"));
       sh.fragmentShader = "uniform vec2 winSize;\nuniform vec3 winGlass;\nuniform vec3 winLit;\nuniform float winMinY;\nvarying vec3 vWinPos;\nvarying vec3 vWinN;\n" +
+        "float winHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\n" +
+        "float winNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);" +
+        " return mix(mix(winHash(i), winHash(i + vec2(1.0, 0.0)), f.x), mix(winHash(i + vec2(0.0, 1.0)), winHash(i + vec2(1.0)), f.x), f.y); }\n" +
         sh.fragmentShader.replace("#include <color_fragment>", [
           "#include <color_fragment>",
           "float winAmt = 0.0;",
           "vec3 winCol = winGlass;",
-          "if (abs(vWinN.y) < 0.5 && vWinPos.y > winMinY) {", // only on the walls, not the roof
+          "if (abs(vWinN.y) < 0.5) {", // only on the walls, not the roof
           "  float u = abs(vWinN.x) > abs(vWinN.z) ? vWinPos.z : vWinPos.x;",
+          // soft plaster: gentle blotches over the whole wall
+          "  diffuseColor.rgb *= 0.95 + 0.07 * winNoise(vec2(u, vWinPos.y) * 1.4) + 0.03 * winNoise(vec2(u, vWinPos.y) * 6.0);",
+          "  if (vWinPos.y > winMinY) {",
           "  vec2 cell = vec2(u, vWinPos.y) / winSize;",
           "  vec2 f = fract(cell);",
           "  winAmt = step(0.22, f.x) * step(f.x, 0.78) * step(0.3, f.y) * step(f.y, 0.8);",
           "  float frame = winAmt * (1.0 - step(0.26, f.x) * step(f.x, 0.74) * step(0.34, f.y) * step(f.y, 0.76));",
           "  float rnd = fract(sin(dot(floor(cell), vec2(12.9898, 78.233))) * 43758.5453);",
+          "  float rnd2 = fract(rnd * 7.31), rnd3 = fract(rnd * 13.7);",
           "  winCol = rnd > 0.87 ? winLit : mix(winGlass, vec3(1.0), f.y * 0.35);",
+          // the glass: window bars, and curtains or a blind in most windows
+          "  vec2 g = vec2((f.x - 0.26) / 0.48, (f.y - 0.34) / 0.42);",
+          "  vec3 cur = rnd3 < 0.25 ? vec3(1.0, 0.72, 0.8) : rnd3 < 0.5 ? vec3(1.0, 0.94, 0.78) : rnd3 < 0.75 ? vec3(0.72, 0.92, 0.84) : vec3(0.84, 0.78, 1.0);",
+          "  float cw = 0.2 + 0.12 * smoothstep(0.55, 0.0, g.y);", // (tied back: wider at the bottom)
+          "  if (rnd2 < 0.6 && (g.x < cw || g.x > 1.0 - cw || g.y > 0.86)) winCol = cur * (0.86 + 0.14 * sin(g.x * 70.0));",
+          "  else if (rnd2 > 0.82 && g.y > 0.55) winCol = mix(vec3(1.0, 0.97, 0.9), vec3(0.85, 0.8, 0.72), step(0.7, fract(g.y * 14.0)));",
+          "  winCol = mix(winCol, vec3(1.0), max(step(abs(g.x - 0.5), 0.018), step(abs(g.y - 0.62), 0.025)) * step(rnd2, 0.82));",
           "  winCol = mix(winCol, vec3(1.0), frame);",
           "  diffuseColor.rgb = mix(diffuseColor.rgb, winCol, winAmt);",
+          // a little sill under each window, with a soft shadow below it
+          "  float sill = step(0.2, f.x) * step(f.x, 0.8);",
+          "  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), sill * step(0.27, f.y) * step(f.y, 0.3));",
+          "  diffuseColor.rgb *= 1.0 - sill * 0.12 * smoothstep(0.18, 0.27, f.y) * step(f.y, 0.27);",
+          "  }",
           "}",
         ].join("\n")).replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += winCol * winAmt * 0.2;");
     };
@@ -449,6 +473,12 @@
       for (let i = 0; i < 260; i++) {
         ctx.fillStyle = r() < 0.5 ? "rgba(200,160,95,0.45)" : "rgba(255,244,214,0.7)";
         ctx.beginPath(); ctx.arc(r() * w, r() * h, 1 + r() * 1.6, 0, TAU); ctx.fill();
+      }
+      // gentle wind ripples (the shared sand details)
+      if (kit.surfaceTexture) {
+        ctx.globalCompositeOperation = "multiply";
+        ctx.drawImage(kit.surfaceTexture("sand").image, 0, 0, w, h);
+        ctx.globalCompositeOperation = "source-over";
       }
     });
     sandTex.wrapS = sandTex.wrapT = THREE.RepeatWrapping;
@@ -1277,7 +1307,7 @@
     // Each shop: a ground floor with a big window, a door, an awning and a sign.
     // The floors above are boxes with windows painted on (one material for all).
     const upperMat = windowMaterial({ glass: 0x8fcfee, w: 2.2, h: 3.0, minY: 5.6 });
-    const uppers = [], roofs = [], cornices = [];
+    const uppers = [], lowers = [], roofs = [], cornices = [];
     const shops = [
       { id: "bakery", x0: -20.5, x1: -11, h: 9.5, wall: 0xffcf7a, trim: 0xb9763a, roof: 0xd96b4a, name: "Bakery", emoji: "🥐", bg: "#b9763a", awn: [0xb9763a, 0xfff1d6], door: 0x8a5a32, win: [-17.2, -13.4] },
       { id: "cafe", x0: -11, x1: -0.5, h: 8.2, wall: 0x96dcbc, trim: 0x2f8f6f, roof: 0x2f8f6f, name: "Mii Café", emoji: "☕", bg: "#2f8f6f", awn: [0x2f8f6f, 0xffffff], door: 0x2f6f5a, win: [-8.2, -4.2], door2: -1.8 },
@@ -1289,7 +1319,7 @@
     const GF = 3.9; // ground floor height
     for (const S of shops) {
       const w = S.x1 - S.x0, cx = (S.x0 + S.x1) / 2, D = 6;
-      bx(back, S.wall, cx, GF / 2, FZ - D / 2, w, GF, D);
+      lowers.push({ x: cx, y: GF / 2, z: FZ - D / 2, sx: w, sy: GF, sz: D, color: S.wall });
       uppers.push({ x: cx, y: GF + (S.h - GF) / 2, z: FZ - D / 2, sx: w, sy: S.h - GF, sz: D, color: S.wall });
       // a band between the shop and the flats, and a cornice at the top
       cornices.push({ x: cx, y: GF + 0.1, z: FZ + 0.05, sx: w + 0.05, sy: 0.35, sz: 0.3, color: S.trim });
@@ -1333,6 +1363,7 @@
       }
     }
     farScatter(back, G.box(), upperMat, uppers).castShadow = true;
+    scatter(back, G.box(), upperMat, lowers, true); // (no windows down here: they start higher up)
     scatter(back, G.box(), toon(0xffffff), cornices, false);
     farScatter(back, prismGeo(), toon(0xffffff), roofs);
     // chimneys
@@ -1577,16 +1608,27 @@
       { x: 16.8, z: 2.8, w: 1.2, tree: true }, { x: -2.4, z: 9.2, w: 1.0, tree: false }, { x: 16.8, z: -8.4, w: 1.0, tree: false },
     ];
     for (const P of planters) {
-      block(root, 0xa86b3c, P.x, 0.35, P.z, P.w, 0.7, P.w, 0.1);
+      block(root, detailMat("wood", 0xa86b3c), P.x, 0.35, P.z, P.w, 0.7, P.w, 0.1);
       block(root, 0x6b4a2a, P.x, 0.68, P.z, P.w - 0.15, 0.05, P.w - 0.15, 0.02, { shadow: false });
       if (P.tree) {
-        put(root, G.taper(0.08, 0.12), toon(0x9a6a3c), { x: P.x, y: 1.4, z: P.z, sy: 1.6 });
+        put(root, G.taper(0.08, 0.12), detailMat("bark", 0x9a6a3c), { x: P.x, y: 1.4, z: P.z, sy: 1.6 });
         ball(root, 0x5cc84a, P.x, 2.6, P.z, 0.85);
         ball(root, 0x7fdc5c, P.x + 0.25, 2.9, P.z + 0.3, 0.45);
       } else {
         bush(root, P.x, P.z, 0.55, 0x5cc84a, 0xff6fa5).position.y = 0.6;
       }
     }
+
+    const bins = [{ x: -11.4, z: 7.5 }, { x: 6.6, z: 8.2 }];
+    bins.forEach((b) => litterBin(root, b.x, b.z, 0x4a7fc0));
+    blobShadows(root, [
+      ...planters.map((P) => ({ x: P.x, z: P.z, r: P.w * 0.95 })),
+      ...lamps.map(([x, z]) => ({ x, z, r: 0.45 })),
+      ...bins.map((b) => ({ x: b.x, z: b.z, r: 0.5 })),
+      ...lightPoles.map((P) => ({ x: P.x, z: P.z, r: 0.35 })),
+      { x: BN.x, z: BN.z, r: 1.4, sz: 0.6 }, { x: CL.x, z: CL.z, r: 0.5 }, { x: K.x, z: K.z, r: 1.9 },
+      { x: FS.x + 0.4, z: FS.z, r: 1.2, sz: 1.8 }, { x: MB.x, z: MB.z, r: 0.6 },
+    ], 0.2, 0x3a2a18);
 
     // ---------- bunting across the street ----------
     const flags = [];
@@ -1663,7 +1705,9 @@
         ...terraceTables.map((T) => ({ x: T.x, z: T.z - 0.85, w: 0.55, d: 0.55 })),
         ...terraceTables.map((T) => ({ x: T.x, z: T.z + 0.85, w: 0.55, d: 0.55 })),
       ].concat(lamps.map(([x, z]) => ({ x, z, r: 0.25 })))
-        .concat(planters.map((P) => ({ x: P.x, z: P.z, w: P.w, d: P.w }))),
+        .concat(planters.map((P) => ({ x: P.x, z: P.z, w: P.w, d: P.w })))
+        .concat(bins.map((b) => ({ x: b.x, z: b.z, r: 0.35 })))
+        .concat(zones.obstacles || []),
       spots: [
         tableSpot(terraceTables[0], "sipping coffee", "☕", ["Mmm, a perfect latte!", "Careful, it's hot!", "Coffee makes everything better.", "One more cup, please!"]),
         tableSpot(terraceTables[1], "having cake at the café", "🍰", ["This cake is amazing!", "Just one more bite...", "Strawberry shortcake, my favorite!", "Nom nom nom."]),
@@ -2031,6 +2075,25 @@
     }
     // where the hub sits a random Mii on each bike (see riderSpot)
     zones.riders = bikes.map((b) => riderSpot(b));
+
+    // a bike rack on the square, with two bikes parked in it (all one painted shape)
+    const RK = { x: 14.3, z: 8.7 };
+    const rackParts = [bakeGeo((g) => {
+      for (let i = 0; i < 3; i++) { // hoops
+        const hoop = new THREE.TorusGeometry(0.32, 0.03, 6, 14, PI);
+        put(g, hoop, toon(0x8b95a5), { x: RK.x - 0.8 + i * 0.8, y: 0.45, z: RK.z, ry: PI / 2 });
+        for (const dz of [-0.32, 0.32]) cylinder(g, 0x8b95a5, RK.x - 0.8 + i * 0.8, 0.22, RK.z + dz, 0.03, 0.45, { seg: 6 });
+      }
+    })];
+    for (const [k, color] of [[0, 0xffb02b], [1, 0x7a8cff]]) {
+      const at = new THREE.Matrix4().makeRotationY(PI / 2 + (k ? 0.05 : -0.04)).setPosition(RK.x - 0.4 + k * 0.8, 0, RK.z + (k ? 0.12 : -0.12));
+      const part = (geo, x, y, rz) => rackParts.push(geo.clone().applyMatrix4(new THREE.Matrix4().makeRotationZ(rz).setPosition(x, y, 0).premultiply(at)));
+      part(bikeGeo(color), 0, 0, 0);
+      for (const ax0 of [-B.axle, B.axle]) part(wheelGeo, ax0, B.R, ax0 + k);
+      part(crankGeo, B.bb[0], B.bb[1], 0.6 + k);
+    }
+    painted(root, THREE.BufferGeometryUtils.mergeBufferGeometries(rackParts), { shadow: true });
+    zones.obstacles = [{ x: RK.x, z: RK.z, w: 2.4, d: 1.6 }];
 
     const M = new THREE.Matrix4(), T = new THREE.Matrix4(), Rz = new THREE.Matrix4();
     const place = (mesh, i, b, x, y, z, rot) => {

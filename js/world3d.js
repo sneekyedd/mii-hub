@@ -453,7 +453,7 @@
   function roundTree(p, x, z, s, colors, fruit) {
     const t = group(p, x, 0, z, 0, s);
     // the trunk is tall enough for Miis to walk under the leaves without their heads poking in
-    put(t, G.taper(0.24, 0.36), toon(0x9a6a3c), { y: 1.6, sy: 3.2 });
+    put(t, G.taper(0.24, 0.36), detailMat("bark", 0x9a6a3c), { y: 1.6, sy: 3.2 });
     const [c1, c2] = colors || [0x5cc84a, 0x7fdc5c];
     ball(t, c1, 0, 4.1, 0, 1.45);
     ball(t, c1, -0.95, 3.7, 0.25, 1.0);
@@ -474,7 +474,7 @@
     const t = group(p, x, 0, z, lean || 0, s);
     let px = 0, py = 0;
     for (let i = 0; i < 7; i++) {
-      const seg = put(t, G.taper(0.2 - i * 0.012, 0.24 - i * 0.012), toon(i % 2 ? 0xb88a55 : 0xa47a48), { x: px, y: py + 0.3, sy: 0.62 });
+      const seg = put(t, G.taper(0.2 - i * 0.012, 0.24 - i * 0.012), detailMat("rings", i % 2 ? 0xb88a55 : 0xa47a48), { x: px, y: py + 0.3, sy: 0.62 });
       seg.rotation.z = -0.05 * i;
       px += 0.06 * i; py += 0.58;
     }
@@ -498,7 +498,7 @@
 
   function parkBench(p, x, z, ry) {
     const b = group(p, x, 0, z, ry);
-    const wood = toon(0xd9894a), iron = toon(0x3d4a5c);
+    const wood = detailMat("wood", 0xd9894a), iron = toon(0x3d4a5c);
     for (const dz of [-0.12, 0.08, 0.28]) block(b, wood, 0, 0.56, dz, 2.3, 0.07, 0.17, 0.03);
     for (const dy of [0.82, 1.02]) block(b, wood, 0, dy, -0.3, 2.3, 0.16, 0.06, 0.03);
     for (const sx of [-1.0, 1.0]) {
@@ -521,6 +521,171 @@
 
   function rock(p, x, z, s, color) {
     return ball(p, color || 0xb8b3a8, x, s * 0.35, z, s, { sy: 0.65, ry: x * 3 });
+  }
+
+  // A round litter bin with a lid (Miis walk round it: about r 0.35).
+  function litterBin(p, x, z, color, ry) {
+    const g = group(p, x, 0, z, ry || 0);
+    const c = new THREE.Color(color === undefined ? 0x3f8f5a : color), dark = c.clone().multiplyScalar(0.75).getHex();
+    cylinder(g, c.getHex(), 0, 0.42, 0, 0.27, 0.84, { seg: 16 });
+    for (const y of [0.2, 0.62]) put(g, G.torus(0.275, 0.025), toon(dark), { y, rx: Math.PI / 2 });
+    put(g, G.taper(0.12, 0.31, 16), toon(dark), { y: 0.9, sy: 0.12 });
+    cylinder(g, 0xffffff, 0, 0.5, 0.265, 0.07, 0.02, { rx: Math.PI / 2, seg: 10, shadow: false }); // (a little badge)
+    return g;
+  }
+
+  // ---------- surface details ----------
+  // Soft little pictures that give things a bit of texture (bark, wood grain, plaster,
+  // bricks, gravel, grass, sand, rock dust). They're almost white, so the material's
+  // own color shows through: one picture works for any color. Each is made once and
+  // shared, and so is each detail material (so things using it still merge into one
+  // draw: see mergeStatic). The darker bottom of "bark" and "post" is a cheap
+  // "ambient occlusion": things look grounded where they meet the floor.
+  const surfaceCache = new Map();
+  const SURFACES = {
+    // (canvas size, repeat, how to draw it)
+    bark: [64, 128, [2, 1], (ctx, w, h, r) => {
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 26; i++) { // long wavy grooves
+        const x = r() * w, len = 20 + r() * 50, y = r() * h;
+        ctx.strokeStyle = "rgba(90,55,30," + (0.18 + r() * 0.2) + ")"; ctx.lineWidth = 1.5 + r() * 2;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.bezierCurveTo(x + 3, y + len / 3, x - 3, y + (len * 2) / 3, x + 1, y + len); ctx.stroke();
+      }
+      for (let i = 0; i < 18; i++) { ctx.fillStyle = "rgba(255,240,215,0.35)"; ctx.fillRect(r() * w, r() * h, 2, 6 + r() * 8); }
+      const g = ctx.createLinearGradient(0, h, 0, h * 0.72); // darker near the ground
+      g.addColorStop(0, "rgba(40,25,10,0.45)"); g.addColorStop(1, "rgba(40,25,10,0)");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    }],
+    rings: [32, 64, [1, 1], (ctx, w, h) => { // palm trunk segments: a ridge at the top of each
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, "rgba(80,50,25,0.4)"); g.addColorStop(0.15, "rgba(255,245,225,0.4)"); g.addColorStop(0.3, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(80,50,25,0.15)");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    }],
+    wood: [128, 64, [1, 1], (ctx, w, h, r) => { // planks: grain lines along the length
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 9; i++) {
+        const y = r() * h;
+        ctx.strokeStyle = "rgba(120,70,30," + (0.12 + r() * 0.16) + ")"; ctx.lineWidth = 1 + r() * 1.5;
+        ctx.beginPath(); ctx.moveTo(0, y);
+        for (let x = 0; x <= w; x += 16) ctx.lineTo(x, y + Math.sin(x * 0.05 + i) * 2.5);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 2; i++) { // a knot or two
+        const x = r() * w, y = r() * h;
+        ctx.strokeStyle = "rgba(110,60,25,0.3)"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.ellipse(x, y, 5, 2.5, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+    }],
+    plaster: [128, 128, [3, 3], (ctx, w, h, r) => { // soft blotches and speckles
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 40; i++) {
+        const x = r() * w, y = r() * h, s = 6 + r() * 18;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, s);
+        g.addColorStop(0, "rgba(150,130,110," + (0.05 + r() * 0.06) + ")"); g.addColorStop(1, "rgba(150,130,110,0)");
+        ctx.fillStyle = g; ctx.fillRect(x - s, y - s, s * 2, s * 2);
+      }
+      for (let i = 0; i < 160; i++) { ctx.fillStyle = r() < 0.5 ? "rgba(120,100,80,0.12)" : "rgba(255,255,255,0.5)"; ctx.fillRect(r() * w, r() * h, 1.5, 1.5); }
+    }],
+    brick: [128, 128, [2, 2], (ctx, w, h, r) => {
+      ctx.fillStyle = "#f2ece4"; ctx.fillRect(0, 0, w, h); // (mortar)
+      const bh = h / 8, bw = w / 4;
+      for (let row = 0; row < 8; row++) for (let c = -1; c < 5; c++) {
+        const x = c * bw + (row % 2) * bw / 2, y = row * bh;
+        const v = 236 + Math.floor(r() * 20);
+        ctx.fillStyle = "rgb(" + v + "," + (v - 4) + "," + (v - 8) + ")";
+        ctx.fillRect(x + 1.5, y + 1.5, bw - 3, bh - 3);
+        ctx.fillStyle = "rgba(255,255,255,0.35)"; ctx.fillRect(x + 2, y + 2, bw - 5, 2);
+      }
+    }],
+    gravel: [128, 128, [1, 1], (ctx, w, h, r) => {
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 260; i++) {
+        const x = r() * w, y = r() * h, s = 1 + r() * 2.6;
+        ctx.fillStyle = r() < 0.55 ? "rgba(140,110,70," + (0.12 + r() * 0.15) + ")" : "rgba(255,252,240,0.7)";
+        ctx.beginPath(); ctx.ellipse(x, y, s, s * 0.75, r() * 3, 0, Math.PI * 2); ctx.fill();
+      }
+    }],
+    grass: [256, 256, [1, 1], (ctx, w, h, r) => { // light and dark patches, tufts, clover
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 22; i++) {
+        const x = r() * w, y = r() * h, s = 20 + r() * 50;
+        for (const [ox, oy] of [[0, 0], [w, 0], [-w, 0], [0, h], [0, -h]]) { // (wrapped round, so it tiles)
+          const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, s);
+          const c = r() < 0.5 ? "60,110,30" : "255,255,210";
+          g.addColorStop(0, "rgba(" + c + ",0.1)"); g.addColorStop(1, "rgba(" + c + ",0)");
+          ctx.fillStyle = g; ctx.fillRect(x + ox - s, y + oy - s, s * 2, s * 2);
+        }
+      }
+      ctx.lineCap = "round";
+      for (let i = 0; i < 230; i++) {
+        const x = r() * w, y = r() * h, dark = r() < 0.55;
+        ctx.strokeStyle = dark ? "rgba(40,100,25,0.32)" : "rgba(255,255,220,0.55)"; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 2.5, y - 6); ctx.moveTo(x + 2, y); ctx.lineTo(x + 2.5, y - 7); ctx.moveTo(x + 4, y); ctx.lineTo(x + 7, y - 5); ctx.stroke();
+      }
+      for (let i = 0; i < 14; i++) { // clover
+        const x = r() * w, y = r() * h;
+        ctx.fillStyle = "rgba(50,120,35,0.28)";
+        for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(x + Math.cos(k * 2.1) * 2.5, y + Math.sin(k * 2.1) * 2.5, 2.4, 0, Math.PI * 2); ctx.fill(); }
+      }
+    }],
+    sand: [256, 256, [1, 1], (ctx, w, h, r) => { // wind ripples and grains
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 16; i++) {
+        const y0 = (i / 16) * h + r() * 6;
+        ctx.strokeStyle = "rgba(170,120,60,0.13)"; ctx.lineWidth = 3;
+        ctx.beginPath();
+        for (let x = 0; x <= w; x += 8) ctx.lineTo(x, y0 + Math.sin((x / w) * Math.PI * 4 + i) * 5 + Math.sin((x / w) * Math.PI * 2 + i * 2) * 3);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(255,255,240,0.4)"; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let x = 0; x <= w; x += 8) ctx.lineTo(x, y0 - 3 + Math.sin((x / w) * Math.PI * 4 + i) * 5 + Math.sin((x / w) * Math.PI * 2 + i * 2) * 3);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 500; i++) { ctx.fillStyle = r() < 0.5 ? "rgba(150,100,50,0.2)" : "rgba(255,255,255,0.6)"; ctx.fillRect(r() * w, r() * h, 1.5, 1.5); }
+    }],
+    dust: [256, 256, [1, 1], (ctx, w, h, r) => { // moon dust: little craters and pebbles
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 40; i++) {
+        const x = r() * w, y = r() * h, s = 3 + r() * 9;
+        ctx.fillStyle = "rgba(90,70,140,0.13)"; ctx.beginPath(); ctx.arc(x, y, s, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(x, y, s, Math.PI * 0.1, Math.PI * 0.9); ctx.stroke();
+      }
+      for (let i = 0; i < 600; i++) { ctx.fillStyle = r() < 0.5 ? "rgba(80,60,130,0.16)" : "rgba(255,255,255,0.6)"; ctx.fillRect(r() * w, r() * h, 1.5, 1.5); }
+    }],
+  };
+  function surfaceTexture(kind) {
+    if (!surfaceCache.has("tex:" + kind)) {
+      const [w, h, repeat, draw] = SURFACES[kind];
+      const r = seeded(kind.length * 97 + 13);
+      surfaceCache.set("tex:" + kind, canvasTexture(w, h, (ctx) => draw(ctx, w, h, r), repeat));
+    }
+    return surfaceCache.get("tex:" + kind);
+  }
+  // A toon material of that color with that surface on it (shared, like toon()).
+  function detailMat(kind, color) {
+    const key = kind + ":" + color;
+    if (!surfaceCache.has(key)) surfaceCache.set(key, toon(color, { map: surfaceTexture(kind) }));
+    return surfaceCache.get(key);
+  }
+
+  // Soft round shadows on the ground under things (where the sun's shadow doesn't
+  // darken much): makes trees, benches and posts look like they stand on the ground.
+  // items = [{ x, z, r, sx?, sz?, ry?, y? }]; all drawn in one go.
+  let blobTex = null;
+  function blobShadows(parent, items, opacity, color) {
+    blobTex = blobTex || canvasTexture(64, 64, (ctx, w, h) => {
+      const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+      g.addColorStop(0, "rgba(255,255,255,1)"); g.addColorStop(0.45, "rgba(255,255,255,0.7)"); g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    });
+    const geo = cachedGeo("blobPlane", () => new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2));
+    const mat = new THREE.MeshBasicMaterial({ color: color === undefined ? 0x1d2b10 : color, alphaMap: blobTex, transparent: true, opacity: opacity || 0.26, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const m = scatter(parent, geo, mat, items.map((it) => ({ x: it.x, y: it.y || 0.03, z: it.z, sx: it.sx || it.r, sy: 1, sz: it.sz || it.r, ry: it.ry || 0 })), false);
+    m.receiveShadow = false;
+    m.renderOrder = -1; // (before other see-through things)
+    return m;
   }
 
   // =====================================================================
@@ -783,6 +948,16 @@
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 2, y - 6); ctx.moveTo(x + 3, y); ctx.lineTo(x + 4, y - 7); ctx.stroke();
       }
+      // softer light and dark patches, more tufts and clover (the shared grass details)
+      ctx.globalCompositeOperation = "multiply";
+      ctx.drawImage(surfaceTexture("grass").image, 0, 0, w, h);
+      ctx.globalCompositeOperation = "source-over";
+      for (let i = 0; i < 10; i++) { // tiny daisies
+        const x = r() * w, y = r() * h;
+        ctx.fillStyle = "rgba(255,255,255,0.8)";
+        for (let k = 0; k < 5; k++) { ctx.beginPath(); ctx.arc(x + Math.cos(k * 1.26) * 2, y + Math.sin(k * 1.26) * 2, 1.4, 0, TAU); ctx.fill(); }
+        ctx.fillStyle = "#ffd84a"; ctx.beginPath(); ctx.arc(x, y, 1.2, 0, TAU); ctx.fill();
+      }
     }, [10, 10]);
     const plateau = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.04, 1, 72), [toon(0xb27a45), toon(0xffffff, { map: grassTex }), toon(0xb27a45)]);
     plateau.scale.set(RX, 1, RZ);
@@ -798,12 +973,20 @@
       new THREE.Vector3(-2.8, 0, -12.3), new THREE.Vector3(0, 0, -6), new THREE.Vector3(-1.5, 0, 0),
       new THREE.Vector3(1.5, 0, 6), new THREE.Vector3(0, 0, 12.4),
     ]);
-    const pathOuter = toon(0xd9b98a), pathInner = toon(0xf3dfb5);
+    const pathOuter = toon(0xd9b98a);
+    const innerGeos = [];
     for (let i = 0; i <= 140; i++) {
       const pt = path.getPoint(i / 140);
       disc(root, pathOuter, pt.x, 0.012, pt.z, 1.45, { receive: true });
-      disc(root, pathInner, pt.x, 0.02, pt.z, 1.22, { receive: true });
+      innerGeos.push(new THREE.CircleGeometry(1.22, 24).rotateX(-Math.PI / 2).translate(pt.x, 0.02, pt.z));
     }
+    // the gravel on top: one shape, its picture laid out by where it is (so it joins up)
+    const inner = THREE.BufferGeometryUtils.mergeBufferGeometries(innerGeos.map((g) => { g.deleteAttribute("uv"); return g; }));
+    innerGeos.forEach((g) => g.dispose());
+    const ipos = inner.attributes.position, iuv = new Float32Array(ipos.count * 2);
+    for (let i = 0; i < ipos.count; i++) { iuv[i * 2] = ipos.getX(i) * 0.45; iuv[i * 2 + 1] = ipos.getZ(i) * 0.45; }
+    inner.setAttribute("uv", new THREE.BufferAttribute(iuv, 2));
+    put(root, inner, detailMat("gravel", 0xf3dfb5), { shadow: false });
     const stones = [];
     for (let i = 0; i < 46; i++) {
       const pt = path.getPoint(i / 46);
@@ -994,6 +1177,9 @@
     const benches = [{ x: -4.5, z: -3.6, ry: 0.35 }, { x: 10.5, z: 1.5, ry: -1.2 }];
     benches.forEach((b) => parkBench(root, b.x, b.z, b.ry));
     lampPost(root, -2.2, -6.5); lampPost(root, 3.6, 3.5); lampPost(root, -2.8, 9.5);
+    // litter bins by the benches
+    const bins = [{ x: -3.0, z: -4.4 }, { x: 10.1, z: 3.1 }];
+    bins.forEach((b) => litterBin(root, b.x, b.z));
 
     const sign = group(root, 2.6, 0, 11.5, -0.3);
     cylinder(sign, 0x9a6a3c, -0.9, 0.7, 0, 0.08, 1.4);
@@ -1040,6 +1226,18 @@
       seats.push(seat);
     }
     anim.push((t) => seats.forEach((s, i) => { s.rotation.x = Math.sin(t * 1.6 + i * 1.3) * 0.18; }));
+
+    // soft shadows at the foot of things (see blobShadows)
+    blobShadows(root, [
+      ...trees.map(([x, z, s]) => ({ x, z, r: 1.9 * s })),
+      ...palms.map(([x, z, s]) => ({ x, z, r: 0.9 * s })),
+      ...bushes.map(([x, z]) => ({ x, z, r: 1.15, sz: 0.85 })),
+      ...benches.map((b) => ({ x: b.x, z: b.z, r: 1.45, sz: 0.65, ry: b.ry })),
+      ...bins.map((b) => ({ x: b.x, z: b.z, r: 0.5 })),
+      { x: -2.2, z: -6.5, r: 0.5 }, { x: 3.6, z: 3.5, r: 0.5 }, { x: -2.8, z: 9.5, r: 0.5 },
+      { x: F.x, z: F.z, r: 2.6 }, { x: S.x, z: S.z, r: 2.0, sz: 1.0, ry: S.ry }, { x: P.x - 0.6, z: P.z - 0.3, r: 0.6 },
+      { x: 2.6, z: 11.5, r: 1.3, sz: 0.35, ry: -0.3 },
+    ]);
 
     // white picket fence along the back
     const fence = [];
@@ -1285,6 +1483,7 @@
         { x: 2.6, z: 11.5, w: 2.3, d: 0.4, rot: 0.3 },
         { x: -2.2, z: -6.5, r: 0.25 }, { x: 3.6, z: 3.5, r: 0.25 }, { x: -2.8, z: 9.5, r: 0.25 },
         { x: P.x, z: P.z, w: 2.7, d: 2.1, rot: -0.2 }, // picnic blanket (don't step on the food!)
+        ...bins.map((b) => ({ x: b.x, z: b.z, r: 0.35 })),
       ].concat(trees.map(([x, z, s]) => ({ x, z, r: 0.55 * s })))
         .concat(palms.map(([x, z]) => ({ x, z, r: 0.5 })))
         .concat(bushes.map(([x, z]) => ({ x, z, r: 1.05 })))
@@ -2724,6 +2923,7 @@
     THREE, TAU, toon, glow, G, put, ball, cylinder, block, disc, group, dynamic, canvasTexture, seeded,
     skyDome, addLights, mergeStatic, scatter, roundTree, palmTree, bush, parkBench, lampPost, rock,
     bakeGeo, paintedMat,
+    surfaceTexture, detailMat, blobShadows, litterBin, // (surface details, soft ground shadows, a bin)
   };
 
   root.World3D = { build, dispose, list, debug, kit, addPlace, markFar, FAR_LAYER, SMALL_LAYER };
