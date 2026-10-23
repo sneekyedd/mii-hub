@@ -646,9 +646,11 @@
       this.rootEl.appendChild(canvas);
       this.canvas = canvas;
       const r = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-      r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+      // the hub's graphics quality (⚙️ Settings): a less sharp picture and plain shadow edges on slower computers
+      const gq = this.opts && typeof this.opts.graphics === "function" ? this.opts.graphics() : "high";
+      r.setPixelRatio(Math.min(window.devicePixelRatio || 1, gq === "low" ? 0.85 : gq === "medium" ? 1.25 : 1.5));
       r.shadowMap.enabled = true;
-      r.shadowMap.type = THREE.PCFSoftShadowMap;
+      r.shadowMap.type = gq === "high" ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
       r.outputEncoding = THREE.sRGBEncoding;
       this.renderer = r;
 

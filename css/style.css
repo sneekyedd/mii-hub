@@ -1555,3 +1555,62 @@ body {
 /* ---------- full screen: the 3D view plus the side panel ---------- */
 .layout.is-full { padding: 0; gap: 0; background: var(--bg); }
 .layout.is-full .side-panel { padding: 10px; }
+
+/* ---------- smooth motion: easing for pop-ups, buttons and speech bubbles ---------- */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);   /* fast, then settles gently */
+  --ease-pop: cubic-bezier(0.34, 1.5, 0.64, 1); /* with a little overshoot */
+}
+
+/* speech bubbles and emotes pop in with a little bounce, and shrink away a bit quicker */
+.bubble { transition: opacity 0.16s ease-in, transform 0.16s ease-in; }
+.bubble.show { transition: opacity 0.18s var(--ease-out), transform 0.34s var(--ease-pop); }
+.bubble.bump { animation: bubbleBump 0.3s var(--ease-out); }
+@keyframes bubbleBump {
+  0% { transform: scale(0.94); }
+  55% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+.emote, .wish-mark { transition: opacity 0.16s ease-in, transform 0.16s ease-in; }
+.emote.show, .wish-mark.show { transition: opacity 0.18s var(--ease-out), transform 0.34s var(--ease-pop); }
+.nametag { transition: opacity 0.2s var(--ease-out); }
+.phone-tag { transition: opacity 0.25s var(--ease-out); }
+
+/* buttons: colors fade, and they give a little when pressed */
+.btn, .tb-btn, .scene-tab, .stage-btn, .mm-play, .choice-btn, .place-pick, .place-item {
+  transition: background-color 0.16s, border-color 0.16s, color 0.16s, box-shadow 0.2s, opacity 0.2s, scale 0.14s var(--ease-out);
+}
+.btn:active:not(:disabled), .tb-btn:active:not(:disabled), .scene-tab:active, .stage-btn:active,
+.mm-play:active, .choice-btn:active, .place-pick:active { scale: 0.96; transition-duration: 0.06s; }
+.stage-btn:hover { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); }
+
+/* windows and menus: the dimmed background fades in, the card pops up */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.game-modal, .choice-modal { animation: fadeIn 0.2s var(--ease-out); }
+.game-card, .choice-card, .pn-card, .cb-promo-box { animation: menuPop 0.3s var(--ease-pop); }
+.place-menu, .play-menu, .add-menu { transform-origin: top center; animation: menuPop 0.2s var(--ease-out); }
+.mii-menu { animation: sideIn 0.26s var(--ease-out); }
+.toast { animation: toastIn 0.34s var(--ease-pop); transition: opacity 0.5s var(--ease-out), transform 0.5s var(--ease-out); }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(-10px) scale(0.92); }
+  to { opacity: 1; transform: none; }
+}
+
+/* a soft flash when the view changes all at once (going into a home and out again) */
+.scene-fade { position: absolute; inset: 0; pointer-events: none; background: #fff; opacity: 0; }
+.scene-fade.go { animation: sceneFade 0.55s ease-out; }
+@keyframes sceneFade { from { opacity: 0.8; } to { opacity: 0; } }
+
+/* "Reduce motion" in the computer's settings: (almost) nothing moves on its own */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .scene-fade { display: none; }
+  /* (things that float up and fade away just fade away instead) */
+  .coin-pop, .heart, .note-pop { animation: rmFade 1.8s linear forwards !important; }
+  @keyframes rmFade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+}

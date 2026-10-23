@@ -815,6 +815,7 @@
     }
 
     // ---------- what to show for the current state ----------
+    let fxScale = 1;
     function plan() {
       want.fill(0);
       if (!world) return;
@@ -847,6 +848,9 @@
         want[K.SPARKLE] = 90;
         if (sky && want[K.SNOW] < 350) want[K.SNOW] = 350;
       }
+      // fewer raindrops, snowflakes, petals and leaves at a lower graphics quality (hub.fxScale, see hub3d.js)
+      fxScale = hub.fxScale === undefined ? 1 : hub.fxScale;
+      if (fxScale < 1) for (const k of [K.RAIN, K.SNOW, K.PETAL, K.LEAF, K.BLOWN]) want[k] = Math.round(want[k] * fxScale);
       // clouds for gray weather
       cloudWant.setHex(w === "storm" ? 0x8a93a3 : w === "rain" ? 0xc2cad6 : w === "snow" ? 0xf2f6fa : 0xf4f7fa);
       // decorations and stars
@@ -1408,6 +1412,7 @@
       }
       flash.amt = Math.max(0, flash.amt - dt * (flash.amt > 0.5 ? 6 : 2.5));
 
+      if (hub.fxScale !== undefined && hub.fxScale !== fxScale) plan(); // (the graphics quality changed)
       // keep "this many" of each kind of falling / floating thing
       for (const k of FIELD_KINDS) {
         const live = count[k] - retiringCount[k];

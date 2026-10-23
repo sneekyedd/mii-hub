@@ -444,6 +444,9 @@
     fidget: 0.4,      // swinging legs when sitting, etc.
   };
 
+  // A pose as numbers (legs, knees, arms, elbows, body, head, drop): see the end of pose()
+  const POSE_N = 21;
+
   class Rig {
     constructor(bones, mixer, actions) {
       this.bones = bones;
@@ -455,6 +458,44 @@
       this.missing = Object.keys(BONE_PATTERNS).filter((k) => !bones[k]);
       this.legLen = 0.75; // measured in createInstance when possible
       this.drop = 0;      // how far the body should move down (legs apart = hips lower)
+      // blending from one pose to the next (see blend below)
+      this.goal = new Float32Array(POSE_N);  // the pose asked for this frame
+      this.last = new Float32Array(POSE_N);  // the pose asked for last frame
+      this.out = new Float32Array(POSE_N);   // the pose actually shown
+      this.off = new Float32Array(POSE_N);   // how far the shown pose still is from the asked one
+      this.blendT = 1; this.blendDur = 0.3;
+      this.poseKey = null;
+    }
+
+    // Smooths over sudden changes of pose (sitting down, raising the arms, starting
+    // a dance...): when the pose jumps, the Mii starts from where it was and eases
+    // into the new pose over a moment. The new pose keeps moving meanwhile (a wave
+    // keeps waving), so nothing feels slow, and steady motion isn't dulled at all.
+    blend(key, dt, dur) {
+      const g = this.goal, last = this.last, out = this.out, off = this.off;
+      if (this.poseKey === null) {
+        out.set(g); last.set(g); off.fill(0);
+        this.poseKey = key; this.blendT = 1;
+        return out;
+      }
+      let jump = key !== this.poseKey;
+      // (a big jump in one go without a new pose: e.g. nodding, or turning the head away)
+      // (fast moves like drumming can move this much in a frame at a low frame rate: those aren't jumps)
+      const big = Math.max(0.3, dt * 12);
+      if (!jump) for (let i = 0; i < POSE_N; i++) if (Math.abs(g[i] - last[i]) > big) { jump = true; break; }
+      if (jump) {
+        for (let i = 0; i < POSE_N; i++) off[i] = out[i] - g[i];
+        this.blendT = dt;
+        this.blendDur = dur;
+        this.poseKey = key;
+      } else {
+        this.blendT += dt;
+      }
+      const k = Math.min(1, this.blendT / this.blendDur);
+      const left = 1 - k * k * (3 - 2 * k);
+      for (let i = 0; i < POSE_N; i++) out[i] = g[i] + off[i] * left;
+      last.set(g);
+      return out;
     }
 
     // Rotates a bone by (x, y, z) radians measured in the Mii's own space:
@@ -548,12 +589,29 @@
       let elbowL = -0.15 * w - run * 1.1, elbowR = -0.15 * w - run * 1.1; // elbow bend forward/back
       let elbowLz = 0, elbowRz = 0;                                     // elbow bend up/down (sideways)
       let headX = st.headDown * (1 - w * 0.5), headY = 0, headZ = 0;
-      let spineZ = 0, spineY = 0;
+      let spineZ = 0, spineY = 0, chest = 0;
       let arms = p.arms || "down";
+      const live = !!p.smooth; // the hub's Miis: blended poses, breathing and so on
+      let idleMode = "";
+
+      if (live && w > 0.02 && !p.held && !p.sit && !p.lie) {
+        // walking: the forearm swings a little further than the upper arm going forward
+        elbowL -= Math.max(0, -swingA) * 0.35;
+        elbowR -= Math.max(0, swingA) * 0.35;
+      }
 
       // standing around: each personality has its own way of standing
       if (arms === "down" && !p.sit && !p.lie && !p.held && !p.dance && still > 0.5) {
         const k = still;
+        idleMode = p.talking && st.gesture > 0.3 ? "talk" : st.idle;
+        if (live && idleMode !== "bouncy" && idleMode !== "grumpy" && idleMode !== "silly") {
+          // shifting the weight from one leg to the other now and then
+          const shift = Math.sin(t * 0.37 + this.legLen * 7) * Math.min(1, 1.6 * Math.abs(Math.sin(t * 0.23)));
+          spineZ += shift * 0.035 * k;
+          kneeL += Math.max(0, shift) * 0.12 * k; kneeR += Math.max(0, -shift) * 0.12 * k;
+          legL -= Math.max(0, shift) * 0.05 * k; legR -= Math.max(0, -shift) * 0.05 * k;
+          headZ -= shift * 0.02 * k;
+        }
         if (p.talking && st.gesture > 0.3) {
           // talking with their hands
           const g = st.gesture;
@@ -720,25 +778,51 @@
       if (p.sit && arms === "down") { aL = { x: -0.4, z: 0.12 }; aR = { x: -0.4, z: -0.12 }; elbowL = elbowR = -0.45; }
       if (p.lie && arms === "down") { aL = { x: 0, z: 0.12 }; aR = { x: 0, z: -0.12 }; elbowL = elbowR = 0; }
 
-      this.set("Leg_1_L", legL, 0, 0);
-      this.set("Leg_1_R", legR, 0, 0);
-      this.set("Leg_2_L", kneeL, 0, 0);
-      this.set("Leg_2_R", kneeR, 0, 0);
-      this.set("Arm_1_L", aL.x, 0, aL.z);
-      this.set("Arm_1_R", aR.x, 0, aR.z);
-      this.set("Arm_2_L", elbowL, 0, elbowLz);
-      this.set("Arm_2_R", elbowR, 0, elbowRz);
+      if (live && !p.held) {
+        // breathing (slow and deep when asleep)
+        const br = Math.sin(t * (p.lie ? 1.1 : 1.9));
+        chest = br * (p.lie ? 0.03 : 0.018) * (1 - w * 0.7);
+        aL.z += br * 0.012 * still; aR.z -= br * 0.012 * still;
+      }
 
       // body: hips turn with the legs and the shoulders turn the other way when walking;
       // goofy Miis waddle from side to side
       const lean = st.lean * w + run * 0.12 + (p.bow ? 0.75 : 0) + crouch * 0.25;
-      this.set("Spine_1", lean, s * 0.07 * w + spineY, s * (0.03 + st.wobble) * w + spineZ);
-      this.set("Spine_2", 0, -s * 0.09 * w, 0);
       // head: look around, nod, laugh (and stay steady while walking)
       const laugh = p.laugh ? Math.sin(t * 18) * 0.08 : 0;
-      this.set("Head", headX + (p.nod || 0) + laugh - (p.lookUp || 0) - lean * 0.6,
-        (p.lookYaw || 0) + headY - s * 0.02 * w,
-        headZ + (p.dance ? 0 : Math.sin(t * 0.7) * 0.03) - s * (0.03 + st.wobble) * w * 0.5);
+      const g = this.goal;
+      g[0] = legL; g[1] = legR; g[2] = kneeL; g[3] = kneeR;
+      g[4] = aL.x; g[5] = aL.z; g[6] = aR.x; g[7] = aR.z;
+      g[8] = elbowL; g[9] = elbowLz; g[10] = elbowR; g[11] = elbowRz;
+      g[12] = lean; g[13] = s * 0.07 * w + spineY; g[14] = s * (0.03 + st.wobble) * w + spineZ;
+      g[15] = -s * 0.09 * w; g[16] = -chest;
+      g[17] = headX + (p.nod || 0) + laugh - (p.lookUp || 0) - lean * 0.6;
+      g[18] = (p.lookYaw || 0) + headY - s * 0.02 * w;
+      g[19] = headZ + (p.dance ? 0 : Math.sin(t * 0.7) * 0.03) - s * (0.03 + st.wobble) * w * 0.5;
+      g[20] = this.drop;
+      let o = g;
+      if (live) {
+        // a new pose (sitting down, arms up, dancing...) blends in instead of snapping
+        const key = arms + (p.sit ? "|sit" : "") + (p.lie ? "|lie" : "") + (p.legsOut ? "|out" : "") + (p.held ? "|held" : "") +
+          (p.dance ? "|dance" : "") + (p.bow ? "|bow" : "") + (run ? "|run" : "") + "|" + idleMode;
+        const seat = (p.sit ? 1 : 0) + (p.lie ? 2 : 0);
+        const dur = seat !== this.seatWas ? 0.42 : p.held ? 0.15 : 0.26;
+        this.seatWas = seat;
+        o = this.blend(key, p.dt || 0, dur);
+        this.drop = o[20];
+      } else this.poseKey = null; // (start afresh if blending is turned on again)
+
+      this.set("Leg_1_L", o[0], 0, 0);
+      this.set("Leg_1_R", o[1], 0, 0);
+      this.set("Leg_2_L", o[2], 0, 0);
+      this.set("Leg_2_R", o[3], 0, 0);
+      this.set("Arm_1_L", o[4], 0, o[5]);
+      this.set("Arm_1_R", o[6], 0, o[7]);
+      this.set("Arm_2_L", o[8], 0, o[9]);
+      this.set("Arm_2_R", o[10], 0, o[11]);
+      this.set("Spine_1", o[12], o[13], o[14]);
+      this.set("Spine_2", o[16], o[15], 0);
+      this.set("Head", o[17], o[18], o[19]);
     }
   }
 
@@ -810,18 +894,24 @@
     return t;
   }
   const closedCache = new WeakMap(); // open-eyes texture -> closed-eyes texture (or null if we can't)
+  let lastMade = -1e9; // when a closed-eyes picture was last made (only one every so often: it takes a moment)
   function setEyesClosed(inst, closed) {
     if (inst.eyesClosed === !!closed) return;
-    inst.eyesClosed = !!closed;
     if (inst.maskMesh === undefined) {
       inst.maskMesh = null;
       inst.inner.traverse((o) => { if (!inst.maskMesh && o.isMesh && o.name === "Mask" && o.material && o.material.map) inst.maskMesh = o; });
       if (inst.maskMesh) { inst.maskMesh.material = inst.maskMesh.material.clone(); inst.openEyes = inst.maskMesh.material.map; }
     }
     const m = inst.maskMesh;
+    if (closed && m && !closedCache.has(inst.openEyes)) {
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (now - lastMade < 120) return; // (try again in a moment)
+      lastMade = now;
+      closedCache.set(inst.openEyes, closedEyesMap(inst.openEyes));
+    }
+    inst.eyesClosed = !!closed;
     if (!m) return;
     if (closed) {
-      if (!closedCache.has(inst.openEyes)) closedCache.set(inst.openEyes, closedEyesMap(inst.openEyes));
       const t = closedCache.get(inst.openEyes);
       if (!t) return;
       m.material.map = t;
@@ -862,6 +952,8 @@
   function disposeObject(obj) {
     obj.traverse((o) => {
       if (!o.isMesh) return;
+      // (each copy of a model has its own skeleton, kept on the graphics card as a little texture)
+      if (o.isSkinnedMesh && o.skeleton) o.skeleton.dispose();
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       for (const m of mats) {
         if (m.map && m.map.image instanceof HTMLCanvasElement) m.map.dispose();
