@@ -41,9 +41,11 @@
     sandbox: !!settings.sandbox,
     simSpeed: [1, 2, 4].includes(settings.simSpeed) ? settings.simSpeed : 1,
     fly: settings.fly !== false, // the camera flies between places (off = jump straight there, for slower computers)
+    quality: ["auto", "high", "medium", "low"].includes(settings.quality) ? settings.quality : "auto", // graphics quality (see hub3d.js)
   };
   hub.timeScale = prefs.simSpeed;
   hub.flyOn = prefs.fly;
+  hub.setQuality(prefs.quality);
   hub.setScene(settings.scene && window.World3D.list.some((l) => l.id === settings.scene) ? settings.scene : "park");
 
   // ---------- every Mii you have (out and about, or at home) ----------
@@ -204,7 +206,7 @@
 
   function saveSettings() {
     const scene = hub.visiting ? (hub.mainWorld && hub.mainWorld.id) : hub.world.id;
-    S.saveSettings({ scene, friendships: hub.friendships, chattiness: hub.chattiness, theme: prefs.theme, sandbox: prefs.sandbox, simSpeed: prefs.simSpeed, fly: prefs.fly });
+    S.saveSettings({ scene, friendships: hub.friendships, chattiness: hub.chattiness, theme: prefs.theme, sandbox: prefs.sandbox, simSpeed: prefs.simSpeed, fly: prefs.fly, quality: prefs.quality });
   }
 
   // ---------- a little pop-up with choices ----------
@@ -1370,17 +1372,23 @@
     MiiMusic.start();
   } else $("musicBtn").hidden = true;
 
+  // (only touches the page when something really changed: it's redrawn every second)
+  const setText = (el, text) => { text = String(text); if (el.textContent !== text) el.textContent = text; };
+  const setProp = (el, key, value) => { if (el[key] !== value) el[key] = value; };
   function renderTownBar() {
     const st = progress.state;
-    $("townLv").textContent = st.level;
-    $("townXp").style.width = Math.min(100, (st.xp / progress.xpNeeded(st.level)) * 100) + "%";
-    $("townXp").parentElement.title = st.xp + " / " + progress.xpNeeded(st.level) + " XP to town level " + (st.level + 1);
-    $("weatherText").textContent = $("weatherText").title = progress.weatherText();
+    setText($("townLv"), st.level);
+    const xp = $("townXp");
+    const width = Math.min(100, (st.xp / progress.xpNeeded(st.level)) * 100) + "%";
+    if (xp.style.width !== width) xp.style.width = width;
+    setProp(xp.parentElement, "title", st.xp + " / " + progress.xpNeeded(st.level) + " XP to town level " + (st.level + 1));
+    const wt = $("weatherText"), weather = progress.weatherText();
+    setText(wt, weather); setProp(wt, "title", weather);
     const d = st.daily;
     if (d) {
       const done = d.goals.filter((g) => g.count >= g.n).length;
       const ready = d.goals.some((g) => g.count >= g.n && !g.claimed);
-      $("dailyCount").textContent = done + "/" + d.goals.length;
+      setText($("dailyCount"), done + "/" + d.goals.length);
       $("dailyBtn").classList.toggle("ready", ready);
     }
   }
@@ -1587,6 +1595,7 @@
         renderCoins();
       },
       onClose: () => { hub.paused = false; if (window.MiiMusic) MiiMusic.pause(false); },
+      graphics: () => hub.qualityNow(), // (the same graphics quality as the hub)
       opponent: o.opponent, player: o.player,
     });
   }
@@ -1785,7 +1794,7 @@
   }
 
   progress.on("change", () => { renderWishes(false); renderTownBar(); });
-  setInterval(() => { renderWishes(false); renderTownBar(); applyWeather(); }, 1000);
+  setInterval(() => { if (!document.hidden) { renderWishes(false); renderTownBar(); applyWeather(); } }, 1000);
   renderWishes(true); renderTownBar(); applyWeather();
 
   // ---------- full screen (the 3D scene, and the side panel if it's open) ----------
@@ -1986,6 +1995,7 @@
       '<div class="set-head"><h3>⚙️ Settings</h3><button class="mm-close" id="setClose" aria-label="Close">✕</button></div>' +
       '<section class="set-sec"><h4>Look</h4>' +
         '<div class="set-row"><span>🌙 Dark mode</span>' + seg("theme", [["system", "Auto"], ["light", "☀️ Light"], ["dark", "🌙 Dark"]], prefs.theme) + "</div>" +
+        '<div class="set-row"><span>🖥️ Graphics quality<small>Lower = smoother on slower computers. Auto adjusts as you play' + (prefs.quality === "auto" ? " (now: " + hub.qualityNow() + ")" : "") + '</small></span>' + seg("quality", [["auto", "Auto"], ["high", "High"], ["medium", "Medium"], ["low", "Low"]], prefs.quality) + "</div>" +
         '<div class="set-row"><span>🌍 Going places<small>Fly over the planet to the next place, or jump straight there (faster on slower computers)</small></span>' + seg("fly", [["on", "✈️ Fly"], ["off", "⚡ Jump"]], prefs.fly ? "on" : "off") + "</div>" +
         (desktop ? '<div class="set-row"><span>🌐 Show as tab in browser<small>Opens Mii Hub in your web browser too. (Its Miis are saved separately from the app\'s.)</small></span><button class="tb-btn" id="openBrowserBtn">Open</button></div>' : "") +
       "</section>" +
@@ -2016,6 +2026,7 @@
         const v = b.dataset.v;
         if (b.dataset.seg === "theme") { prefs.theme = v; applyTheme(); saveSettings(); }
         else if (b.dataset.seg === "fly") { prefs.fly = v === "on"; hub.flyOn = prefs.fly; saveSettings(); }
+        else if (b.dataset.seg === "quality") { prefs.quality = v; hub.setQuality(v); saveSettings(); }
         else {
           closeSettings(); // (so the "are you sure?" question isn't hidden behind it)
           if (b.dataset.seg === "speed") await setMode("speed", Number(v));

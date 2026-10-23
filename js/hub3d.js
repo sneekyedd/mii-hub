@@ -250,6 +250,38 @@
   // (a geometry's numbers aren't needed in memory once they're on the graphics card)
   function releaseArray() { this.array = null; }
 
+  // ------------------------------------------------------------------
+  // Graphics quality (⚙️ Settings: Auto / High / Medium / Low)
+  // ------------------------------------------------------------------
+  // pr:          how sharp the picture is (at most this many pixels per screen pixel)
+  // shadows:     the sun casts shadows at all
+  // shadowSize:  how big the sun's shadow picture is (at most)
+  // shadowEvery: the shadows are redrawn every this many frames (the scenery doesn't
+  //              move, so only the Miis' shadows lag a little)
+  // soft:        soft shadow edges (a bit slower to draw than plain ones)
+  // fx:          how much rain, snow, petals and leaves (see weather3d.js)
+  // farSphere:   how round the far-away puffs (clouds, treetops...) are
+  // cap:         30 frames a second while the window isn't the one in front
+  const QUALITY_LEVELS = {
+    high: { name: "high", pr: 2, shadows: true, shadowSize: 2048, shadowEvery: 1, soft: true, fx: 1, farSphere: "sphere", cap: false },
+    medium: { name: "medium", pr: 1.25, shadows: true, shadowSize: 1024, shadowEvery: 2, soft: false, fx: 0.6, farSphere: "midSphere", cap: true },
+    low: { name: "low", pr: 0.85, shadows: false, shadowSize: 1024, shadowEvery: 4, soft: false, fx: 0.3, farSphere: "lowSphere", cap: true },
+  };
+  // Auto goes down these rungs one at a time when frames are slow (and back up when they're quick).
+  const AUTO_LADDER = [
+    QUALITY_LEVELS.high,
+    Object.assign({}, QUALITY_LEVELS.high, { pr: 1.5, cap: true }),
+    Object.assign({}, QUALITY_LEVELS.medium, { pr: 1.25 }),
+    Object.assign({}, QUALITY_LEVELS.medium, { pr: 1 }),
+    QUALITY_LEVELS.low,
+    Object.assign({}, QUALITY_LEVELS.low, { pr: 0.7 }),
+  ];
+  const AUTO_SLOW_MS = 1000 / 40;  // a typical frame slower than this: one rung down
+  const AUTO_QUICK_MS = 1000 / 55; // quicker than this for a while: try one rung up
+  const pickA = new THREE.Vector3(), pickB = new THREE.Vector3(), pickOnRay = new THREE.Vector3(), pickOnSeg = new THREE.Vector3();
+  const pointerNdc = new THREE.Vector2();
+  const overlayHead = new THREE.Vector3(), overlayFeet = new THREE.Vector3();
+
   class Hub3D {
     constructor(canvas, overlay) {
       this.canvas = canvas;
@@ -289,7 +321,9 @@
       this.renderer.outputEncoding = THREE.sRGBEncoding;
       this.renderer.shadowMap.enabled = true;
       this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      this.renderer.shadowMap.autoUpdate = false; // (redrawn when needed, see beforeRender)
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      this.fxScale = 1; // how much weather (rain, snow...) to show: set by the graphics quality
 
       this.scene = new THREE.Scene();
       this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
@@ -334,6 +368,7 @@
       this.resize();
       window.addEventListener("resize", () => this.resize());
       this.bindPointer();
+      this.setQuality("auto");
     }
 
     // The Miis you can see right now (only the resident while visiting a home).
@@ -2272,7 +2307,7 @@
 
     // ---------- floating text over each Mii ----------
     updateOverlay() {
-      const v = new THREE.Vector3();
+      const v = overlayHead, feetV = overlayFeet;
       const placed = [];
       // front-most Miis first, so bubbles behind them move up out of the way
       const sorted = this.active().concat(this.guests).sort((a, b) => b.z - a.z);
@@ -2287,12 +2322,15 @@
         w.ui.style.display = visible ? "" : "none";
         if (!visible) continue;
         // feet position for the name tag
-        const feet = new THREE.Vector3(pos.x, 0, pos.z).project(this.camera);
+        const feet = feetV.set(pos.x, 0, pos.z).project(this.camera);
         w.uiName.style.transform = "translate(-50%, " + ((-feet.y * 0.5 + 0.5) * this.H - y + 6) + "px)";
         w.uiName.classList.toggle("show", this.hover === w || this.dragging === w);
 
         if (w.bubble) {
-          const bw = w.uiBubble.offsetWidth, bh = w.uiBubble.offsetHeight;
+          // (its size is measured once per line: reading it every frame makes the page lay itself out again and again)
+          const key = w.uiBubble.className + "|" + w.bubble.text;
+          if (w.uiBubbleKey !== key || !w.uiBubbleW) { w.uiBubbleKey = key; w.uiBubbleW = w.uiBubble.offsetWidth; w.uiBubbleH = w.uiBubble.offsetHeight; }
+          const bw = w.uiBubbleW, bh = w.uiBubbleH;
           let bx = clamp(x - bw / 2, 4, this.W - bw - 4);
           let by = y - bh - 12 - (w.remote === "phone" ? 24 : 0); // leave room for the "📱 Mia" tag
           for (let tries = 0; tries < 6; tries++) {
@@ -2319,15 +2357,15 @@
     // ---------- clicking & dragging ----------
     pointerRay(e) {
       const r = this.canvas.getBoundingClientRect();
-      const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-      this.raycaster.setFromCamera(ndc, this.camera);
+      pointerNdc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      this.raycaster.setFromCamera(pointerNdc, this.camera);
       return this.raycaster.ray;
     }
 
     // Finds the Mii under the pointer by treating each Mii as an upright capsule.
     pickWalker(ray) {
       let best = null, bestDist = Infinity;
-      const a = new THREE.Vector3(), b = new THREE.Vector3(), onRay = new THREE.Vector3(), onSeg = new THREE.Vector3();
+      const a = pickA, b = pickB, onRay = pickOnRay, onSeg = pickOnSeg;
       for (const w of this.active()) {
         if (w.vanish > 0) continue;
         const s = w.inst.holder.scale.y;
@@ -2413,8 +2451,7 @@
           w.liftVel = 0;
           w.targetYaw = this.viewYaw(w);
         } else if (!down && !this.flight) {
-          this.hover = this.pickWalker(this.pointerRay(e));
-          c.style.cursor = this.hover ? "grab" : "";
+          this.hoverAt = { clientX: e.clientX, clientY: e.clientY }; // (looked at once a frame, see pickHover)
         }
       });
 
@@ -2452,7 +2489,7 @@
       };
       c.addEventListener("pointerup", release);
       c.addEventListener("pointercancel", release);
-      c.addEventListener("pointerleave", () => { if (!this.dragging) this.hover = null; });
+      c.addEventListener("pointerleave", () => { this.hoverAt = null; if (!this.dragging) this.hover = null; });
       // right-click a Mii to open its menu
       c.addEventListener("contextmenu", (e) => {
         e.preventDefault();
@@ -2577,6 +2614,7 @@
             // only the Miis in the picture (nobody wandering in front or photobombing)
             const others = this.walkers.filter((w) => !list.includes(w) && w.inst.holder.visible);
             for (const w of others) w.inst.holder.visible = false;
+            this.renderer.shadowMap.needsUpdate = true;
             this.renderer.render(this.scene, this.camera);
             for (const w of others) w.inst.holder.visible = true;
             const url = this.canvas.toDataURL("image/png");
@@ -2596,11 +2634,133 @@
       });
     }
 
+    // ---------- graphics quality (see QUALITY_LEVELS at the top) ----------
+    // mode: "auto" | "high" | "medium" | "low"
+    setQuality(mode) {
+      this.qualityMode = QUALITY_LEVELS[mode] ? mode : "auto";
+      const auto = this.qualityMode === "auto";
+      // (auto: rung = where it is on AUTO_LADDER; a rung that was too slow isn't tried again for a while)
+      this.autoQ = auto ? { rung: this.autoQ ? this.autoQ.rung : 0, samples: [], windowAt: 0, quick: 0, notBefore: [], wait: 20 } : null;
+      this.applyQuality(auto ? AUTO_LADDER[this.autoQ.rung] : QUALITY_LEVELS[mode]);
+    }
+    // What Auto settled on right now ("high" / "medium" / "low"), or the chosen level.
+    qualityNow() { return this.quality ? this.quality.name : "high"; }
+    applyQuality(q) {
+      const old = this.quality;
+      this.quality = q;
+      this.fxScale = q.fx;
+      const pr = Math.min(window.devicePixelRatio || 1, q.pr);
+      if (this.renderer.getPixelRatio() !== pr) {
+        this.renderer.setPixelRatio(pr);
+        if (this.W) this.renderer.setSize(this.W, this.H, false);
+      }
+      const type = q.soft ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+      if (this.renderer.shadowMap.type !== type) {
+        this.renderer.shadowMap.type = type;
+        // (soft or plain shadow edges are part of every material's shader)
+        this.scene.traverse((o) => {
+          if (!o.material) return;
+          for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true;
+        });
+      }
+      this.qualityWorld = null; // (the place on screen gets the new shadows, see beforeRender)
+      this.shadowTick = 0;
+      this.renderer.shadowMap.needsUpdate = true;
+      if (old && old.name !== q.name && this.onQuality) this.onQuality(q.name);
+    }
+    // The sun's shadows (and how round the far-away puffs are) for a place, at the current quality.
+    // Every light remembers how it was built, so going back up to High restores it.
+    qualityFor(root) {
+      const q = this.quality, G = window.World3D.kit.G;
+      const farGeo = G[q.farSphere]();
+      const hiSphere = G.sphere();
+      root.traverse((o) => {
+        if (o.isLight && o.shadow) {
+          const u = o.userData;
+          if (u.qCast === undefined) { u.qCast = o.castShadow; u.qSize = o.shadow.mapSize.x; }
+          if (!u.qCast) return;
+          o.castShadow = q.shadows;
+          const size = Math.min(u.qSize, q.shadowSize);
+          if (o.shadow.mapSize.x !== size) {
+            o.shadow.mapSize.set(size, size);
+            if (o.shadow.map) { o.shadow.map.dispose(); o.shadow.map = null; }
+          }
+        } else if (o.isInstancedMesh && !o.frustumCulled && (o.geometry === hiSphere || o.userData.qSphere)) {
+          // far-away scenery made of lots of round puffs: they're tiny on screen anyway
+          if (!o.userData.qSphere) o.userData.qSphere = true;
+          o.geometry = farGeo;
+        }
+      });
+    }
+    // Every frame, just before drawing.
+    beforeRender(real) {
+      if (this.qualityWorld !== this.world && this.world) {
+        this.qualityWorld = this.world;
+        this.qualityFor(this.world.group);
+        this.qualityFor(this.planet.group);
+        this.renderer.shadowMap.needsUpdate = true;
+      }
+      // the shadows: redrawn every frame at High, less often lower down (always while flying)
+      if (this.flight || ++this.shadowTick >= this.quality.shadowEvery) {
+        this.shadowTick = 0;
+        this.renderer.shadowMap.needsUpdate = true;
+      }
+      // the Mii under the pointer (looked for once a frame, not on every mouse move)
+      if (this.hoverAt) {
+        const e = this.hoverAt;
+        this.hoverAt = null;
+        if (!this.dragging && !this.flight) {
+          this.hover = this.pickWalker(this.pointerRay(e));
+          this.canvas.style.cursor = this.hover ? "grab" : "";
+        }
+      }
+      if (this.autoQ && (!this.quality.cap || document.hasFocus())) this.autoQuality(real); // (not while held to 30 a second)
+    }
+    // Auto: every 2 seconds, looks at a typical frame (the middle one, so one slow
+    // moment like building a place doesn't count) and moves one rung if needed.
+    autoQuality(real) {
+      const a = this.autoQ;
+      if (real <= 0 || real >= 0.2) return; // (a hiccup, or the window was hidden)
+      a.samples.push(real * 1000);
+      a.windowAt += real;
+      if (a.windowAt < 2) return;
+      const s = a.samples.sort((x, y) => x - y), mid = s[s.length >> 1];
+      a.samples = []; a.windowAt = 0;
+      if (a.settle) { a.settle = false; return; } // (the first moments after a change are uneven)
+      let rung = a.rung;
+      if (mid > AUTO_SLOW_MS && rung < AUTO_LADDER.length - 1) {
+        rung++;
+        // (don't try the faster rung again for a while, and longer each time it fails)
+        a.notBefore[rung - 1] = this.time + a.wait;
+        a.wait = Math.min(600, a.wait * 2);
+        a.quick = 0;
+      } else if (mid < AUTO_QUICK_MS && rung > 0) {
+        if (++a.quick >= 4 && !(this.time < (a.notBefore[rung - 1] || 0))) { rung--; a.quick = 0; }
+      } else a.quick = 0;
+      if (rung === a.rung) return;
+      a.rung = rung;
+      a.settle = true;
+      this.applyQuality(AUTO_LADDER[rung]);
+    }
+    // While the window isn't the one in front (Medium/Low/Auto): 30 frames a second is plenty.
+    skipFrame(now) {
+      if (!this.quality.cap || document.hasFocus()) return false;
+      if (now - (this.lastDrawn || 0) < 1000 / 31) return true;
+      this.lastDrawn = now;
+      return false;
+    }
+
     // ---------- main loop ----------
     // timeScale (Settings: simulation speed) runs the world several steps per frame
     start() {
       let last = performance.now();
       const frame = (now) => {
+        // nothing to draw while the window is hidden or minimized (and no catching up after)
+        if (document.hidden || this.skipFrame(now)) {
+          if (document.hidden) last = now;
+          requestAnimationFrame(frame);
+          return;
+        }
         const real = Math.min(0.25, (now - last) / 1000); // (flights go by the clock, even on a slow computer)
         const dt = Math.min(0.05, real);
         last = now;
@@ -2610,6 +2770,7 @@
           if (this.flight) this.stepFlight(real);
           else this.controls.update();
           this.traffic.update(dt);
+          this.beforeRender(real);
           this.renderer.render(this.scene, this.camera);
           if (!this.flight) this.updateOverlay();
           // build the places you haven't been to yet, one now and then

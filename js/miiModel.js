@@ -862,6 +862,8 @@
   function disposeObject(obj) {
     obj.traverse((o) => {
       if (!o.isMesh) return;
+      // (each copy of a model has its own skeleton, kept on the graphics card as a little texture)
+      if (o.isSkinnedMesh && o.skeleton) o.skeleton.dispose();
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       for (const m of mats) {
         if (m.map && m.map.image instanceof HTMLCanvasElement) m.map.dispose();
