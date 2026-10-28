@@ -728,10 +728,28 @@
   menu.setAttribute("role", "dialog");
   menu.setAttribute("aria-label", "Mii menu");
   sidePanel.appendChild(menu);
+  // the side panel slides in when it opens and out when it closes
+  // (the 3D view resizes once, when the panel has finished sliding out)
+  let sideCloseTimer = null;
+  const reduceMotion = () => window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   function updateSidePanel() {
     const open = !menu.hidden || !panel.hidden;
-    sidePanel.hidden = !open;
-    document.querySelector(".layout").classList.toggle("has-side", open);
+    const layout = document.querySelector(".layout");
+    if (open) {
+      clearTimeout(sideCloseTimer); sideCloseTimer = null;
+      const wasHidden = sidePanel.hidden || sidePanel.classList.contains("closing");
+      sidePanel.classList.remove("closing");
+      sidePanel.hidden = false;
+      layout.classList.add("has-side");
+      if (wasHidden) { sidePanel.classList.remove("opening"); void sidePanel.offsetWidth; sidePanel.classList.add("opening"); }
+      return;
+    }
+    if (sidePanel.hidden || sideCloseTimer) return;
+    const finish = () => { sideCloseTimer = null; sidePanel.classList.remove("closing", "opening"); sidePanel.hidden = true; layout.classList.remove("has-side"); };
+    if (reduceMotion()) { finish(); return; }
+    sidePanel.classList.remove("opening");
+    sidePanel.classList.add("closing");
+    sideCloseTimer = setTimeout(finish, 170);
   }
 
   function closeMiiMenu() {

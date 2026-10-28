@@ -1614,3 +1614,16 @@ body {
   .coin-pop, .heart, .note-pop { animation: rmFade 1.8s linear forwards !important; }
   @keyframes rmFade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 }
+
+/* ---------- the side panel slides in and out ---------- */
+@keyframes side-in { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes side-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(28px); } }
+.side-panel.opening { animation: side-in 0.22s cubic-bezier(0.2, 0.8, 0.25, 1) both; }
+.side-panel.closing { animation: side-out 0.17s ease-in both; pointer-events: none; }
+@media (max-width: 700px) {
+  @keyframes side-in-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+  @keyframes side-out-down { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(24px); } }
+  .side-panel.opening { animation-name: side-in-up; }
+  .side-panel.closing { animation-name: side-out-down; }
+}
+@media (prefers-reduced-motion: reduce) { .side-panel.opening, .side-panel.closing { animation: none; } }

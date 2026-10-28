@@ -11,7 +11,14 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-23", title: "Smoother and prettier",
+      v: null, date: "2026-10-28", title: "Little polish",
+      notes: [
+        "A Mii's menu and the home panel slide in and out smoothly.",
+        "The rare Mustang on Café Street drives down the middle of the road now, so it never drives through the cyclists (the tram waits until it's gone).",
+      ],
+    },
+    {
+      v: "1.2.15", date: "2026-10-23", title: "Smoother and prettier",
       notes: [
         "🎨 Every place got a detail pass: textured grass, wood, brick, sand and moon dust, soft shadows under things, and lots of little touches (curtains in Café Street's windows, desks full of stuff at the office, lockers and posters at the college, blinking lights on the Moon base, cables and speakers at the stage).",
         "🏠 Homes look nicer too: real wood floors, patterned wallpaper, trim, warm lamp light, and more detailed furniture (and they draw much faster than before).",

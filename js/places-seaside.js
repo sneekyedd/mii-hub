@@ -1895,9 +1895,15 @@
       bx(t, 0x333333, -0.5, 4.3, 0, 1.2, 0.06, 0.06);
     }, true);
     tram.position.set(-200, 0, TZ);
+    // (its own clock: it waits out of sight while the rare Mustang is using the road; see below)
+    let tramClock = 0, tramLast = null;
+    zones.tramWaiting = () => false;
     anim.push((t) => {
+      const dt = tramLast === null ? 0 : Math.max(0, Math.min(0.5, t - tramLast));
+      tramLast = t;
+      if (!(zones.tramWaiting() && tram.position.x > 150)) tramClock += dt;
       // the tram comes past every 40 seconds, slowing down a little in front of the square
-      const cycle = (t + 8) % 40;
+      const cycle = (tramClock + 8) % 40;
       const x = cycle < 18 ? -90 + cycle * 10 - Math.sin((cycle / 18) * PI) * 25 : 200;
       tram.position.x = x;
     });
@@ -1949,8 +1955,11 @@
         }
       } catch (e) { /* no sound */ }
     };
-    const CAR_Z = TZ - 1.6;
+    // it drives down the middle, on the tram rails, so it never goes through the bike lanes
+    // (the tram waits until it's gone)
+    const CAR_Z = TZ;
     const car = { state: "idle", x: -80, v: 0, timer: 0, check: 4 };
+    zones.tramWaiting = () => car.state !== "idle";
     const startCar = () => { Object.assign(car, { state: "drive", x: -75, v: 11, timer: 0 }); stang.visible = true; };
     zones.rare = {
       update(dt, t, ctx) {
