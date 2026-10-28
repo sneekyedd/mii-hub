@@ -81,7 +81,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; overflow: hidde
 .out-card .portrait { width: 76px; height: 76px; flex: none; }
 .out-text { display: flex; flex-direction: column; min-width: 0; }
 .out-name { font-size: 1.45rem; font-weight: 800; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.out-where { font-size: 1.25rem; font-weight: 800; color: #d4522f; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.out-where { font-size: 1.25rem; font-weight: 800; color: #d4522f; line-height: 1.2; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .out-time { font-size: 1rem; font-weight: 700; color: var(--muted); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .out-where { color: #ff9b7e; } }
 :root[data-theme="dark"] .out-where { color: #ff9b7e; }
