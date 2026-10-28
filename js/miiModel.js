@@ -416,8 +416,6 @@
       const footY = ankle ? wp(ankle).y : Math.max(0, hipY - 2 * (hipY - wp(kneeBone).y));
       if (hipY - footY > 0.1) rig.legLen = hipY - footY + 0.05;
     }
-    // outfit extras (hats, glasses...: see lifeModels.js)
-    if (look && look.extras && root.MiiLifeModels) root.MiiLifeModels.dress({ holder, bones: found }, look.extras);
     return { holder, inner, object, rig };
   }
 
@@ -425,7 +423,7 @@
   const tmpQ = new THREE.Quaternion();
   const tmpE = new THREE.Euler();
 
-  // How a Mii moves depends on its personality (see animStyle in hub3d.js).
+  // How a Mii moves depends on its personality (see styleFor in js/nscc/officeHub.js).
   // These are the "average Mii" values.
   const DEFAULT_STYLE = {
     stride: 0.55,     // how far the legs swing
@@ -480,7 +478,7 @@
       }
       let jump = key !== this.poseKey;
       // (a big jump in one go without a new pose: e.g. nodding, or turning the head away)
-      // (fast moves like drumming can move this much in a frame at a low frame rate: those aren't jumps)
+      // (fast moves like typing can move this much in a frame at a low frame rate: those aren't jumps)
       const big = Math.max(0.3, dt * 12);
       if (!jump) for (let i = 0; i < POSE_N; i++) if (Math.abs(g[i] - last[i]) > big) { jump = true; break; }
       if (jump) {
@@ -519,7 +517,7 @@
      * p = {
      *   t, dt, walk (0..1 how much walking), phase (walk cycle), run (on a treadmill),
      *   arms: "down" | "wave" | "up" | "cheer" | "out" | "type" | "held" | "phone" |
-     *         "shout" | "eat" | "drum" | "punch",
+     *         "shout" | "eat" | "clap",
      *   style (see DEFAULT_STYLE), talking, lookYaw, lookUp, nod, laugh, dance, sit, lie
      * }
      * Afterwards, this.drop says how much lower the body should be (so feet stay planted).
@@ -574,7 +572,7 @@
         this.drop = 0;
       }
       if (p.lie) { legL = legR = 0; kneeL = kneeR = 0.05; this.drop = 0; }
-      // crouching (Paintball): thighs forward, knees bent, hips lower
+      // crouching down (p.crouch 0..1): thighs forward, knees bent, hips lower
       const crouch = p.crouch || 0;
       if (crouch > 0) {
         legL -= 1.1 * crouch; legR -= 1.1 * crouch;
@@ -604,7 +602,7 @@
       if (arms === "down" && !p.sit && !p.lie && !p.held && !p.dance && still > 0.5) {
         const k = still;
         idleMode = p.talking && st.gesture > 0.3 ? "talk" : st.idle;
-        if (live && idleMode !== "bouncy" && idleMode !== "grumpy" && idleMode !== "silly") {
+        if (live && idleMode !== "bouncy" && idleMode !== "silly") {
           // shifting the weight from one leg to the other now and then
           const shift = Math.sin(t * 0.37 + this.legLen * 7) * Math.min(1, 1.6 * Math.abs(Math.sin(t * 0.23)));
           spineZ += shift * 0.035 * k;
@@ -627,13 +625,6 @@
           aL = { x: -0.35, z: 0.3 }; aR = { x: -0.35, z: -0.3 };
           elbowL = elbowR = -1.2; elbowLz = -1.4; elbowRz = 1.4;
           headX += 0.08; spineZ = Math.sin(t * 1.3) * 0.04;
-        } else if (st.idle === "grumpy") {
-          // arms folded, tapping a foot
-          aL = { x: -0.45, z: 0.15 }; aR = { x: -0.45, z: -0.15 };
-          elbowL = elbowR = -1.5; elbowLz = -1.2; elbowRz = 1.2;
-          kneeR = Math.max(0, Math.sin(t * 6)) * 0.25 * k;
-          legR = -kneeR * 0.4;
-          headY = 0.15;
         } else if (st.idle === "silly") {
           // bopping along to music only they can hear
           headZ = Math.sin(t * 4 * tempo) * 0.12;
@@ -729,49 +720,10 @@
           headX += 0.05 - b * 0.05;
           break;
         }
-        case "drum": { // drumsticks going up and down
-          aL = { x: -0.7, z: 0.3 }; aR = { x: -0.7, z: -0.3 };
-          elbowL = -0.5 - Math.max(0, Math.sin(t * 14)) * 0.7;
-          elbowR = -0.5 - Math.max(0, -Math.sin(t * 14)) * 0.7;
-          headX += Math.sin(t * 14) * 0.05;
-          break;
-        }
-        case "aim": { // holding a paintball gun up to the shoulder (Paintball)
-          const ap = p.aimPitch || 0;
-          // both arms reach forward and meet in front of the chest, hands together on the gun
-          aR = { x: -1.4 - ap, z: 0.45 }; elbowR = -0.3; elbowRz = 0.3;
-          aL = { x: -1.4 - ap, z: -0.65 }; elbowL = -0.3; elbowLz = -0.3;
-          headX -= ap * 0.5;
-          break;
-        }
-        case "knife": { // butterfly knife held ready, slashing when p.swing goes 0..1
-          const sw = p.swing || 0;
-          aR = { x: -0.95 - Math.sin(sw * Math.PI) * 0.6, z: -0.3 + Math.sin(sw * Math.PI) * 0.6 }; elbowR = -0.7 + sw * 0.5;
-          aL = { x: -0.5, z: 0.25 }; elbowL = -0.9;
-          break;
-        }
-        case "strum": { // playing a guitar: one hand on the neck, the other strumming
-          aL = { x: -0.75, z: 0.55 }; elbowL = -0.9; elbowLz = -0.2;
-          aR = { x: -0.45, z: -0.15 }; elbowR = -0.9 + Math.sin(t * 16) * 0.3; elbowRz = 0.5;
-          headX += Math.sin(t * 8) * 0.06; // head bobbing to the beat
-          break;
-        }
-        case "sing": { // microphone in one hand, the other arm out
-          aR = { x: -0.5, z: -0.35 }; elbowR = -1.45; elbowRz = 0.6;
-          aL = { x: -0.2 + Math.sin(t * 3) * 0.2, z: 0.9 + Math.sin(t * 3) * 0.3 };
-          break;
-        }
         case "clap": { // clapping
           const b = Math.abs(Math.sin(t * 9));
           aL = { x: -0.95, z: 0.1 + b * 0.35 }; aR = { x: -0.95, z: -0.1 - b * 0.35 };
           elbowL = elbowR = -0.7; elbowLz = -0.5; elbowRz = 0.5;
-          break;
-        }
-        case "punch": { // left, right, left, right...
-          const b = Math.sin(t * 6);
-          aL = { x: -0.6 - Math.max(0, b) * 0.9, z: 0.2 }; aR = { x: -0.6 - Math.max(0, -b) * 0.9, z: -0.2 };
-          elbowL = -1.4 + Math.max(0, b) * 1.3; elbowR = -1.4 + Math.max(0, -b) * 1.3;
-          spineY = b * 0.15;
           break;
         }
       }

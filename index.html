@@ -3,106 +3,73 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mii Hub</title>
+  <title>MiiNSCC</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232fa4e7'/%3E%3Ccircle cx='32' cy='26' r='12' fill='%23fff'/%3E%3Crect x='16' y='40' width='32' height='16' rx='8' fill='%23fff'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/style.css" />
-  <link rel="stylesheet" href="css/life.css" />
-  <link rel="stylesheet" href="css/account.css" />
-  <script>
-    // light / dark mode from Settings, set before anything draws (no flash of the wrong colors)
-    try {
-      var theme = (JSON.parse(localStorage.getItem("mii-hub-3d-settings")) || {}).theme;
-      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
-    } catch (e) { /* private window */ }
-  </script>
 </head>
 <body>
-  <!-- the splash screen while Mii Hub starts up -->
-  <div id="splash" role="progressbar" aria-label="Loading Mii Hub" aria-valuemin="0" aria-valuemax="100">
-    <div class="sp-inner">
-      <div class="sp-logo"><span class="sp-bubble">🙂</span><span class="sp-bubble b2">😄</span><span class="sp-bubble b3">😊</span></div>
-      <h1 class="sp-title">Mii Hub</h1>
-      <div class="sp-bar"><div class="sp-fill" id="splashFill"></div></div>
-      <div class="sp-text" id="splashText">Loading…</div>
-    </div>
-  </div>
-  <script>
-    // the loading bar (app.js moves it along, then hides the splash)
-    window.MiiSplash = (function () {
-      var shown = 4, fill = document.getElementById("splashFill"), text = document.getElementById("splashText");
-      function set(p, t) { shown = Math.max(shown, Math.min(100, p)); fill.style.width = shown + "%"; document.getElementById("splash").setAttribute("aria-valuenow", Math.round(shown)); if (t) text.textContent = t; }
-      // creep forward while the big files load, so it never looks stuck
-      var creep = setInterval(function () { if (shown < 40) set(shown + 0.6); }, 120);
-      set(4, "Loading the island…");
-      var finished = false, held = false;
-      // (never get stuck on the splash: if something goes wrong, show the page anyway.
-      // Not while the sign-in page is up, though: account.js holds it until you're in.)
-      setTimeout(function failsafe() { if (finished) return; if (held) return setTimeout(failsafe, 90000); window.MiiSplash.done(); }, 90000);
-      window.addEventListener("error", function () { setTimeout(function () { if (!finished && !held) window.MiiSplash.done(); }, 1500); });
-      return {
-        set: set,
-        hold: function (on) { held = !!on; },
-        done: function () {
-          if (finished) return;
-          finished = true;
-          clearInterval(creep); set(100, "Ready!");
-          var s = document.getElementById("splash");
-          setTimeout(function () { s.classList.add("gone"); setTimeout(function () { s.remove(); }, 600); }, 250);
-        },
-      };
-    })();
-  </script>
-  <!-- sign in / create an account (account.js shows it over the splash the first time) -->
-  <div id="login" hidden>
-    <form class="lg-card" id="loginForm" autocomplete="on">
-      <div class="sp-logo"><span class="sp-bubble">🙂</span><span class="sp-bubble b2">😄</span><span class="sp-bubble b3">😊</span></div>
-      <h1 class="lg-title">Mii Hub</h1>
-      <div class="lg-tabs" role="tablist">
-        <button type="button" role="tab" id="lgTabIn" class="on" aria-selected="true">Sign in</button>
-        <button type="button" role="tab" id="lgTabUp" aria-selected="false">Create account</button>
-      </div>
-      <label class="lg-field"><span>Username</span><input id="lgUser" name="username" autocomplete="username" maxlength="20" spellcheck="false" autocapitalize="off" required /></label>
-      <label class="lg-field"><span>Password</span><input id="lgPass" name="password" type="password" autocomplete="current-password" maxlength="200" required /></label>
-      <label class="lg-field" id="lgPass2Row" hidden><span>Password again</span><input id="lgPass2" type="password" autocomplete="new-password" maxlength="200" /></label>
-      <p class="lg-note" id="lgNote"></p>
-      <p class="lg-msg" id="lgMsg" role="alert"></p>
-      <button class="btn primary lg-go" id="lgGo" type="submit">Sign in</button>
-      <button class="lg-offline" id="lgOffline" type="button">Play offline (no account)</button>
-    </form>
-  </div>
+  <!-- TOP BAR: the name, who's out of the office, the time, and "+ Add Mii" -->
   <header class="topbar">
-    <h1>Mii Hub</h1>
-    <nav class="scene-tabs" id="sceneTabs" aria-label="Places and residents"></nav>
-    <div class="add-wrap">
-      <button class="tb-btn add" id="addBtn" aria-haspopup="true" aria-expanded="false">➕ Add Miis</button>
-      <div class="add-menu" id="addMenu" hidden>
-        <label class="btn primary file-btn">
-          Choose Mii .glb files…
-          <input type="file" id="fileInput" multiple accept=".glb,model/gltf-binary" />
-        </label>
-        <button class="btn" id="demoBtn">Add random Miis</button>
-        <p class="hint">Use full-body 3D Mii models (<b>.glb</b>) exported from Mii Creator. You can also drag files onto the hub.</p>
-        <p class="error" id="errorMsg" role="alert"></p>
-      </div>
+    <div class="brand">
+      <h1>MiiNSCC</h1>
+      <div class="clock" id="clock" aria-live="off"></div>
     </div>
+    <section class="outbar" id="outbar" aria-label="Out of the office" aria-live="polite"></section>
+    <button class="btn primary add-btn" id="addBtn" type="button">+ Add Mii</button>
   </header>
 
-  <main class="layout">
-    <section class="stage" id="stage">
-      <canvas id="hub" aria-label="Miis walking around the hub in 3D"></canvas>
-      <div class="overlay" id="overlay"></div>
-      <div class="drop-hint" id="dropHint">Drop your Mii .glb files here!</div>
-      <div class="stage-tools" id="stageTools">
-        <div class="stage-scenes" id="stageScenes" aria-label="Choose a place"></div>
-        <button class="stage-btn" id="fullscreenBtn" title="Full screen (F)" aria-label="Full screen">⛶</button>
-      </div>
-      <p class="tip">Right-click a Mii for its menu · click a Mii to make it jump · drag a Mii to pick it up · drag the background to spin the camera · scroll to zoom</p>
-    </section>
-
-    <!-- a Mii's menu and the home (decorating) panel open here, beside the 3D view -->
-    <aside class="side-panel" id="sidePanel" hidden></aside>
+  <main class="stage" id="stage">
+    <canvas id="office" aria-label="The office, with everyone's Mii at work"></canvas>
+    <div class="overlay" id="overlay"></div>
+    <div class="drop-hint" id="dropHint">Drop your Mii .glb file here</div>
+    <div class="loading" id="loading">Opening the office…</div>
   </main>
 
-  <!-- Three.js (3D library), stored in the project so it works offline -->
+  <!-- clicking a Mii (or a name in the top bar): where is this person? -->
+  <aside class="panel" id="panel" hidden aria-labelledby="panelName">
+    <button class="icon-btn panel-close" id="panelClose" type="button" aria-label="Close">×</button>
+    <div class="panel-head">
+      <img class="portrait" id="panelFace" alt="" />
+      <div>
+        <h2 id="panelName">Mii</h2>
+        <p class="panel-status" id="panelStatus"></p>
+      </div>
+    </div>
+    <label class="field">
+      <span>Location</span>
+      <input id="locationInput" type="text" maxlength="60" autocomplete="off" spellcheck="false" placeholder="Where are you? (leave empty = in the office)" />
+    </label>
+    <div class="chips" id="chips"></div>
+    <p class="hint">Press Enter to save. Clear the field when you're back.</p>
+    <div class="panel-actions">
+      <button class="btn" id="backBtn" type="button">I'm back in the office</button>
+      <button class="link-btn" id="removeBtn" type="button">Remove from today's board</button>
+    </div>
+  </aside>
+
+  <!-- add a Mii: a saved one, or upload a new .glb -->
+  <div class="modal" id="addModal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+      <button class="icon-btn modal-close" id="addClose" type="button" aria-label="Close">×</button>
+      <h2 id="addTitle">Who's coming in?</h2>
+      <p class="after-hours" id="afterHours" hidden>It's after 6:00 PM. Miis added now stay until midnight.</p>
+      <h3>Saved Miis</h3>
+      <div class="saved-list" id="savedList"></div>
+      <h3>Upload a new Mii</h3>
+      <div class="upload" id="uploadZone">
+        <label class="btn primary file-btn">
+          Choose a .glb file…
+          <input type="file" id="fileInput" multiple accept=".glb,model/gltf-binary" />
+        </label>
+        <p class="hint">Use a full-body 3D Mii (<b>.glb</b>) exported from Mii Creator. You can also drop the file here.
+          <button class="link-btn" id="sampleBtn" type="button">Or try the sample Mii.</button></p>
+        <p class="error" id="errorMsg" role="alert"></p>
+      </div>
+      <div class="ask" id="ask" hidden></div>
+    </div>
+  </div>
+
+  <!-- Three.js (3D), stored in the project so it works offline -->
   <script src="js/vendor/three.min.js"></script>
   <script src="js/vendor/GLTFLoader.js"></script>
   <script src="js/vendor/SkeletonUtils.js"></script>
@@ -112,35 +79,12 @@
 
   <script src="js/sampleGlb.js"></script>
   <script src="js/miiModel.js"></script>
-  <script src="js/world3d.js"></script>
-  <script src="js/homes.js"></script>
-  <script src="js/homes3d.js"></script>
-  <script src="js/life.js"></script>
-  <script src="js/lifeModels.js"></script>
-  <script src="js/rooms3d.js"></script>
-  <script src="js/bandMusic.js"></script>
-  <script src="js/places-seaside.js"></script>
-  <script src="js/places-town.js"></script>
   <script src="js/nav.js"></script>
-  <script src="js/dialogue.js"></script>
-  <script src="js/minigames.js"></script>
-  <script src="js/gamesUI.js"></script>
-  <script src="js/chess.js"></script>
-  <script src="js/chessUI.js"></script>
-  <script src="js/chessOnline.js"></script>
-  <script src="js/chessAnalysis.js"></script>
-  <script src="js/storage.js"></script>
-  <script src="js/account.js"></script>
-  <script src="js/weather3d.js"></script>
-  <script src="js/planet3d.js"></script>
-  <script src="js/hub3d.js"></script>
-  <script src="js/town.js"></script>
-  <script src="js/progress.js"></script>
-  <script src="js/lifeHub.js"></script>
-  <script src="js/hubMusic.js"></script>
-  <script src="js/music.js"></script>
-  <script src="js/crabSong.js"></script>
-  <script src="js/patchNotes.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/nscc/logic.js"></script>
+  <script src="js/nscc/store.js"></script>
+  <script src="js/nscc/chatter.js"></script>
+  <script src="js/nscc/office.js"></script>
+  <script src="js/nscc/officeHub.js"></script>
+  <script src="js/nscc/app.js"></script>
 </body>
 </html>
