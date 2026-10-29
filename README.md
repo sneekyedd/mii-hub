@@ -19,7 +19,11 @@ anyone's own computer too. It's a plain website: no app to install, no server (y
 
 Any of these work:
 
-- **Just open it:** double-click `index.html` (it opens in your web browser).
+- **Best: double-click `Start MiiNSCC.bat`** (Windows) or `start-miinscc.sh` (Mac/Linux).
+  It quietly downloads the newest version first (no questions asked), then opens MiiNSCC
+  in your browser. This needs the folder to have been downloaded with `git clone`; with no
+  internet it just opens the copy you have.
+- **Just open it:** double-click `index.html` (it opens in your web browser, but doesn't update itself).
 - **Small local web server** (from this folder):
   - `npx serve` and open the address it prints, or
   - `python3 -m http.server 8080` and open http://localhost:8080

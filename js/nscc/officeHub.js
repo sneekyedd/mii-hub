@@ -144,10 +144,14 @@
   }
 
   // Graphics quality: goes down a step when frames are slow, back up when quick.
+  // Everything stays sharp: the picture is never drawn below the screen's own resolution
+  // (ss = extra "supersampling" on top of it, for extra-crisp edges when there's time to spare);
+  // when frames are slow it gives up the extra sharpness and soft shadows first.
   const QUALITY = [
-    { pr: 2, shadows: true }, { pr: 1.5, shadows: true }, { pr: 1.25, shadows: true },
-    { pr: 1, shadows: true }, { pr: 1, shadows: false }, { pr: 0.75, shadows: false },
+    { ss: 2, shadows: true }, { ss: 1.5, shadows: true }, { ss: 1.25, shadows: true },
+    { ss: 1, shadows: true }, { ss: 1, shadows: false },
   ];
+  const MAX_PIXEL_RATIO = 3; // (very high-res screens: no point drawing more than this)
 
   const pickA = new THREE.Vector3(), pickB = new THREE.Vector3(), pickOnRay = new THREE.Vector3(), pickOnSeg = new THREE.Vector3();
   const pointerNdc = new THREE.Vector2();
@@ -777,12 +781,32 @@
     // ---------- graphics quality (automatic) ----------
     applyQuality() {
       const q = QUALITY[this.quality.rung];
-      const pr = Math.min(window.devicePixelRatio || 1, q.pr);
+      const dpr = window.devicePixelRatio || 1;
+      const pr = Math.min(MAX_PIXEL_RATIO, Math.max(dpr, Math.min(dpr * q.ss, 2)));
       if (this.renderer.getPixelRatio() !== pr) { this.renderer.setPixelRatio(pr); if (this.W) this.renderer.setSize(this.W, this.H, false); }
       if (this.renderer.shadowMap.enabled !== q.shadows) {
         this.renderer.shadowMap.enabled = q.shadows;
         this.scene.traverse((o) => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => { m.needsUpdate = true; }); });
       }
+    }
+    // Textures seen at an angle (the floor, desks, the Miis' faces from the side) stay sharp:
+    // turn on the best texture filtering the graphics card has, once for each new texture.
+    sharpenTextures(real) {
+      this.sharpenIn = (this.sharpenIn || 0) - real;
+      if (this.sharpenIn > 0) return;
+      this.sharpenIn = 1;
+      const max = this.renderer.capabilities.getMaxAnisotropy();
+      this.scene.traverse((o) => {
+        if (!o.material) return;
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+          for (const k of ["map", "gradientMap", "emissiveMap", "alphaMap"]) {
+            const t = m[k];
+            if (!t || t.userData.sharp || k === "gradientMap") continue; // (the toon gradient must stay blocky)
+            t.userData.sharp = true;
+            if (t.anisotropy !== max) { t.anisotropy = max; t.needsUpdate = true; }
+          }
+        }
+      });
     }
     autoQuality(real) {
       const a = this.quality;
@@ -817,6 +841,7 @@
           this.hover = this.pickWalker(this.pointerRay(e));
           this.canvas.style.cursor = this.hover ? "pointer" : "";
         }
+        this.sharpenTextures(real);
         this.renderer.render(this.scene, this.camera);
         this.updateOverlay();
         this.autoQuality(real);
