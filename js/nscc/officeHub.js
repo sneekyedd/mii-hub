@@ -187,10 +187,16 @@
       this.renderer.outputEncoding = THREE.sRGBEncoding;
       this.renderer.shadowMap.enabled = true;
       this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      this.renderer.localClippingEnabled = true; // (an outer wall in the way is lowered by cutting off its top)
       this.scene = new THREE.Scene();
       this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 300);
+      // The camera turns all the way round, tilts, zooms and slides (drag = turn, right-drag or
+      // two fingers = slide, wheel / pinch = zoom). It always looks at a point over the office
+      // and stays above the floor (see keepInView).
       this.controls = new THREE.OrbitControls(this.camera, canvas);
-      this.controls.enablePan = false;
+      this.controls.enablePan = true;
+      this.controls.screenSpacePanning = false; // (sliding moves along the floor, not up into the sky)
+      this.controls.panSpeed = 0.9;
       this.controls.enableDamping = true;
       this.controls.dampingFactor = 0.08;
       this.controls.rotateSpeed = 0.6;
@@ -222,41 +228,66 @@
       this.renderer.setSize(w, h, false);
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
+      // (the view is fitted again to the new size; if it had been turned or moved, it stays where it was)
+      const keep = this.home && this.offCenter() ? { pos: this.camera.position.clone(), target: this.controls.target.clone() } : null;
       this.fitCamera();
+      if (keep) { this.camera.position.copy(keep.pos); this.controls.target.copy(keep.target); this.controls.update(); }
     }
+    // The starting ("Center") view: from the office's chosen side (cameraView.yaw) and height
+    // (cameraView.tilt), as close as it can be with the whole floor (cameraView.fit) on screen.
     fitCamera() {
       const v = this.office.cameraView;
-      const vfov = (this.camera.fov * Math.PI) / 180;
-      const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
-      // the whole width across, and the room from back to front up and down
-      const depth = this.office.bounds.maxZ - this.office.bounds.minZ;
-      const dist = clamp(Math.max((v.width / 2) / Math.tan(hfov / 2) * 1.0, (depth * 0.6) / Math.tan(vfov / 2)), 12, 60);
       const t = new THREE.Vector3(v.target[0], v.target[1], v.target[2]);
       const dir = new THREE.Vector3(Math.sin(v.yaw || 0), v.tilt, Math.cos(v.yaw || 0)).normalize();
-      this.camera.position.copy(dir.multiplyScalar(dist)).add(t);
+      const f = v.fit || this.office.bounds;
+      const corners = [];
+      for (const x of [f.minX, f.maxX]) for (const z of [f.minZ, f.maxZ]) for (const y of [0, 1.5]) corners.push(new THREE.Vector3(x, y, z));
+      const fits = (dist) => {
+        this.camera.position.copy(dir).multiplyScalar(dist).add(t);
+        this.camera.lookAt(t);
+        this.camera.updateMatrixWorld(true);
+        return corners.every((c) => { const p = tmpV.copy(c).project(this.camera); return Math.abs(p.x) < 0.98 && p.y > -0.97 && p.y < 0.9 && p.z < 1; });
+      };
+      let lo = 5, hi = 140;
+      for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (fits(mid)) hi = mid; else lo = mid; }
+      const dist = hi;
+      this.camera.position.copy(dir).multiplyScalar(dist).add(t);
       this.controls.target.copy(t);
-      this.controls.minDistance = dist * 0.55;
-      this.controls.maxDistance = dist * 1.15;
-      this.controls.minAzimuthAngle = v.azimuth[0];
-      this.controls.maxAzimuthAngle = v.azimuth[1];
-      this.controls.minPolarAngle = v.polar[0];
-      this.controls.maxPolarAngle = v.polar[1];
+      this.controls.minDistance = 6;
+      this.controls.maxDistance = Math.max(dist * 1.5, 30);
+      this.controls.minAzimuthAngle = -Infinity;
+      this.controls.maxAzimuthAngle = Infinity;
+      this.controls.minPolarAngle = 0.02;           // (straight down, nearly)
+      this.controls.maxPolarAngle = Math.PI / 2 - 0.12; // (low, but never under the floor)
       this.controls.update();
       // the "home" view (for Center)
       this.home = { pos: this.camera.position.clone(), target: t.clone(), dist };
+    }
+    // The view never gets lost: the point it looks at stays over the office (cameraView.pan),
+    // and the camera stays above the floor. (When the point is pulled back, the camera moves with
+    // it, so the view doesn't turn.)
+    keepInView() {
+      const v = this.office.cameraView, p = v.pan || this.office.bounds, tg = this.controls.target;
+      const nx = clamp(tg.x, p.minX, p.maxX), ny = clamp(tg.y, 0, 3), nz = clamp(tg.z, p.minZ, p.maxZ);
+      if (nx !== tg.x || ny !== tg.y || nz !== tg.z) {
+        tmpV.set(nx - tg.x, ny - tg.y, nz - tg.z);
+        tg.add(tmpV);
+        this.camera.position.add(tmpV);
+      }
+      if (this.camera.position.y < 0.8) this.camera.position.y = 0.8;
     }
     // Is the camera turned or zoomed away from the home view? (then the Center button shows)
     offCenter() {
       if (!this.home || this.centering) return false;
       const a = this.camera.position.clone().sub(this.controls.target), b = this.home.pos.clone().sub(this.home.target);
-      return a.angleTo(b) > 0.08 || Math.abs(a.length() / b.length() - 1) > 0.06;
+      return a.angleTo(b) > 0.08 || Math.abs(a.length() / b.length() - 1) > 0.06 || this.controls.target.distanceTo(this.home.target) > 0.5;
     }
     // glide back to the home view, the short way round
     center() {
       if (!this.home) return;
       const from = this.camera.position.clone().sub(this.controls.target);
       const to = this.home.pos.clone().sub(this.home.target);
-      this.centering = { t: 0, dur: 0.7, from: new THREE.Spherical().setFromVector3(from), to: new THREE.Spherical().setFromVector3(to) };
+      this.centering = { t: 0, dur: 0.7, from: new THREE.Spherical().setFromVector3(from), to: new THREE.Spherical().setFromVector3(to), fromTarget: this.controls.target.clone() };
       let d = this.centering.to.theta - this.centering.from.theta;
       while (d > Math.PI) d -= 2 * Math.PI;
       while (d < -Math.PI) d += 2 * Math.PI;
@@ -268,19 +299,32 @@
       c.t = Math.min(1, c.t + dt / c.dur);
       const k = c.t < 0.5 ? 4 * c.t * c.t * c.t : 1 - Math.pow(-2 * c.t + 2, 3) / 2; // ease in and out
       const sp = new THREE.Spherical(c.from.radius + (c.to.radius - c.from.radius) * k, c.from.phi + (c.to.phi - c.from.phi) * k, c.from.theta + c.dTheta * k);
-      this.camera.position.setFromSpherical(sp).add(this.home.target);
-      this.controls.target.copy(this.home.target);
+      const target = c.fromTarget.clone().lerp(this.home.target, k); // (slides back too, if it was moved)
+      this.camera.position.setFromSpherical(sp).add(target);
+      this.controls.target.copy(target);
       this.controls.update();
       if (c.t >= 1) this.centering = null;
     }
-    // walls between the camera and the room hide (like a dollhouse), so you can look from any side
-    updateWalls() {
+    // Walls: only the OUTER walls between the camera and the room are lowered (cut down to a low
+    // strip, like a dollhouse): a wall is lowered while the camera is outside it, and comes back
+    // up when the camera moves round. The walls inside the office always stay up and solid, so you
+    // see into a room (like the server room) from above, not through its walls. No ceiling.
+    updateWalls(dt) {
       const walls = this.office.walls;
       if (!walls) return;
       const cam = this.camera.position;
+      const instant = reducedMotion() || dt === undefined;
       for (const w of walls) {
-        const outside = tmpV.copy(cam).sub(w.point).dot(w.normal) < 0.5;
-        if (w.group.visible === outside) w.group.visible = !outside;
+        if (!w.setCut) { // (an office without lowering: just hide it)
+          const outside = tmpV.copy(cam).sub(w.point).dot(w.normal) < 0.5;
+          if (w.group.visible === outside) w.group.visible = !outside;
+          continue;
+        }
+        const want = tmpV.copy(cam).sub(w.point).dot(w.normal) < 0.5 ? 1 : 0;
+        const k = w.cut === undefined ? 0 : w.cut;
+        if (k === want) continue;
+        const next = instant ? want : Math.abs(want - k) < 0.01 ? want : k + (want - k) * Math.min(1, dt * 9);
+        w.setCut(next);
       }
     }
     viewYaw(w) { return Math.atan2(this.camera.position.x - w.x, this.camera.position.z - w.z); }
@@ -1076,6 +1120,7 @@
         const steps = Math.max(1, Math.ceil(real / 0.05));
         for (let i = 0; i < steps; i++) this.update(real / steps);
         this.controls.update();
+        this.keepInView();
         if (this.hoverAt) {
           const e = this.hoverAt;
           this.hoverAt = null;
@@ -1083,7 +1128,7 @@
           this.canvas.style.cursor = this.hover ? "pointer" : "";
         }
         this.stepCentering(real);
-        this.updateWalls();
+        this.updateWalls(real);
         this.sharpenTextures(real);
         this.renderer.render(this.scene, this.camera);
         this.updateOverlay();

@@ -8,9 +8,10 @@
  * (Keep the part between the two markers plain JSON: the update check reads it as JSON.)
  */
 window.NSCC_VERSION = /*JSON*/{
-  "version": "0.3.1",
+  "version": "0.4.0",
   "date": "2026-10-29",
   "notes": [
+    "0.4.0: The office now has the real shape of our office, taken from the 3D model of it: the walls, doors, windows and the support columns are where they really are, with a clean, solid floor. Move the camera any way you like: drag to turn it, use the right mouse button (or two fingers) to slide it, and the wheel to zoom; it never loses the office. Center the office looks in from the front door's side. Only the outside walls in the way are lowered; the walls inside the office stay solid (you look into the server room from above).",
     "0.3.1: Miis now fade away smoothly as they walk down the hallway on the way out (and fade in as they walk back in), instead of just disappearing. Every room has a real door that swings open when someone walks through and closes after. The storage room's (D) door is now where it really is: on the workbench wall, facing the main room.",
     "0.3.0: The real office! A223 Information Technology with its rooms: the server room (E), the storage room (D), a conference room (C) and two private offices (A and B), with the desks where they really are. Everyone comes in and goes out through the front door from the hallway. Give someone their own desk or office under Workspace in their panel (the desk numbers show in the office). Miis no longer wave their arms about while walking. And a fresh green look.",
     "0.2.4: Background music (the same looping song as Mii Hub). Turn it on or off in ⚙️ Settings.",

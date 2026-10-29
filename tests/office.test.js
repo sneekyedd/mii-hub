@@ -1,7 +1,10 @@
 // Run with: node tests/office.test.js
-// The office (js/nscc/office.js) is built without a browser and checked: the rooms are
-// there, every desk and break spot can be reached on foot from the front door, the front
-// door opens onto the hallway, and the desks you can give to someone are numbered.
+// The office (js/nscc/office.js) is built without a browser and checked: its walls are where
+// the walls of the owner's 3D model (models/office-a223.stl) are, the columns are kept, the
+// floor is solid (no holes) and the walls are clean (no slanted shards), the rooms are there,
+// every desk and break spot can be reached on foot from the front door, the doors work, the
+// front door opens onto the hallway, the walls inside the office are solid (the server room
+// can't be seen into through them) and the desks you can give to someone are numbered.
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
@@ -22,7 +25,7 @@ const o = global.NSCCOffice.build(scene);
 const nav = new global.MiiNav.Nav(o.bounds, o.obstacles);
 
 // ---------- the interface ----------
-for (const k of ["root", "bounds", "obstacles", "workSpots", "rooms", "doorPoint", "outsidePoint", "insidePoint", "cameraView", "walls", "update", "setOwner"]) assert.ok(o[k] !== undefined, "build() gives " + k);
+for (const k of ["root", "bounds", "obstacles", "workSpots", "rooms", "doorPoint", "outsidePoint", "insidePoint", "cameraView", "walls", "roomWalls", "floor", "columns", "update", "setOwner"]) assert.ok(o[k] !== undefined, "build() gives " + k);
 assert.ok(o.root.parent === scene, "the room is in the scene");
 
 // ---------- the rooms (from the floor plan) ----------
@@ -79,9 +82,9 @@ for (const d of o.doors) {
   assert.deepStrictEqual(roomAt(d.inside), [d.room], d.room + "'s door opens into " + d.room);
   assert.deepStrictEqual(roomAt(d.outside), [d.from], d.room + "'s door is from " + d.from);
   for (const p of [d.inside, d.outside]) assert.ok(!nav.isBlocked(p.x, p.z), d.room + ": both sides of the door are free");
-  // (the wall right next to the doorway is solid)
+  // (the wall right next to the doorway is solid; B's and A's doors are either side of the thin wall between them)
   for (const e of [-1, 1]) {
-    const u = d.center + e * (d.width / 2 + 0.3);
+    const u = d.center + e * (d.width / 2 + 0.15);
     const p = d.axis === "x" ? { x: u, z: d.at } : { x: d.at, z: u };
     assert.ok(nav.isBlocked(p.x, p.z, 0), d.room + ": the wall beside the door is solid");
   }
@@ -93,11 +96,15 @@ const wbSpots = o.workSpots.filter((s) => s.kind === "workbench");
 assert.ok(wbSpots.length >= 2);
 assert.strictEqual(dd.axis, "z", "D's door is in a wall that runs back to front");
 assert.strictEqual(dd.from, "main", "D's door faces the main room");
-assert.strictEqual(room("E").areas[0].minX, dd.at, "it's the same wall as E's (the workbench wall)");
-assert.strictEqual(room("D").areas[0].minX, dd.at, "it's D's wall to the main room");
+assert.strictEqual(dd.wall, "workbench", "it's in the workbench wall");
+assert.ok(Math.abs(room("E").areas[0].minX - dd.at) < 0.4, "the same wall as E's (the workbench wall)");
+assert.ok(Math.abs(room("D").areas[0].minX - dd.at) < 0.4, "it's D's wall to the main room");
 for (const s of wbSpots) assert.ok(s.x < dd.at && dd.at - s.x < 3 && s.z < dd.center - dd.width / 2, s.id + " is along that wall, before D's door");
 assert.ok(dd.center - dd.width / 2 > room("D").areas[0].minZ && dd.center + dd.width / 2 < room("D").areas[0].maxZ, "the door is in D's part of the wall");
-for (let x = 5.6; x < 11; x += 0.3) assert.ok(nav.isBlocked(x, room("D").areas[0].maxZ, 0), "no doorway from D down into the main room at x " + x.toFixed(1));
+{
+  const dA = room("D").areas[0];
+  for (let x = dA.minX + 0.2; x < dA.maxX; x += 0.3) assert.ok(nav.isBlocked(x, dA.maxZ + 0.1, 0), "no doorway from D down into the main room at x " + x.toFixed(1));
+}
 // the way to the storage shelves goes through that door; E is reached through D
 const crosses = (p, axis, at, lo, hi) => p.some((a, i) => {
   const b = p[i + 1];
@@ -142,6 +149,117 @@ assert.ok(o.workSpots.filter((s) => s.kind === "meeting").every((s) => s.gather 
 // names on the desk signs and office doors don't break anything
 o.setOwner("desk-3", "Joe"); o.setOwner("office-A", "Ann"); o.setOwner("office-A", ""); o.setOwner("nope", "x");
 o.update(1, { door: true, now: Date.now() });
+
+// ---------- built from the 3D model: the walls are where the model's walls are ----------
+const measure = require("../tools/measure-office.js");
+const plan = o.plan;
+assert.strictEqual(plan.model, "models/office-a223.stl");
+const T = measure.load(path.join(ROOT, plan.model));
+const faces = measure.wallFaces(T);
+const lv = measure.levels(T);
+assert.strictEqual(lv.floor, plan.floorZ, "the floor height is the model's");
+assert.strictEqual(lv.ceiling, plan.topZ, "the wall height is the model's");
+// how much of from..to is covered by the model's upright faces at `at` (either facing way)
+const coverage = (axis, at, from, to) => {
+  const parts = faces.filter((f) => f.axis === axis && Math.abs(f.at - at) <= 1.5).map((f) => [Math.max(from, f.u0), Math.min(to, f.u1)]).filter(([a, b]) => b > a).sort((a, b) => a[0] - b[0]);
+  let got = 0, end = from;
+  for (const [a, b] of parts) { if (b > end) { got += b - Math.max(a, end); end = b; } }
+  return got / (to - from);
+};
+for (const w of plan.outer.concat(plan.inner)) {
+  if (w.added) continue;
+  const [from, to] = w.model || [w.from, w.to];
+  const faceAxis = w.axis === "x" ? "y" : "x"; // (a wall running along x has its faces at fixed y)
+  for (const t of w.t) assert.ok(coverage(faceAxis, t, from, to) > 0.8, "wall " + w.id + ": the model has a wall face at " + faceAxis + " = " + t + " (" + Math.round(coverage(faceAxis, t, from, to) * 100) + "%)");
+}
+// the doors are where the model's doors are (D's door leaf on the workbench wall, the front door's frame)
+const dPlan = plan.inner.find((w) => w.id === "workbench").open.find((x) => x.room === "D");
+assert.ok(faces.some((f) => f.axis === "x" && f.at > 117 && f.at < 124 && f.u0 <= dPlan.a + 1 && f.u1 >= dPlan.b - 1 && f.z1 < 100), "the model has D's door there");
+const fPlan = plan.outer.find((w) => w.id === "hallway").open.find((x) => x.kind === "front-door");
+for (const e of [fPlan.a, fPlan.b]) assert.ok(faces.some((f) => f.axis === "y" && Math.abs(f.at - e) < 2.5 && f.u0 > 249 && f.u1 < 259), "the model has the front door's frame at y " + e);
+// the slanted shards and floor holes in the model are not copied
+assert.ok(measure.shards(T).length > 10, "(the model does have shards)");
+
+// ---------- the columns are kept ----------
+const free = o.columns.filter((c) => c.free);
+assert.strictEqual(free.length, 1, "the column standing in the main room");
+const modelCols = measure.columns(T, (plan.floorZ + plan.topZ) / 2);
+for (const pc of plan.columns.filter((c) => c.free)) assert.ok(modelCols.some((m) => Math.abs(m.x0 - pc.x[0]) < 1 && Math.abs(m.x1 - pc.x[1]) < 1 && Math.abs(m.y0 - pc.y[0]) < 1 && Math.abs(m.y1 - pc.y[1]) < 1), "the model's column is at " + pc.x + " / " + pc.y);
+for (const c of o.columns) {
+  assert.ok(nav.isBlocked(c.x, c.z, 0), c.id + ": nobody walks through the column");
+  assert.ok(c.w > 0.2 && c.d > 0.2);
+}
+assert.ok(o.columns.length >= 5, "the columns built into the walls are kept too");
+assert.ok(inside("main", free[0]), "the free-standing column is in the main room");
+const ray = new THREE.Raycaster();
+const scene2 = scene; scene2.updateMatrixWorld(true);
+ray.set(new THREE.Vector3(free[0].x, 20, free[0].z), new THREE.Vector3(0, -1, 0));
+const colHit = ray.intersectObject(o.roomWallGroup, true)[0];
+assert.ok(colHit && colHit.point.y > 4, "the column goes all the way up (" + (colHit && colHit.point.y.toFixed(2)) + ")");
+
+// ---------- the floor is solid: no holes anywhere in the rooms or the hallway ----------
+let samples = 0;
+for (const r of o.rooms) for (const a of r.areas) {
+  for (let x = a.minX + 0.1; x < a.maxX; x += 0.37) for (let z = a.minZ + 0.1; z < a.maxZ; z += 0.37) {
+    ray.set(new THREE.Vector3(x, 10, z), new THREE.Vector3(0, -1, 0));
+    const hit = ray.intersectObject(o.floor, true)[0];
+    assert.ok(hit && hit.point.y > -0.01 && hit.point.y < 0.05, "floor at " + x.toFixed(2) + ", " + z.toFixed(2) + " (" + r.id + ")");
+    samples++;
+  }
+}
+assert.ok(samples > 5000, "checked the floor all over (" + samples + " spots)");
+
+// ---------- the walls are clean: flat, square faces only (nothing slanted sticking out) ----------
+const wallGroups = [o.roomWallGroup].concat(o.walls.map((w) => w.group));
+const fp = plan.footprint, bx = (x) => (x - plan.center.x) / plan.inchesPerUnit, bz = (y) => (plan.center.y - y) / plan.inchesPerUnit;
+for (const g of wallGroups) g.traverse((m) => {
+  if (!m.isMesh) return;
+  // (little round things on the walls, like the clock, have small slanted faces: big ones would be shards)
+  const pos = m.geometry.attributes.position, idx = m.geometry.index;
+  const tri = idx ? idx.count / 3 : pos.count / 3, v = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()], t = new THREE.Triangle(), nn = new THREE.Vector3();
+  for (let i = 0; i < tri; i++) {
+    for (let k = 0; k < 3; k++) v[k].fromBufferAttribute(pos, idx ? idx.getX(i * 3 + k) : i * 3 + k);
+    t.set(v[0], v[1], v[2]);
+    if (t.getArea() < 0.1) continue;
+    t.getNormal(nn);
+    assert.ok(Math.max(Math.abs(nn.x), Math.abs(nn.y), Math.abs(nn.z)) > 0.999, g.name + ": a big slanted face in the walls " + JSON.stringify([v[0], v[1], v[2], t.getArea()]));
+  }
+  m.geometry.computeBoundingBox();
+  const bb = m.geometry.boundingBox.clone().applyMatrix4(m.matrixWorld);
+  assert.ok(bb.min.x > bx(fp.x[0]) - 0.3 && bb.max.x < bx(fp.x[1]) + 0.3 && bb.min.z > bz(fp.y[1]) - 0.3 && bb.max.z < bz(fp.y[0]) + 0.3 && bb.min.y > -0.01 && bb.max.y < 4.6, g.name + ": inside the office's outline");
+});
+
+// ---------- walls inside the office are solid; only outer walls are lowered ----------
+for (const id of ["workbench", "E-D", "D-main", "rooms", "C-west", "C-B", "B-A"]) {
+  const w = o.roomWalls.find((x) => x.id === id);
+  assert.ok(w && w.opaque, id + " is a solid wall");
+  assert.ok(!o.walls.some((x) => x.id === id), id + " is never lowered");
+}
+const serverWalls = o.roomWalls.filter((w) => w.between.includes("E"));
+assert.ok(serverWalls.length >= 2 && serverWalls.every((w) => w.opaque), "the server room's walls are solid");
+o.roomWallGroup.traverse((m) => { if (m.isMesh) assert.ok(!m.material.transparent && m.material.opacity === 1, "no see-through parts in the walls inside the office"); });
+// from the main room you can't see into the server room: a look from the workbench at eye height hits the wall
+{
+  const eA = room("E").areas[0];
+  for (const z of [-13, -10, -7, -5]) {
+    ray.set(new THREE.Vector3(eA.minX - 2.5, 1.8, z), new THREE.Vector3(1, 0, 0));
+    const hit = ray.intersectObject(o.roomWallGroup, true)[0];
+    assert.ok(hit && hit.point.x < eA.minX + 0.05, "the wall between the main room and E is solid at z " + z);
+  }
+}
+// the outer walls: west, back, east, front and the hallway's, each with the way into the room
+assert.deepStrictEqual(o.walls.map((w) => w.id).sort(), ["back", "east", "front", "hallway", "west"]);
+for (const w of o.walls) {
+  const into = w.point.clone().addScaledVector(w.normal, 3);
+  assert.ok(o.rooms.some((r) => r.areas.some((a) => into.x > a.minX && into.x < a.maxX && into.z > a.minZ && into.z < a.maxZ)), w.id + ": its normal points into the office");
+  w.setCut(1); assert.ok(Math.abs(w.cap.position.y - w.low) < 1e-6, w.id + " lowers");
+  w.setCut(0); assert.ok(Math.abs(w.cap.position.y - w.height) < 1e-6, w.id + " comes back up");
+}
+// the front door stays up even when its wall is lowered (you can see where Miis come in)
+assert.ok(!o.walls.some((w) => { let f = false; w.group.traverse((c) => { if (c === o.frontDoor) f = true; }); return f; }), "the front door isn't part of a wall that's lowered");
+// the starting view is from the front door's side (the right), looking in from high up
+assert.ok(Math.sin(o.cameraView.yaw) > 0.9 && o.cameraView.tilt > 1.2, "the camera starts on the front door's side, high up");
+assert.ok(o.doorPoint.x > c("main").x, "the front door is on that side");
 
 // ---------- drawing: merged into a reasonable number of pieces ----------
 let meshes = 0;
