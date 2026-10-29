@@ -1,6 +1,6 @@
 /*
  * settings.js
- * The ⚙️ Settings window: the version, "Check for updates", and graphics quality.
+ * The ⚙️ Settings window: the version, "Check for updates", music on/off and graphics quality.
  *
  * Updates: the newest version lives on GitHub (the miinscc branch). Checking reads its
  * version.js and compares. A page opened from a file can't replace its own files, so the
@@ -99,6 +99,8 @@
       el("versionText").textContent = "Version " + v.version + (v.date ? " (" + v.date + ")" : "");
       el("notesList").innerHTML = (v.notes || []).map((n) => "<li>" + esc(n) + "</li>").join("");
       for (const b of modal.querySelectorAll("[data-quality]")) b.setAttribute("aria-pressed", String(b.dataset.quality === (prefs.quality || "auto")));
+      const M = root.NSCCMusic, musicOn = !!(M && M.isOn());
+      for (const b of modal.querySelectorAll("[data-music]")) b.setAttribute("aria-pressed", String((b.dataset.music === "on") === musicOn));
     }
     // how it's running (updated while Settings is open)
     const perf = () => {
@@ -122,6 +124,11 @@
         if (hub && hub.setQualityMode) hub.setQualityMode(prefs.quality);
         render();
       });
+    }
+    // music on / off (remembered; it starts after the first click, as browsers require)
+    if (root.NSCCMusic) root.NSCCMusic.start();
+    for (const b of modal.querySelectorAll("[data-music]")) {
+      b.addEventListener("click", () => { if (root.NSCCMusic) root.NSCCMusic.set(b.dataset.music === "on"); render(); });
     }
     // a quiet check when it opens (and every few hours on the TV): a dot on ⚙️ if there's something new
     check(true);

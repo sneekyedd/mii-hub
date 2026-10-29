@@ -49,6 +49,10 @@ without internet.
 
 You can spin the camera a little by dragging, and zoom with the mouse wheel.
 
+7. **⚙️ Settings** (top right): check for updates (it shows the exact command to get one),
+   turn the background music on or off (the same looping song as Mii Hub), and pick the
+   graphics quality. Settings also shows how smoothly it's running.
+
 Trying out the 6 PM rule without waiting: open `index.html?now=2026-10-28T17:59:30` (any
 date and time). The page then pretends it's that time.
 

@@ -21,7 +21,7 @@ const allowed = [
   "js/vendor/RoundedBoxGeometry.js", "js/vendor/BufferGeometryUtils.js",
   "js/sampleGlb.js", "js/miiModel.js", "js/nav.js",
   "js/nscc/logic.js", "js/nscc/store.js", "js/nscc/chatter.js", "js/nscc/office.js", "js/nscc/officeHub.js",
-  "js/nscc/version.js", "js/nscc/settings.js", "js/nscc/app.js",
+  "js/nscc/hubMusic.js", "js/nscc/music.js", "js/nscc/version.js", "js/nscc/settings.js", "js/nscc/app.js",
 ];
 assert.deepStrictEqual(scripts, allowed, "index.html loads exactly the MiiNSCC files");
 for (const s of scripts) assert.ok(exists(s), s + " exists");
