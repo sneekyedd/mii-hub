@@ -21,6 +21,8 @@
  *     outsidePoint { x, z }  just outside the door: Miis appear and disappear here
  *     insidePoint, { x, z }  a few steps into the room from the door
  *     cameraView,  { target: [x, y, z], tilt, width, azimuth: [min, max], polar: [min, max] }
+ *     walls,       (optional) [{ group, point, normal }]: each wall group, a point on it and the
+ *                  direction into the room; the view hides a wall while the camera is behind it
  *                  width = how much of the room must fit across the screen
  *     background,  the color behind everything
  *     update(t, info)  optional: animations. info.door = true while someone goes through the
@@ -223,32 +225,35 @@
     block(top, 0x5f7da3, 0, -0.3, W.front + 0.15, W.side * 2 + 0.5, 0.6, 0.3, 0.04);
 
     // ----- walls: back (with the door) and both sides -----
+    // Each wall (with everything hanging on it) is its own group, so the 3D view can hide the
+    // wall between the camera and the room when you spin round (like a dollhouse).
+    const backWall = new THREE.Group(), leftWall = new THREE.Group(), rightWall = new THREE.Group();
     const wallC = 0xdce8f2, panelC = 0x5f7da3;
     const DOOR = { x: 12, w: 2.6, h: 4.4 };
     const backZ = W.back - 0.25;
-    const backPiece = (x0, x1, y0, y1) => block(top, wallC, (x0 + x1) / 2, (y0 + y1) / 2, backZ, x1 - x0, y1 - y0, 0.5, 0.02);
+    const backPiece = (x0, x1, y0, y1) => block(backWall, wallC, (x0 + x1) / 2, (y0 + y1) / 2, backZ, x1 - x0, y1 - y0, 0.5, 0.02);
     backPiece(-W.side - 0.5, DOOR.x - DOOR.w / 2, 0, WALL_H);
     backPiece(DOOR.x + DOOR.w / 2, W.side + 0.5, 0, WALL_H);
     backPiece(DOOR.x - DOOR.w / 2, DOOR.x + DOOR.w / 2, DOOR.h, WALL_H);
-    block(top, wallC, -W.side - 0.25, WALL_H / 2, 0, 0.5, WALL_H, W.front - W.back + 0.5, 0.02);
-    block(top, wallC, W.side + 0.25, WALL_H / 2, 0, 0.5, WALL_H, W.front - W.back + 0.5, 0.02);
+    block(leftWall, wallC, -W.side - 0.25, WALL_H / 2, 0, 0.5, WALL_H, W.front - W.back + 0.5, 0.02);
+    block(rightWall, wallC, W.side + 0.25, WALL_H / 2, 0, 0.5, WALL_H, W.front - W.back + 0.5, 0.02);
     // dark panelling and a white rail along the bottom of the walls
-    const panel = (x, z, w, d) => { block(top, panelC, x, 1.1, z, w, 2.2, d, 0.02); block(top, 0xffffff, x, 2.25, z, w + 0.04, 0.12, d + 0.06, 0.03); };
-    panel((-W.side + DOOR.x - DOOR.w / 2 - 0.3) / 2, W.back + 0.06, DOOR.x - DOOR.w / 2 - 0.3 + W.side, 0.12);
-    panel((DOOR.x + DOOR.w / 2 + 0.3 + W.side) / 2, W.back + 0.06, W.side - DOOR.x - DOOR.w / 2 - 0.3, 0.12);
-    panel(-W.side + 0.06, 0, 0.12, W.front - W.back);
-    panel(W.side - 0.06, 0, 0.12, W.front - W.back);
+    const panel = (wall, x, z, w, d) => { block(wall, panelC, x, 1.1, z, w, 2.2, d, 0.02); block(wall, 0xffffff, x, 2.25, z, w + 0.04, 0.12, d + 0.06, 0.03); };
+    panel(backWall, (-W.side + DOOR.x - DOOR.w / 2 - 0.3) / 2, W.back + 0.06, DOOR.x - DOOR.w / 2 - 0.3 + W.side, 0.12);
+    panel(backWall, (DOOR.x + DOOR.w / 2 + 0.3 + W.side) / 2, W.back + 0.06, W.side - DOOR.x - DOOR.w / 2 - 0.3, 0.12);
+    panel(leftWall, -W.side + 0.06, 0, 0.12, W.front - W.back);
+    panel(rightWall, W.side - 0.06, 0, 0.12, W.front - W.back);
     // the doorway: a frame, a bright hallway behind it, and a door that swings open
-    block(top, 0xffffff, DOOR.x - DOOR.w / 2 - 0.12, DOOR.h / 2, W.back + 0.02, 0.24, DOOR.h, 0.3, 0.04);
-    block(top, 0xffffff, DOOR.x + DOOR.w / 2 + 0.12, DOOR.h / 2, W.back + 0.02, 0.24, DOOR.h, 0.3, 0.04);
-    block(top, 0xffffff, DOOR.x, DOOR.h + 0.12, W.back + 0.02, DOOR.w + 0.48, 0.24, 0.3, 0.04);
-    block(top, 0xfff6e0, DOOR.x, DOOR.h / 2, W.back - 2.2, DOOR.w + 1.5, DOOR.h + 0.6, 0.2, 0.02); // hallway wall
-    put(top, new THREE.PlaneGeometry(DOOR.w + 1.5, 2.2), toon(0xcdb894), { x: DOOR.x, y: 0.01, z: W.back - 1.1, rx: -Math.PI / 2, shadow: false });
-    block(top, 0xfff6e0, DOOR.x - DOOR.w / 2 - 0.75, DOOR.h / 2, W.back - 1.1, 0.2, DOOR.h + 0.6, 2.2, 0.02);
-    block(top, 0xfff6e0, DOOR.x + DOOR.w / 2 + 0.75, DOOR.h / 2, W.back - 1.1, 0.2, DOOR.h + 0.6, 2.2, 0.02);
+    block(backWall, 0xffffff, DOOR.x - DOOR.w / 2 - 0.12, DOOR.h / 2, W.back + 0.02, 0.24, DOOR.h, 0.3, 0.04);
+    block(backWall, 0xffffff, DOOR.x + DOOR.w / 2 + 0.12, DOOR.h / 2, W.back + 0.02, 0.24, DOOR.h, 0.3, 0.04);
+    block(backWall, 0xffffff, DOOR.x, DOOR.h + 0.12, W.back + 0.02, DOOR.w + 0.48, 0.24, 0.3, 0.04);
+    block(backWall, 0xfff6e0, DOOR.x, DOOR.h / 2, W.back - 2.2, DOOR.w + 1.5, DOOR.h + 0.6, 0.2, 0.02); // hallway wall
+    put(backWall, new THREE.PlaneGeometry(DOOR.w + 1.5, 2.2), toon(0xcdb894), { x: DOOR.x, y: 0.01, z: W.back - 1.1, rx: -Math.PI / 2, shadow: false });
+    block(backWall, 0xfff6e0, DOOR.x - DOOR.w / 2 - 0.75, DOOR.h / 2, W.back - 1.1, 0.2, DOOR.h + 0.6, 2.2, 0.02);
+    block(backWall, 0xfff6e0, DOOR.x + DOOR.w / 2 + 0.75, DOOR.h / 2, W.back - 1.1, 0.2, DOOR.h + 0.6, 2.2, 0.02);
     const hinge = dynamic(new THREE.Group());
     hinge.position.set(DOOR.x - DOOR.w / 2, 0, W.back - 0.1);
-    top.add(hinge);
+    backWall.add(hinge);
     block(hinge, 0x4a90e2, DOOR.w / 2, DOOR.h / 2, 0, DOOR.w - 0.04, DOOR.h - 0.04, 0.14, 0.06);
     block(hinge, 0xbfe6ff, DOOR.w / 2, DOOR.h * 0.68, 0.08, DOOR.w * 0.55, DOOR.h * 0.26, 0.03, 0.02);
     ball(hinge, 0xffcf3a, DOOR.w - 0.3, DOOR.h * 0.45, 0.12, 0.09);
@@ -258,7 +263,7 @@
       ctx.fillStyle = "#fff"; ctx.font = "800 38px Nunito, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText("IN  /  OUT", w / 2, h / 2 + 2);
     });
-    put(top, new THREE.PlaneGeometry(1.9, 0.48), new THREE.MeshBasicMaterial({ map: sign, toneMapped: false }), { x: DOOR.x, y: DOOR.h + 0.65, z: W.back + 0.02, shadow: false });
+    put(backWall, new THREE.PlaneGeometry(1.9, 0.48), new THREE.MeshBasicMaterial({ map: sign, toneMapped: false }), { x: DOOR.x, y: DOOR.h + 0.65, z: W.back + 0.02, shadow: false });
     const matTex = canvasTexture(256, 112, (ctx, w, h) => {
       ctx.fillStyle = "#4a6aa0"; ctx.fillRect(0, 0, w, h);
       ctx.strokeStyle = "#ffcf3a"; ctx.lineWidth = 6; ctx.strokeRect(8, 8, w - 16, h - 16);
@@ -280,15 +285,15 @@
     const skyMat = new THREE.MeshBasicMaterial({ map: sky, toneMapped: false });
     const windows = [-10.5, -3.5, 3.5];
     for (const x of windows) {
-      put(top, geo("win", () => new THREE.PlaneGeometry(4.2, 2.4)), skyMat, { x, y: 4.0, z: W.back + 0.02, shadow: false });
-      block(top, 0xffffff, x, 2.75, W.back + 0.05, 4.5, 0.16, 0.3, 0.03);
-      block(top, 0xffffff, x, 5.25, W.back + 0.05, 4.4, 0.14, 0.12, 0.03);
-      block(top, 0xffffff, x - 2.15, 4.0, W.back + 0.05, 0.14, 2.5, 0.12, 0.03);
-      block(top, 0xffffff, x + 2.15, 4.0, W.back + 0.05, 0.14, 2.5, 0.12, 0.03);
-      block(top, 0xffffff, x, 4.0, W.back + 0.05, 0.1, 2.4, 0.1, 0.03);
+      put(backWall, geo("win", () => new THREE.PlaneGeometry(4.2, 2.4)), skyMat, { x, y: 4.0, z: W.back + 0.02, shadow: false });
+      block(backWall, 0xffffff, x, 2.75, W.back + 0.05, 4.5, 0.16, 0.3, 0.03);
+      block(backWall, 0xffffff, x, 5.25, W.back + 0.05, 4.4, 0.14, 0.12, 0.03);
+      block(backWall, 0xffffff, x - 2.15, 4.0, W.back + 0.05, 0.14, 2.5, 0.12, 0.03);
+      block(backWall, 0xffffff, x + 2.15, 4.0, W.back + 0.05, 0.14, 2.5, 0.12, 0.03);
+      block(backWall, 0xffffff, x, 4.0, W.back + 0.05, 0.1, 2.4, 0.1, 0.03);
     }
     // a wall clock that shows the real time
-    const clock = group(top, 7.6, W.back + 0.1);
+    const clock = group(backWall, 7.6, W.back + 0.1);
     cylinder(clock, 0xffffff, 0, 4.4, 0, 0.6, 0.1, { rx: Math.PI / 2 });
     put(clock, G.torus(0.6, 0.06), toon(0x3a3f4a), { y: 4.4, z: 0.03 });
     const hands = dynamic(new THREE.Group());
@@ -338,7 +343,7 @@
     cylinder(top, 0xff7a59, T.x + 0.15, 1.1, T.z + 0.1, 0.07, 0.14);
     // a whiteboard on the left wall
     const WB = { x: -W.side + 0.12, z: 0 };
-    block(top, 0xc9d2dc, WB.x, 3.2, WB.z, 0.1, 2.2, 4.0, 0.04);
+    block(leftWall, 0xc9d2dc, WB.x, 3.2, WB.z, 0.1, 2.2, 4.0, 0.04);
     const board = canvasTexture(256, 140, (ctx, w, h) => {
       ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h);
       ctx.lineWidth = 4; ctx.lineCap = "round";
@@ -348,12 +353,19 @@
       ctx.strokeStyle = "#b58cff"; ctx.beginPath(); ctx.arc(190, 70, 36, 0, TAU); ctx.stroke();
       ctx.fillStyle = "#ffc94a"; ctx.fillRect(170, 105, 44, 20);
     });
-    put(top, new THREE.PlaneGeometry(3.8, 2.0), new THREE.MeshBasicMaterial({ map: board, toneMapped: false }), { x: WB.x + 0.06, y: 3.2, z: WB.z, ry: Math.PI / 2, shadow: false });
+    put(leftWall, new THREE.PlaneGeometry(3.8, 2.0), new THREE.MeshBasicMaterial({ map: board, toneMapped: false }), { x: WB.x + 0.06, y: 3.2, z: WB.z, ry: Math.PI / 2, shadow: false });
     // plants in the corners
     plant(top, -15.1, -9.1, 0.9); plant(top, -15.1, 8.9, 0.9); plant(top, 15.1, 8.9, 0.9); plant(top, 8.4, -9.2, 0.75);
 
     mergeStatic(top);
     scene.add(top);
+    for (const wall of [backWall, leftWall, rightWall]) { mergeStatic(wall); scene.add(wall); }
+    // where each wall is, and which way is into the room (for hiding it when the camera is behind it)
+    const walls = [
+      { group: backWall, point: new THREE.Vector3(0, 0, W.back), normal: new THREE.Vector3(0, 0, 1) },
+      { group: leftWall, point: new THREE.Vector3(-W.side, 0, 0), normal: new THREE.Vector3(1, 0, 0) },
+      { group: rightWall, point: new THREE.Vector3(W.side, 0, 0), normal: new THREE.Vector3(-1, 0, 0) },
+    ];
 
     // ----- where Miis can be -----
     const workSpots = [];
@@ -392,7 +404,8 @@
       doorPoint: { x: DOOR.x, z: B.minZ + 0.1 },
       outsidePoint: { x: DOOR.x, z: W.back - 1.4 },
       insidePoint: { x: DOOR.x - 0.5, z: B.minZ + 3 },
-      cameraView: { target: [0, 1.2, 0.8], tilt: 0.62, width: 33, azimuth: [-0.55, 0.55], polar: [0.5, 1.25] },
+      cameraView: { target: [0, 1.2, 0.8], tilt: 0.62, width: 33, azimuth: [-Infinity, Infinity], polar: [0.35, 1.3] },
+      walls, // [{ group, point, normal }]: hidden while the camera is behind them
       background: 0xd8efff,
       update(t, info) {
         anim.forEach((a) => a(t, info));

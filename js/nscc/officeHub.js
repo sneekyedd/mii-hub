@@ -185,6 +185,7 @@
       this.controls.dampingFactor = 0.08;
       this.controls.rotateSpeed = 0.6;
       this.controls.zoomSpeed = 0.6;
+      this.controls.addEventListener("start", () => { this.centering = null; }); // (grabbing the view stops a Center glide)
 
       this.office = (officeModule || window.NSCCOffice).build(this.scene);
       this.scene.background = new THREE.Color(this.office.background);
@@ -231,6 +232,46 @@
       this.controls.minPolarAngle = v.polar[0];
       this.controls.maxPolarAngle = v.polar[1];
       this.controls.update();
+      // the "home" view (for Center)
+      this.home = { pos: this.camera.position.clone(), target: t.clone(), dist };
+    }
+    // Is the camera turned or zoomed away from the home view? (then the Center button shows)
+    offCenter() {
+      if (!this.home || this.centering) return false;
+      const a = this.camera.position.clone().sub(this.controls.target), b = this.home.pos.clone().sub(this.home.target);
+      return a.angleTo(b) > 0.08 || Math.abs(a.length() / b.length() - 1) > 0.06;
+    }
+    // glide back to the home view, the short way round
+    center() {
+      if (!this.home) return;
+      const from = this.camera.position.clone().sub(this.controls.target);
+      const to = this.home.pos.clone().sub(this.home.target);
+      this.centering = { t: 0, dur: 0.7, from: new THREE.Spherical().setFromVector3(from), to: new THREE.Spherical().setFromVector3(to) };
+      let d = this.centering.to.theta - this.centering.from.theta;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      this.centering.dTheta = d;
+    }
+    stepCentering(dt) {
+      const c = this.centering;
+      if (!c) return;
+      c.t = Math.min(1, c.t + dt / c.dur);
+      const k = c.t < 0.5 ? 4 * c.t * c.t * c.t : 1 - Math.pow(-2 * c.t + 2, 3) / 2; // ease in and out
+      const sp = new THREE.Spherical(c.from.radius + (c.to.radius - c.from.radius) * k, c.from.phi + (c.to.phi - c.from.phi) * k, c.from.theta + c.dTheta * k);
+      this.camera.position.setFromSpherical(sp).add(this.home.target);
+      this.controls.target.copy(this.home.target);
+      this.controls.update();
+      if (c.t >= 1) this.centering = null;
+    }
+    // walls between the camera and the room hide (like a dollhouse), so you can look from any side
+    updateWalls() {
+      const walls = this.office.walls;
+      if (!walls) return;
+      const cam = this.camera.position;
+      for (const w of walls) {
+        const outside = tmpV.copy(cam).sub(w.point).dot(w.normal) < 0.5;
+        if (w.group.visible === outside) w.group.visible = !outside;
+      }
     }
     viewYaw(w) { return Math.atan2(this.camera.position.x - w.x, this.camera.position.z - w.z); }
 
@@ -869,6 +910,8 @@
           this.hover = this.pickWalker(this.pointerRay(e));
           this.canvas.style.cursor = this.hover ? "pointer" : "";
         }
+        this.stepCentering(real);
+        this.updateWalls();
         this.sharpenTextures(real);
         this.renderer.render(this.scene, this.camera);
         this.updateOverlay();

@@ -36,6 +36,10 @@
   const hub = new window.NSCCOfficeHub.OfficeHub($("office"), $("overlay"));
   hub.clock = clock.now;
   hub.start();
+  // turned or zoomed away? a button to glide back to the normal view
+  const centerBtn = $("centerBtn");
+  centerBtn.addEventListener("click", () => hub.center());
+  setInterval(() => { const off = hub.offCenter(); if (centerBtn.hidden === off) centerBtn.hidden = !off; }, 250);
   if (window.NSCCSettings) window.NSCCSettings.init(hub); // ⚙️ Settings (updates, graphics)
   $("loading").remove();
 
