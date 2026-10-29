@@ -206,3 +206,15 @@ body.dragover .drop-hint { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* ---------- ⚙️ Settings ---------- */
+.settings-btn { flex: none; font-size: 1.3rem; padding: 10px 14px; position: relative; margin-left: 8px; }
+.settings-btn.has-update::after { content: ""; position: absolute; top: 6px; right: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); }
+.update-result { margin: 10px 0 4px; min-height: 1.2em; }
+.update-result.ok { color: #2f9e55; font-weight: 700; }
+.update-result.available { background: #fff4e5; border: 1px solid #ffc97a; border-radius: 12px; padding: 10px 12px; }
+.update-result.error { color: var(--danger); }
+.update-result ul, .notes { margin: 6px 0 0; padding-left: 20px; }
+.notes li { margin: 3px 0; color: var(--muted); }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg .btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }

@@ -36,6 +36,7 @@
   const hub = new window.NSCCOfficeHub.OfficeHub($("office"), $("overlay"));
   hub.clock = clock.now;
   hub.start();
+  if (window.NSCCSettings) window.NSCCSettings.init(hub); // ⚙️ Settings (updates, graphics)
   $("loading").remove();
 
   // ---------- the Miis' 3D models and pictures ----------

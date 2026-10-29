@@ -808,7 +808,16 @@
         }
       });
     }
+    // "auto" (adjusts itself), or a fixed "high" / "medium" / "low" (Settings)
+    setQualityMode(mode) {
+      const fixed = { high: 0, medium: 2, low: QUALITY.length - 1 };
+      this.qualityMode = mode in fixed ? mode : "auto";
+      if (this.qualityMode !== "auto") this.quality.rung = fixed[this.qualityMode];
+      this.quality.samples = []; this.quality.windowAt = 0; this.quality.settle = true;
+      this.applyQuality();
+    }
     autoQuality(real) {
+      if (this.qualityMode && this.qualityMode !== "auto") return;
       const a = this.quality;
       if (real <= 0 || real >= 1) return; // (the window was hidden)
       a.samples.push(real * 1000);

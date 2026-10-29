@@ -20,7 +20,8 @@ const allowed = [
   "js/vendor/three.min.js", "js/vendor/GLTFLoader.js", "js/vendor/SkeletonUtils.js", "js/vendor/OrbitControls.js",
   "js/vendor/RoundedBoxGeometry.js", "js/vendor/BufferGeometryUtils.js",
   "js/sampleGlb.js", "js/miiModel.js", "js/nav.js",
-  "js/nscc/logic.js", "js/nscc/store.js", "js/nscc/chatter.js", "js/nscc/office.js", "js/nscc/officeHub.js", "js/nscc/app.js",
+  "js/nscc/logic.js", "js/nscc/store.js", "js/nscc/chatter.js", "js/nscc/office.js", "js/nscc/officeHub.js",
+  "js/nscc/version.js", "js/nscc/settings.js", "js/nscc/app.js",
 ];
 assert.deepStrictEqual(scripts, allowed, "index.html loads exactly the MiiNSCC files");
 for (const s of scripts) assert.ok(exists(s), s + " exists");
@@ -75,4 +76,16 @@ for (const f of textFiles) {
   assert.ok(!/wss?:\/\/|onrender\.com|pb-config/i.test(src), f + " has a server address");
 }
 
+// the version shown in Settings matches package.json, and the update check can read it
+{
+  global.window = global;
+  require("../js/nscc/version.js");
+  require("../js/nscc/settings.js");
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"));
+  assert.strictEqual(global.NSCC_VERSION.version, pkg.version, "version.js matches package.json");
+  const S = global.NSCCSettings;
+  const parsed = S.parseVersionFile(fs.readFileSync(path.join(__dirname, "..", "js/nscc/version.js"), "utf8"));
+  assert.strictEqual(parsed.version, pkg.version, "the update check can read version.js");
+  assert.ok(S.newer("0.2.10", "0.2.9") && !S.newer("0.2.0", "0.2.0") && !S.newer("0.1.9", "0.2.0"), "version comparison");
+}
 console.log("All product tests passed (" + jsFiles.length + " scripts, " + lines.length + " chatter lines).");
