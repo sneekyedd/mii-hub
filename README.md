@@ -47,7 +47,7 @@ without internet.
 5. **6:00 PM:** everyone leaves and the board is empty until the next day. A Mii added
    after 6 PM stays until midnight.
 
-You can spin the camera a little by dragging, and zoom with the mouse wheel.
+You can spin the camera all the way round by dragging and zoom with the mouse wheel; **🎯 Center the office** brings it back.
 
 7. **⚙️ Settings** (top right): check for updates (it shows the exact command to get one),
    turn the background music on or off (the same looping song as Mii Hub), and pick the
