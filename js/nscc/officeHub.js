@@ -147,10 +147,14 @@
   // Everything stays sharp: the picture is never drawn below the screen's own resolution
   // (ss = extra "supersampling" on top of it, for extra-crisp edges when there's time to spare);
   // when frames are slow it gives up the extra sharpness and soft shadows first.
+  // It starts at the screen's own sharpness (START_RUNG) and only climbs to the extra-smooth
+  // steps when the computer has plenty of time to spare. The very last step (a little below the
+  // screen's sharpness) is only used when even that is too slow, so it stays usable.
   const QUALITY = [
     { ss: 2, shadows: true }, { ss: 1.5, shadows: true }, { ss: 1.25, shadows: true },
-    { ss: 1, shadows: true }, { ss: 1, shadows: false },
+    { ss: 1, shadows: true }, { ss: 1, shadows: false }, { ss: 0.75, shadows: false, last: true },
   ];
+  const START_RUNG = 3;
   const MAX_PIXEL_RATIO = 3; // (very high-res screens: no point drawing more than this)
 
   const pickA = new THREE.Vector3(), pickB = new THREE.Vector3(), pickOnRay = new THREE.Vector3(), pickOnSeg = new THREE.Vector3();
@@ -189,7 +193,8 @@
       this.scene.add(this.miiGroup);
 
       this.raycaster = new THREE.Raycaster();
-      this.quality = { rung: 0, samples: [], windowAt: 0, quick: 0, settle: true };
+      this.quality = { rung: START_RUNG, samples: [], windowAt: 0, quick: 0, settle: true };
+      this.fps = 0; this.fpsFrames = 0; this.fpsTime = 0;
       this.applyQuality();
       this.resize();
       window.addEventListener("resize", () => this.resize());
@@ -782,12 +787,23 @@
     applyQuality() {
       const q = QUALITY[this.quality.rung];
       const dpr = window.devicePixelRatio || 1;
-      const pr = Math.min(MAX_PIXEL_RATIO, Math.max(dpr, Math.min(dpr * q.ss, 2)));
+      const pr = q.last ? Math.max(0.6, dpr * q.ss) : Math.min(MAX_PIXEL_RATIO, Math.max(dpr, Math.min(dpr * q.ss, 2)));
       if (this.renderer.getPixelRatio() !== pr) { this.renderer.setPixelRatio(pr); if (this.W) this.renderer.setSize(this.W, this.H, false); }
       if (this.renderer.shadowMap.enabled !== q.shadows) {
         this.renderer.shadowMap.enabled = q.shadows;
         this.scene.traverse((o) => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => { m.needsUpdate = true; }); });
       }
+    }
+    // which graphics card is drawing, and whether it's really the card (not the processor)
+    gpuInfo() {
+      let name = "";
+      try {
+        const gl = this.renderer.getContext();
+        const ext = gl.getExtension("WEBGL_debug_renderer_info");
+        name = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+      } catch (e) { /* unknown */ }
+      const software = /swiftshader|llvmpipe|softpipe|basic render|software/i.test(name);
+      return { name, software, fps: this.fps, pixelRatio: this.renderer.getPixelRatio(), shadows: this.renderer.shadowMap.enabled, rung: this.quality.rung };
     }
     // Textures seen at an angle (the floor, desks, the Miis' faces from the side) stay sharp:
     // turn on the best texture filtering the graphics card has, once for each new texture.
@@ -810,7 +826,7 @@
     }
     // "auto" (adjusts itself), or a fixed "high" / "medium" / "low" (Settings)
     setQualityMode(mode) {
-      const fixed = { high: 0, medium: 2, low: QUALITY.length - 1 };
+      const fixed = { high: 0, medium: START_RUNG, low: QUALITY.length - 2 };
       this.qualityMode = mode in fixed ? mode : "auto";
       if (this.qualityMode !== "auto") this.quality.rung = fixed[this.qualityMode];
       this.quality.samples = []; this.quality.windowAt = 0; this.quality.settle = true;
@@ -827,7 +843,10 @@
       a.samples = []; a.windowAt = 0;
       if (a.settle) { a.settle = false; return; }
       let rung = a.rung;
-      if (mid > 1000 / 40 && rung < QUALITY.length - 1) { rung++; a.quick = 0; a.cool = this.time + 60; }
+      const slowest = QUALITY.length - 1;
+      // (the very last step only when it's really slow: under 25 frames a second)
+      if (mid > 1000 / 40 && rung < slowest - 1) { rung++; a.quick = 0; a.cool = this.time + 60; }
+      else if (mid > 1000 / 25 && rung === slowest - 1) { rung++; a.quick = 0; a.cool = this.time + 60; }
       else if (mid < 1000 / 55 && rung > 0 && this.time > (a.cool || 0)) { if (++a.quick >= 5) { rung--; a.quick = 0; } }
       else a.quick = 0;
       if (rung !== a.rung) { a.rung = rung; a.settle = true; this.applyQuality(); }
@@ -854,6 +873,9 @@
         this.renderer.render(this.scene, this.camera);
         this.updateOverlay();
         this.autoQuality(real);
+        // frames per second, for Settings
+        this.fpsFrames++; this.fpsTime += real;
+        if (this.fpsTime >= 1) { this.fps = Math.round(this.fpsFrames / this.fpsTime); this.fpsFrames = 0; this.fpsTime = 0; }
       };
       requestAnimationFrame(frame);
     }

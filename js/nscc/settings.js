@@ -73,7 +73,17 @@
       el("notesList").innerHTML = (v.notes || []).map((n) => "<li>" + esc(n) + "</li>").join("");
       for (const b of modal.querySelectorAll("[data-quality]")) b.setAttribute("aria-pressed", String(b.dataset.quality === (prefs.quality || "auto")));
     }
-    btn.addEventListener("click", () => { render(); modal.hidden = false; });
+    // how it's running (updated while Settings is open)
+    const perf = () => {
+      if (!hub || !hub.gpuInfo) return;
+      const g = hub.gpuInfo();
+      el("perfText").textContent = "Running at " + (g.fps || "…") + " frames a second · drawing at " + Math.round(g.pixelRatio * 100) + "% sharpness" + (g.shadows ? "" : " · shadows off") + (g.name ? " · " + g.name : "");
+      el("perfWarn").hidden = !g.software;
+    };
+    let perfTimer = null;
+    btn.addEventListener("click", () => { render(); perf(); modal.hidden = false; clearInterval(perfTimer); perfTimer = setInterval(() => { if (modal.hidden) clearInterval(perfTimer); else perf(); }, 1000); });
+    // not using the graphics card at all: say so once, right away (a dot on ⚙️)
+    setTimeout(() => { if (hub && hub.gpuInfo && hub.gpuInfo().software) btn.classList.add("has-update"); }, 3000);
     el("settingsClose").addEventListener("click", () => { modal.hidden = true; });
     modal.addEventListener("pointerdown", (e) => { if (e.target === modal) modal.hidden = true; });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !modal.hidden) modal.hidden = true; });

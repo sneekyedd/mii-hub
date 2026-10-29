@@ -8,9 +8,10 @@
  * (Keep the part between the two markers plain JSON: the update check reads it as JSON.)
  */
 window.NSCC_VERSION = /*JSON*/{
-  "version": "0.2.0",
+  "version": "0.2.1",
   "date": "2026-10-29",
   "notes": [
+    "0.2.1: Runs much lighter: starts at your screen's normal sharpness and only adds extra smoothing when your computer has time to spare. Settings shows how smoothly it's running and warns if the browser isn't using the graphics card.",
     "0.2.0: Sharper graphics, a Settings window (check for updates, graphics quality) and an auto-updating launcher (Start MiiNSCC).",
     "0.1.0: The first version of the office board."
   ]
