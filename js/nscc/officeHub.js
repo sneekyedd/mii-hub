@@ -28,6 +28,8 @@
   const smooth = (k) => k * k * (3 - 2 * k);
   const ease = (dt, rate) => 1 - Math.exp(-dt * rate);
   const MII_HEIGHT = 1.8;
+  const FADE_DIST = 1.5;  // a Mii walking out fades away over its last 1.5 steps of the hallway (about a second)
+  const FADE_TIME = 0.8;  // and fades in over 0.8 seconds walking in
   const motionQuery = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
   const reducedMotion = () => !!(motionQuery && motionQuery.matches);
   function angleDiff(a, b) { return ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; }
@@ -77,7 +79,7 @@
       this.arms = "down";
       this.partner = null;
       this.appear = 1;
-      this.vanish = 0;
+      this.fade = 1;             // 1 = fully there; fades out down the hallway and in on the way back (see updateFade)
       this.bubble = null; this.emote = null;
       this.talkIn = rnd(60, 160);
       this.breaks = 0;
@@ -101,6 +103,9 @@
       this.sizeScale = (0.9 + clamp(info.height, 0, 127) / 127 * 0.2) * 1.3;
       this.inst.holder.scale.setScalar(this.sizeScale);
       this.inst.holder.rotation.order = "YXZ";
+      // (the blinking eyes get their own material now, so a fade below never has to chase it)
+      if (M.setEyesClosed) M.setEyesClosed(this.inst, false);
+      this.fadeSaved = null; this.fadeShown = 1;
       this.hub.miiGroup.add(this.inst.holder);
       if (old) { this.hub.miiGroup.remove(old.holder); M.disposeObject(old.holder); }
     }
@@ -359,16 +364,26 @@
       return w;
     }
 
-    // In through the door: from just outside, a few steps into the room, then off to work.
-    walkIn(w, returning) {
+    // In through the door: from the end of the hallway (fading in as it walks), a few steps into
+    // the room, then off to work. fromHere = it was on its way out down the hallway: it turns
+    // round where it is and walks back (no jump to the end of the hallway).
+    walkIn(w, returning, fromHere) {
       const o = this.office;
       w.mode = "entering";
       // (down the hallway to the door: the way out, backwards)
       const out = o.outsidePath && o.outsidePath.length ? o.outsidePath : [o.outsidePoint];
-      w.doorPath = out.slice(0, -1).reverse().concat([o.doorPoint]);
-      w.x = o.outsidePoint.x; w.z = o.outsidePoint.z;
-      w.yaw = w.targetYaw = Math.atan2(w.doorPath[0].x - w.x, w.doorPath[0].z - w.z);
-      w.appear = 0; w.vanish = 0;
+      if (fromHere && w.doorPath) {
+        const behind = Math.max(0, out.length - w.doorPath.length);
+        w.doorPath = out.slice(0, behind).reverse().concat([o.doorPoint]);
+        w.targetYaw = Math.atan2(w.doorPath[0].x - w.x, w.doorPath[0].z - w.z);
+      } else {
+        w.doorPath = out.slice(0, -1).reverse().concat([o.doorPoint]);
+        w.x = o.outsidePoint.x; w.z = o.outsidePoint.z;
+        w.yaw = w.targetYaw = Math.atan2(w.doorPath[0].x - w.x, w.doorPath[0].z - w.z);
+        w.fade = reducedMotion() ? 1 : 0;
+      }
+      w.inHall = false;
+      w.appear = 1;
       w.arms = "down";
       w.state = "door-in";
       w.anchor = null; w.seatBlend = 0; w.spot = null;
@@ -392,7 +407,7 @@
       w.leaveBy = this.time + 25;
       const d = this.office.doorPoint;
       const out = this.office.outsidePath && this.office.outsidePath.length ? this.office.outsidePath : [this.office.outsidePoint];
-      this.later(w, 0.6, () => { if (w.mode === "leaving" || w.mode === "removing") w.goTo(d.x, d.z, () => { w.state = "door-out"; w.doorPath = out.slice(); }, true); });
+      this.later(w, 0.6, () => { if (w.mode === "leaving" || w.mode === "removing") w.goTo(d.x, d.z, () => { w.state = "door-out"; w.inHall = true; w.doorPath = out.slice(); }, true); });
     }
 
     // It was on its way out, but someone cleared its location: back to work.
@@ -400,7 +415,8 @@
       const w = this.walker(id);
       if (!w || (w.mode !== "leaving" && w.mode !== "removing")) return;
       w.mode = "in";
-      if (w.state === "vanish" || w.state === "door-out") { this.walkIn(w, true); return; }
+      if (w.state === "door-out" || (w.state === "vanish" && w.inHall)) { this.walkIn(w, true, true); return; }
+      if (w.state === "vanish") { w.state = "idle"; w.timer = 0.4; return; } // (it was fading where it stood: it just comes back)
       w.say(C.pick(["Oh, never mind!", "Oops, I'm staying!", "Back to work!"]), 2);
       w.state = "idle"; w.timer = 0.4; w.path = null; w.arrive = null;
     }
@@ -589,11 +605,15 @@
         // out of time on the way out (blocked somewhere): just fade away
         if ((w.mode === "leaving" || w.mode === "removing") && w.state !== "vanish" && w.leaveBy && this.time > w.leaveBy) w.state = "vanish";
         this.updateState(w, dt);
-        if (w.state === "vanish" && w.vanish >= 1) { this.removeNow(w); continue; }
+        this.updateFade(w, dt);
+        if (w.state === "vanish" && w.fade <= 0) { this.removeNow(w); continue; }
       }
       this.separate(dt);
+      const people = this.people || (this.people = []);
+      people.length = this.walkers.length;
+      this.walkers.forEach((w, i) => { const q = people[i] || (people[i] = { x: 0, z: 0 }); q.x = w.x; q.z = w.z; });
       for (const w of this.walkers) this.applyPose(w, dt);
-      this.office.update(this.time, { door, now: this.clock() });
+      this.office.update(this.time, { door, people, reduced: reducedMotion(), now: this.clock() });
     }
 
     updateState(w, dt) {
@@ -636,8 +656,7 @@
           else w.state = "vanish";
           break;
         }
-        case "vanish":
-          w.vanish = Math.min(1, w.vanish + dt * 2.5);
+        case "vanish": // (fading away: see updateFade)
           break;
         case "activity":
           if (!w.partner) w.timer -= dt;
@@ -818,8 +837,7 @@
         w.squash = clamp(w.squash, -0.2, 0.15);
       }
       const pop = w.appear < 1 ? 0.3 + 0.7 * (1 - Math.pow(1 - w.appear, 3)) : 1;
-      const gone = w.vanish > 0 ? 1 - smooth(w.vanish) : 1;
-      const size = w.sizeScale * pop * Math.max(0.01, gone);
+      const size = w.sizeScale * pop;
       const sy = 1 + w.squash * (1 - k), sxz = 1 / Math.sqrt(sy);
       holder.scale.set(size * sxz, size * sy, size * sxz);
       const sitting = anchor && w.seatBlend > (wanted ? 0.15 : 0.85);
@@ -840,6 +858,64 @@
         sit: !!sitting,
       });
       holder.position.set(px, w.lift + py + hopY - (anchor ? 0 : rig.drop * w.sizeScale), pz);
+      this.applyFade(w);
+    }
+
+    // ---------- fading in and out (down the hallway) ----------
+    // Walking out, a Mii fades away over its last steps down the hallway (FADE_DIST, about
+    // a second); coming in, it fades in over its first steps (FADE_TIME). Anything else that
+    // makes it go (stuck on the way out) fades it where it stands. Reduced motion: instant.
+    // (all by distance walked or time passed, so it looks the same at any frame rate)
+    updateFade(w, dt) {
+      const instant = reducedMotion();
+      if (w.state === "vanish") { w.fade = instant ? 0 : Math.max(0, w.fade - dt / FADE_TIME); return; }
+      if (w.state === "door-out") {
+        if (!instant) {
+          let left = 0, x = w.x, z = w.z;
+          for (const p of w.doorPath || []) { left += Math.hypot(p.x - x, p.z - z); x = p.x; z = p.z; }
+          w.fade = Math.min(w.fade, clamp(left / FADE_DIST, 0, 1));
+        }
+        return;
+      }
+      if (w.fade < 1) w.fade = instant ? 1 : Math.min(1, w.fade + dt / FADE_TIME);
+    }
+    // Shows the fade on the 3D model, its shadow, and its name tag and bubble. The Mii's
+    // materials are its own (MiiModel.applyLook copies them), so they're changed in place:
+    // see-through only while fading, then put back exactly as they were, so normal drawing,
+    // sorting and shadows aren't affected. It casts no shadow while it fades.
+    applyFade(w) {
+      const f = w.fade >= 0.999 ? 1 : smooth(clamp(w.fade, 0, 1));
+      if (w.uiFade !== f) { w.uiFade = f; w.ui.style.opacity = f >= 1 ? "" : f.toFixed(3); }
+      if (f === w.fadeShown) return;
+      w.fadeShown = f;
+      const holder = w.inst.holder;
+      if (f >= 1) {
+        const sv = w.fadeSaved;
+        if (sv) {
+          for (const e of sv.meshes) e.o.castShadow = e.cast;
+          for (const e of sv.mats) { e.m.transparent = e.transparent; e.m.opacity = e.opacity; e.m.needsUpdate = true; }
+          w.fadeSaved = null;
+        }
+        holder.visible = true;
+        return;
+      }
+      if (!w.fadeSaved) {
+        const sv = { meshes: [], mats: [] }, seen = new Set();
+        holder.traverse((o) => {
+          if (!o.isMesh) return;
+          sv.meshes.push({ o, cast: o.castShadow });
+          o.castShadow = false;
+          for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+            if (!m || seen.has(m)) continue;
+            seen.add(m);
+            sv.mats.push({ m, transparent: m.transparent, opacity: m.opacity });
+            m.transparent = true; m.needsUpdate = true;
+          }
+        });
+        w.fadeSaved = sv;
+      }
+      for (const e of w.fadeSaved.mats) e.m.opacity = e.opacity * f;
+      holder.visible = f > 0.004;
     }
 
     // ---------- bubbles and name tags over the Miis ----------
@@ -849,7 +925,7 @@
       for (const w of sorted) {
         const s = w.inst.holder.scale.y, pos = w.inst.holder.position;
         v.set(pos.x, pos.y + (MII_HEIGHT + 0.05) * s, pos.z).project(this.camera);
-        const visible = v.z < 1 && w.vanish < 0.6;
+        const visible = v.z < 1 && w.fade > 0.01;
         w.ui.style.display = visible ? "" : "none";
         if (!visible) continue;
         const x = (v.x * 0.5 + 0.5) * this.W, y = (-v.y * 0.5 + 0.5) * this.H;
@@ -889,7 +965,7 @@
     pickWalker(ray) {
       let best = null, bestDist = Infinity;
       for (const w of this.walkers) {
-        if (w.vanish > 0 || w.appear < 0.5) continue;
+        if (w.state === "vanish" || w.fade < 0.5 || w.appear < 0.5) continue;
         const s = w.inst.holder.scale.y, pos = w.inst.holder.position;
         pickA.set(pos.x, pos.y + 0.1 * s, pos.z);
         pickB.set(pos.x, pos.y + MII_HEIGHT * s, pos.z);

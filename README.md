@@ -6,7 +6,7 @@ types, gets a coffee now and then, stretches, checks the servers, and sometimes 
 friendly chat (or a little meeting in the conference room) with someone.
 
 When you head out, type where you're going ("Lunch", "Client visit", "Dentist"...).
-Your Mii gets up, walks out of the front door and down the hallway, and shows up in the **top bar** with your face,
+Your Mii gets up, walks out of the front door and down the hallway (fading away at the end of it), and shows up in the **top bar** with your face,
 your name, where you are, and the time you left. Clear the text when you're back and your
 Mii walks back in and goes back to work.
 
@@ -85,12 +85,13 @@ The office is built from the floor plan and the desk plan:
 | Room | What's in it |
 | --- | --- |
 | **A223 Information Technology** (the big open office, left and top) | 10 numbered desks where the desk plan puts them (and facing the way it shows), a long workbench along the server room wall, the coffee corner (coffee machine, fridge, water cooler, a table and a sofa), plants, windows, a whiteboard, a printer, the wall clock and the big A223 sign |
-| **E: Server room** (top right) | two rows of server racks with blinking lights, cable trays with cables overhead, a cooling unit with a turning fan, a UPS box. You get in through the storage room |
-| **D: Storage room** (under E) | shelves with boxes, spare screens and parts bins, more boxes on the floor |
+| **E: Server room** (top right) | two rows of server racks with blinking lights, cable trays with cables overhead, a cooling unit with a turning fan, a UPS box. You get in through the storage room (a door from D) |
+| **D: Storage room** (under E) | shelves with boxes, spare screens and parts bins, more boxes on the floor. Its door is on the workbench wall, facing the main room, just past the end of the workbench |
 | **C: Conference room** | a table with four chairs, a screen with a slide on it, a whiteboard. Now and then two or three Miis meet there for a bit. It isn't anyone's desk |
 | **B and A: private offices** | a desk with a chair (by B's left wall and by A's right wall), a guest chair, a rug, a lamp, a photo, plants; B has a bookshelf, A a cabinet, a floor lamp and a picture |
 | **The hallway** (right, between D and A) | outside the office. The **front door** is where the hallway meets the open office: Miis only come in and go out that way |
 
+Every room has a real door that swings open when a Mii walks through and closes after.
 The room walls are low with glass on top, so you can see into every room from any side;
 the outer walls hide while the camera is behind them. Everything about the room is in
 this one file, behind one function:
@@ -105,13 +106,14 @@ NSCCOffice.build(scene) -> {
   rooms,         // the rooms (A, B, C, D, E, the open office, the hallway)
   doorPoint,     // just inside the front door
   outsidePath,   // the way down the hallway from the door
-  outsidePoint,  // the end of the hallway: Miis appear and disappear here
+  outsidePoint,  // the end of the hallway: Miis fade in and out here
+  doors,         // the room doors (each swings open when someone walks through)
   insidePoint,   // a few steps into the room
   cameraView,    // where the camera looks, and how far it can turn
   walls,         // the outer walls (hidden while the camera is behind them)
   background,
   setOwner(spotId, name), // shows who a desk / office belongs to
-  update(t, info) // animations (the door opening, the clock, the server lights, the fan)
+  update(t, info) // animations (the doors opening, the clock, the server lights, the fan)
 }
 ```
 

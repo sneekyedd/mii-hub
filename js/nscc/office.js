@@ -6,10 +6,10 @@
  *   +-----------------------------+W+-----------+
  *   | coffee                      |o|  E        |
  *   | corner      1 ->            |r|  SERVER   |
- *   |          2 (v)              |k|  ROOM     |
- *   |             3 (^)   4 ->    +-+-----------+
- *   |                     5 ->    |  D STORAGE  |
- *   |                     6 ->    +---+----+----+
+ *   |          2 (v)              |k|  ROOM  [d]|  (E's door: from D)
+ *   |             3 (^)   4 ->    +-+------+-+--+
+ *   |                     5 ->   [d] D STORAGE  |  (D's door: on the workbench wall)
+ *   |                     6 ->    +---------+---+
  *   |                     7 ->  8 (v)      |door| hallway (outside the office:
  *   |          +--------+--------+--------+    |  Miis come in and go out this way)
  *   |          |   C    |   B    |   A    |    |
@@ -17,7 +17,8 @@
  *   | 10 (^)   |  ence  |        |        |    |
  *   +----------+--------+--------+--------+----+
  *          front (open, like a dollhouse: the camera looks from here)
- *   (numbers = desks; arrows = the way the person sitting there looks)
+ *   (numbers = desks; arrows = the way the person sitting there looks; [d] = a door;
+ *    C, B and A have their doors in the wall above them)
  *
  * Everything about the room lives in this one file. To use a different office,
  * write a new file with the same build() and load it in index.html instead.
@@ -54,8 +55,12 @@
  *                  direction into the room; the view hides a wall while the camera is behind it
  *     background,  the color behind everything
  *     setOwner(spotId, name)  optional: show who a desk / office belongs to ("" or null = nobody)
- *     update(t, info)  optional: animations. info.door = true while someone goes through the
- *                  door, info.now = the time (ms, for the wall clock)
+ *     doors,       (optional) [{ room, from, axis, at, center, width, point, inside, outside, open }]:
+ *                  the room doors (open = how far open, 0..1)
+ *     update(t, info)  optional: animations (t = seconds). info.door = true while someone goes
+ *                  through the front door, info.people = [{ x, z }] where the Miis are (room doors
+ *                  open when someone is near), info.reduced = no animation (doors snap),
+ *                  info.now = the time (ms, for the wall clock)
  *   }
  *
  * The rooms' walls are low with glass on top (like office partitions), so you can always
@@ -411,6 +416,63 @@
     else twoSided(p, mat, 1.7, 0.53, at, y, center, Math.PI / 2);
     return live.redraw;
   }
+  // A door in a doorway (wood, with a little window and a handle on both sides), hanging on one
+  // side of the frame. It swings into the room (about 88 degrees) when someone comes near and
+  // closes again after. Where it stands when open goes in `obstacles`, so nobody walks into it.
+  const LEAF_H = 2.42, LEAF_T = 0.08, OPEN_ANGLE = 1.54;
+  function roomDoor(p, obstacles, o) {
+    const len = o.width - 0.16; // (inside the white frame posts)
+    const hingeU = o.center + o.hinge * (o.width / 2 - 0.08);
+    const at = (u, v) => (o.axis === "x" ? { x: u, z: v } : { x: v, z: u });
+    // the way the door points from its hinge: closed (across the doorway) and open (into the room)
+    const dirAt = (k) => {
+      const a = k * OPEN_ANGLE;
+      const du = -o.hinge * Math.cos(a), dv = o.inward * Math.sin(a);
+      return o.axis === "x" ? { x: du, z: dv } : { x: dv, z: du };
+    };
+    const yawFor = (d) => Math.atan2(-d.z, d.x); // (turns the door's local +x onto d)
+    const h = at(hingeU, o.at);
+    const pivot = dynamic(new THREE.Group());
+    pivot.position.set(h.x, 0, h.z);
+    p.add(pivot);
+    const y0 = yawFor(dirAt(0));
+    let dy = yawFor(dirAt(1)) - y0;
+    while (dy > Math.PI) dy -= TAU;
+    while (dy < -Math.PI) dy += TAU;
+    // the leaf: wood, a darker edge, a window near the top, and a handle on both faces
+    block(pivot, 0xd9a874, len / 2, LEAF_H / 2 + 0.03, 0, len, LEAF_H, LEAF_T, 0.03);
+    block(pivot, 0xb27a48, len / 2, 0.16, 0, len - 0.04, 0.22, LEAF_T + 0.02, 0.02); // kick plate
+    for (const side of [-1, 1]) {
+      block(pivot, 0xe8c294, len / 2, 0.95, side * (LEAF_T / 2 + 0.005), len - 0.36, 0.95, 0.02, 0.02); // a raised panel
+      block(pivot, 0x4f9a6a, len / 2, 1.95, side * (LEAF_T / 2 + 0.006), len - 0.3, 0.72, 0.02, 0.02); // the window's green frame
+      slab(pivot, 0xd4f5dc, len / 2, 1.95, side * (LEAF_T / 2 + 0.018), len - 0.48, 0.56, 0.01, { shadow: false }); // window
+      ball(pivot, 0xffcf3a, len - 0.17, 1.08, side * (LEAF_T / 2 + 0.07), 0.065);
+      block(pivot, 0xffcf3a, len - 0.17, 1.08, side * (LEAF_T / 2 + 0.03), 0.05, 0.05, 0.08, 0.02);
+    }
+    for (const e of [0.35, LEAF_H - 0.35]) cylinder(pivot, 0x9aa3b2, 0.0, e, 0, 0.035, 0.2, { seg: 8 }); // hinges
+    // the head of the frame (over the door, under the sign)
+    const mid = at(o.center, o.at);
+    if (o.axis === "x") slab(p, 0xffffff, mid.x, LEAF_H + 0.1, mid.z, o.width + 0.14, 0.14, PART_T + 0.04);
+    else slab(p, 0xffffff, mid.x, LEAF_H + 0.1, mid.z, PART_T + 0.04, 0.14, o.width + 0.14);
+    // nobody walks into the open door
+    const od = dirAt(1);
+    obstacles.push({ x: h.x + od.x * len / 2, z: h.z + od.z * len / 2, w: len, d: LEAF_T + 0.04, rot: Math.atan2(od.z, od.x) });
+    let k = 0;
+    const set = (v) => { k = v; pivot.rotation.y = y0 + dy * smoothK(k); };
+    set(0);
+    return {
+      room: o.room, from: o.from, axis: o.axis, at: o.at, center: o.center, width: o.width,
+      point: mid, // the middle of the doorway
+      inside: at(o.center, o.at + o.inward * 0.8), outside: at(o.center, o.at - o.inward * 0.8),
+      get open() { return k; },
+      step(want, dt, instant) {
+        if (instant) set(want);
+        else if (Math.abs(want - k) > 1e-4) set(k + (want - k) * (1 - Math.exp(-dt * (want > k ? 7 : 3.5))));
+      },
+    };
+  }
+  const smoothK = (k) => k * k * (3 - 2 * k);
+
   // A big letter and name on the floor of a room (like on the floor plan).
   function floorLabel(p, x, z, letter, name, w) {
     const tex = canvasTexture(512, 256, (ctx, cw, ch) => {
@@ -585,12 +647,13 @@
     for (let i = 0; i < 5; i++) block(rightWall, [0xfff176, 0xff9ec7, 0x9fe3ff, 0xffffff, 0xc5f08a][i], X.right - 0.19, 2.6 + (i % 2) * 0.55, 7.7 + i * 0.45, 0.02, 0.4, 0.34, 0.01, { rx: (i - 2) * 0.08 });
 
     // ----- the room walls (low, with glass on top) -----
-    // (E is reached through D: the workbench runs all along E's wall on the open-office side)
-    const DOOR_E = [14.3, 1.8], DOOR_D = [9.9, 1.8], DOOR_C = [-1.6, 1.8], DOOR_B = [3.0, 1.8], DOOR_A = [8.0, 1.8];
-    partition(top, obstacles, glass, "z", X.ba, Z.back, Z.ed, []);                     // main | E
+    // Doorways: [center, width] along the wall. D's door is on the wall the workbench runs along
+    // (main room | E and D), just past the end of the workbench; E is reached through D.
+    const DOOR_E = [14.3, 1.8], DOOR_D = [-1.25, 1.8], DOOR_C = [-1.6, 1.8], DOOR_B = [3.0, 1.8], DOOR_A = [8.0, 1.8];
+    partition(top, obstacles, glass, "z", X.ba, Z.back, Z.ed, []);                     // main | E (the workbench wall)
     partition(top, obstacles, glass, "x", Z.ed, X.ba, X.right, [DOOR_E]);              // E | D
-    partition(top, obstacles, glass, "z", X.ba, Z.ed, Z.d, []);                        // main | D
-    partition(top, obstacles, glass, "x", Z.d, X.ba, X.right, [DOOR_D]);              // D | main and hallway
+    partition(top, obstacles, glass, "z", X.ba, Z.ed, Z.d, [DOOR_D]);                  // main | D (same wall, D's door)
+    partition(top, obstacles, glass, "x", Z.d, X.ba, X.right, []);                     // D | main and hallway
     partition(top, obstacles, glass, "x", Z.rooms, X.cLeft, X.hall, [DOOR_C, DOOR_B, DOOR_A]); // main | C, B, A
     partition(top, obstacles, glass, "z", X.cLeft, Z.rooms, Z.front, []);             // main | C
     partition(top, obstacles, glass, "z", X.cb, Z.rooms, Z.front, []);                // C | B
@@ -598,11 +661,20 @@
     partition(top, obstacles, glass, "z", X.hall, Z.rooms, Z.front, []);              // A | hallway
     const signs = {
       E: doorSign(top, "x", Z.ed, DOOR_E[0], "E", "Server room", "#3b6f8a"),
-      D: doorSign(top, "x", Z.d, DOOR_D[0], "D", "Storage", "#8a6a3c"),
+      D: doorSign(top, "z", X.ba, DOOR_D[0], "D", "Storage", "#8a6a3c"),
       C: doorSign(top, "x", Z.rooms, DOOR_C[0], "C", "Conference", "#2e8f86"),
       B: doorSign(top, "x", Z.rooms, DOOR_B[0], "B", "Office", "#c0603e"),
       A: doorSign(top, "x", Z.rooms, DOOR_A[0], "A", "Office", "#7b55c4"),
     };
+    // a real door in every doorway: it swings into the room when someone comes near, and closes after.
+    // inward: which way into the room (+1 = toward bigger z / x); hinge: which end it hangs on (+1 = the bigger end)
+    const doors = [
+      roomDoor(top, obstacles, { room: "E", from: "D", axis: "x", at: Z.ed, center: DOOR_E[0], width: DOOR_E[1], inward: -1, hinge: 1 }),
+      roomDoor(top, obstacles, { room: "D", from: "main", axis: "z", at: X.ba, center: DOOR_D[0], width: DOOR_D[1], inward: 1, hinge: 1 }),
+      roomDoor(top, obstacles, { room: "C", from: "main", axis: "x", at: Z.rooms, center: DOOR_C[0], width: DOOR_C[1], inward: 1, hinge: 1 }),
+      roomDoor(top, obstacles, { room: "B", from: "main", axis: "x", at: Z.rooms, center: DOOR_B[0], width: DOOR_B[1], inward: 1, hinge: 1 }),
+      roomDoor(top, obstacles, { room: "A", from: "main", axis: "x", at: Z.rooms, center: DOOR_A[0], width: DOOR_A[1], inward: 1, hinge: -1 }),
+    ];
 
     // ----- THE FRONT DOOR: from the hallway into the open office -----
     // (a solid, bright wall with a big door; a sign sticks out so it's easy to see from the front)
@@ -781,8 +853,8 @@
       obstacles.push({ x, z: SH_Z, w: w + 0.1, d: 0.8 });
     });
     cardboard(top, 15.3, 0, -0.8, 0.8, 0.6, 0.7, 0.1); cardboard(top, 15.3, 0.6, -0.8, 0.6, 0.45, 0.55, -0.15);
-    cardboard(top, 5.8, 0, -0.75, 0.7, 0.5, 0.6, 0.2);
-    obstacles.push({ x: 15.3, z: -0.8, w: 0.9, d: 0.8 }, { x: 5.8, z: -0.75, r: 0.5 });
+    cardboard(top, 15.3, 0, -1.75, 0.7, 0.5, 0.6, 0.2);
+    obstacles.push({ x: 15.3, z: -0.8, w: 0.9, d: 0.8 }, { x: 15.3, z: -1.75, r: 0.5 });
 
     // ----- C: the conference room -----
     const MT = { x: (X.cLeft + X.cb) / 2, z: 9.3 };
@@ -844,11 +916,12 @@
     obstacles.push({ x: X.ba - 0.4, z: 10.2, w: 0.6, d: 2.0 });
     plant(top, X.cb + 0.7, Z.front - 0.7, 0.6);
     obstacles.push({ x: X.cb + 0.7, z: Z.front - 0.7, r: 0.5 });
-    block(top, 0xb27a48, 6.2, 0.55, Z.rooms + 0.45, 1.8, 1.1, 0.6, 0.05);
-    for (let i = 0; i < 2; i++) block(top, 0xd9a874, 6.2 + (i - 0.5) * 0.85, 0.55, Z.rooms + 0.76, 0.75, 0.9, 0.02, 0.02);
-    plant(top, 5.75, Z.rooms + 0.45, 0.45);
-    for (let i = 0; i < 2; i++) block(top, [0x4a90e2, 0xffc94a][i], 6.55 + i * 0.3, 1.25, Z.rooms + 0.45, 0.2, 0.3 - i * 0.1, 0.3, 0.02);
-    obstacles.push({ x: 6.2, z: Z.rooms + 0.45, w: 2.0, d: 0.8 });
+    // (the cabinet stands left of A's door: the door hangs on that side and opens against the wall by it)
+    block(top, 0xb27a48, 5.95, 0.55, Z.rooms + 0.45, 1.5, 1.1, 0.6, 0.05);
+    for (let i = 0; i < 2; i++) block(top, 0xd9a874, 5.95 + (i - 0.5) * 0.72, 0.55, Z.rooms + 0.76, 0.64, 0.9, 0.02, 0.02);
+    plant(top, 5.55, Z.rooms + 0.45, 0.45);
+    for (let i = 0; i < 2; i++) block(top, [0x4a90e2, 0xffc94a][i], 6.2 + i * 0.3, 1.25, Z.rooms + 0.45, 0.2, 0.3 - i * 0.1, 0.3, 0.02);
+    obstacles.push({ x: 5.95, z: Z.rooms + 0.45, w: 1.7, d: 0.8 });
     cylinder(top, 0x3a3f4a, X.hall - 0.6, 0.03, Z.front - 0.7, 0.28, 0.06);
     cylinder(top, 0x3a3f4a, X.hall - 0.6, 1.2, Z.front - 0.7, 0.04, 2.4);
     cylinder(top, toon(0xfff1c2, { emissive: 0xffe9a8, emissiveIntensity: 0.5 }), X.hall - 0.6, 2.45, Z.front - 0.7, 0.3, 0.35);
@@ -866,7 +939,7 @@
     obstacles.push({ x: X.ba + 0.6, z: Z.front - 1.2, r: 0.55 });
 
     // ----- plants in the open office -----
-    for (const [x, z, s] of [[-15.1, -0.4, 0.8], [-15.1, 4.9, 0.8], [-6.7, 5.3, 0.7], [-15.2, 11.3, 0.6], [3.9, -1.6, 0.6], [10.2, 5.3, 0.6], [-2.3, -11.2, 0.8]]) {
+    for (const [x, z, s] of [[-15.1, -0.4, 0.8], [-15.1, 4.9, 0.8], [-6.7, 5.3, 0.7], [-15.2, 11.3, 0.6], [6.1, 5.3, 0.6], [10.2, 5.3, 0.6], [-2.3, -11.2, 0.8]]) {
       plant(top, x, z, s);
       obstacles.push({ x, z, r: 0.85 * s });
     }
@@ -937,7 +1010,7 @@
 
     const doorPoint = { x: X.hall - 1.0, z: DOOR.z };
     const outsidePath = [{ x: X.hall + 0.9, z: DOOR.z }, { x: 13.5, z: DOOR.z + 1.0 }, { x: 13.5, z: Z.front - 1.6 }];
-    let doorK = 0;
+    let doorK = 0, lastT = null;
     return {
       root: top,
       bounds: B,
@@ -956,12 +1029,23 @@
         const room = /^office-(\w+)$/.exec(spotId);
         if (room && signs[room[1]]) signs[room[1]](name || null);
       },
+      doors, // [{ room, from, axis, at, center, width, point, inside, outside, open }]: the room doors
       update(t, info) {
+        const dt = lastT === null ? 0 : Math.max(0, Math.min(0.25, t - lastT));
+        lastT = t;
         anim.forEach((a) => a(t, info));
-        // the door swings open (into the hallway) while someone is going through it
+        const instant = !!(info && info.reduced);
+        // the front door swings open (into the hallway) while someone is going through it
         const want = info && info.door ? 1 : 0;
-        doorK += (want - doorK) * 0.12;
+        doorK = instant ? want : doorK + (want - doorK) * (1 - Math.exp(-dt * 7));
         hinge.rotation.y = -doorK * 1.5;
+        // a room door opens when someone is near it (walking through), and closes after
+        const people = (info && info.people) || [];
+        for (const d of doors) {
+          let near = false;
+          for (const q of people) if (Math.abs(q.x - d.point.x) < 2.3 && Math.abs(q.z - d.point.z) < 2.3) { near = true; break; }
+          d.step(near ? 1 : 0, dt, instant);
+        }
       },
     };
   }

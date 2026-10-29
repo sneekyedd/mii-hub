@@ -70,6 +70,54 @@ const ids = new Set();
 for (const s of o.workSpots) { assert.ok(!ids.has(s.id), "unique id " + s.id); ids.add(s.id); }
 for (const a of o.workSpots) for (const b of o.workSpots) if (a !== b) assert.ok(Math.hypot(a.x - b.x, a.z - b.z) > 0.7, a.id + " and " + b.id + " aren't on top of each other");
 
+// ---------- the room doors: a door in every doorway, walls solid, doorways open ----------
+assert.ok(Array.isArray(o.doors), "build() gives the doors");
+const door = (id) => o.doors.find((d) => d.room === id);
+for (const id of ["A", "B", "C", "D", "E"]) assert.ok(door(id), "room " + id + " has a door");
+for (const d of o.doors) {
+  assert.ok(!nav.isBlocked(d.point.x, d.point.z), d.room + "'s doorway can be walked through");
+  assert.deepStrictEqual(roomAt(d.inside), [d.room], d.room + "'s door opens into " + d.room);
+  assert.deepStrictEqual(roomAt(d.outside), [d.from], d.room + "'s door is from " + d.from);
+  for (const p of [d.inside, d.outside]) assert.ok(!nav.isBlocked(p.x, p.z), d.room + ": both sides of the door are free");
+  // (the wall right next to the doorway is solid)
+  for (const e of [-1, 1]) {
+    const u = d.center + e * (d.width / 2 + 0.3);
+    const p = d.axis === "x" ? { x: u, z: d.at } : { x: d.at, z: u };
+    assert.ok(nav.isBlocked(p.x, p.z, 0), d.room + ": the wall beside the door is solid");
+  }
+}
+// D's door is on the wall the workbench runs along (main room | E and D), facing the main room,
+// past the end of the workbench; the wall between D and the main room below it has no doorway
+const dd = door("D");
+const wbSpots = o.workSpots.filter((s) => s.kind === "workbench");
+assert.ok(wbSpots.length >= 2);
+assert.strictEqual(dd.axis, "z", "D's door is in a wall that runs back to front");
+assert.strictEqual(dd.from, "main", "D's door faces the main room");
+assert.strictEqual(room("E").areas[0].minX, dd.at, "it's the same wall as E's (the workbench wall)");
+assert.strictEqual(room("D").areas[0].minX, dd.at, "it's D's wall to the main room");
+for (const s of wbSpots) assert.ok(s.x < dd.at && dd.at - s.x < 3 && s.z < dd.center - dd.width / 2, s.id + " is along that wall, before D's door");
+assert.ok(dd.center - dd.width / 2 > room("D").areas[0].minZ && dd.center + dd.width / 2 < room("D").areas[0].maxZ, "the door is in D's part of the wall");
+for (let x = 5.6; x < 11; x += 0.3) assert.ok(nav.isBlocked(x, room("D").areas[0].maxZ, 0), "no doorway from D down into the main room at x " + x.toFixed(1));
+// the way to the storage shelves goes through that door; E is reached through D
+const crosses = (p, axis, at, lo, hi) => p.some((a, i) => {
+  const b = p[i + 1];
+  if (!b) return false;
+  const ua = axis === "z" ? a.x : a.z, ub = axis === "z" ? b.x : b.z;
+  if ((ua - at) * (ub - at) > 0 || ua === ub) return false;
+  const k = (at - ua) / (ub - ua), v = axis === "z" ? a.z + (b.z - a.z) * k : a.x + (b.x - a.x) * k;
+  return v > lo && v < hi;
+});
+for (const s of o.workSpots.filter((x) => x.room === "D" || x.room === "E")) {
+  const p = [o.doorPoint].concat(nav.findPath(o.doorPoint.x, o.doorPoint.z, s.x, s.z));
+  assert.ok(crosses(p, "z", dd.at, dd.center - dd.width / 2, dd.center + dd.width / 2), s.id + ": the way there is through D's door");
+  if (s.room === "E") { const de = door("E"); assert.ok(crosses(p, "x", de.at, de.center - de.width / 2, de.center + de.width / 2), s.id + ": then through E's door"); }
+}
+// the doors swing open when someone is near and close after (and never get in the way: see reach above)
+for (let t = 10; t < 12; t += 0.05) o.update(t, { people: [dd.point] });
+assert.ok(dd.open > 0.95, "D's door opens for someone walking through");
+for (let t = 12; t < 16; t += 0.05) o.update(t, { people: [] });
+assert.ok(dd.open < 0.05, "and closes again after");
+
 // ---------- desks: numbered 1..10 in the open office, and Office A / B ----------
 const desks = o.workSpots.filter((s) => s.kind === "desk");
 const open = desks.filter((s) => !s.private).sort((a, b) => a.number - b.number);
