@@ -1,7 +1,7 @@
 {
   "name": "miinscc",
   "productName": "MiiNSCC",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "An office board: everyone's Mii works in one 3D office, and the top bar shows who's out of the office and where.",
   "license": "MIT",
   "private": true,

@@ -38,6 +38,19 @@
     return { latest, current: here(), update: newer(latest.version, here().version) };
   }
 
+  // The command that gets the update and opens it, for this computer (worked out from where
+  // this page was opened). Windows: the launcher (it finds Git itself); Mac/Linux: start-miinscc.sh.
+  function updateCommand() {
+    const loc = root.location || {};
+    if (loc.protocol !== "file:") return null; // (served by a server: reopening the page is enough)
+    let dir = decodeURIComponent(loc.pathname || "").replace(/\/[^/]*$/, "");
+    if (/^\/[A-Za-z]:\//.test(dir)) { // Windows: /C:/Users/... -> C:\Users\...
+      dir = dir.slice(1).replace(/\//g, "\\");
+      return { os: "Windows", where: "Command Prompt", cmd: '"' + dir + '\\Start MiiNSCC.bat"' };
+    }
+    return { os: "Mac / Linux", where: "Terminal", cmd: "'" + dir.replace(/'/g, "'\\''") + "/start-miinscc.sh'" };
+  }
+
   function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch (e) { return {}; } }
   function savePrefs(p) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch (e) { /* private window */ } }
 
@@ -55,8 +68,22 @@
       if (!r) return;
       out.className = "update-result " + (r.update ? "available" : "ok");
       if (r.update) {
-        out.innerHTML = "<b>Version " + esc(r.latest.version) + " is available.</b> Close MiiNSCC and open it again with <b>Start MiiNSCC</b> to get it." +
-          (r.latest.notes && r.latest.notes.length ? "<ul>" + r.latest.notes.slice(0, 3).map((n) => "<li>" + esc(n) + "</li>").join("") + "</ul>" : "");
+        const c = updateCommand();
+        out.innerHTML = "<p class=\"upd-title\">⬆️ Version " + esc(r.latest.version) + " is available</p>" +
+          (c ? "<p>Close this tab, then paste this into <b>" + esc(c.where) + "</b> and press Enter. It downloads the update and opens it:</p>" +
+               "<div class=\"cmd\"><code>" + esc(c.cmd) + "</code><button class=\"btn copy-btn\" type=\"button\">Copy</button></div>" +
+               "<p class=\"upd-small\">(Or just double-click <b>Start MiiNSCC</b> in the MiiNSCC folder.)</p>"
+             : "<p>Reload this page to get it.</p>") +
+          (r.latest.notes && r.latest.notes.length ? "<p class=\"upd-small\"><b>What's in it:</b></p><ul>" + r.latest.notes.slice(0, 3).map((n) => "<li>" + esc(n) + "</li>").join("") + "</ul>" : "");
+        const cb = out.querySelector(".copy-btn");
+        if (cb) cb.addEventListener("click", async () => {
+          try { await navigator.clipboard.writeText(c.cmd); cb.textContent = "Copied!"; }
+          catch (e) { // (no clipboard access: select it so Ctrl+C works)
+            const range = document.createRange(); range.selectNodeContents(out.querySelector("code"));
+            const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range); cb.textContent = "Press Ctrl+C";
+          }
+          setTimeout(() => { cb.textContent = "Copy"; }, 2000);
+        });
       } else out.textContent = "✓ You have the newest version.";
     };
     const check = async (quiet) => {
@@ -103,5 +130,5 @@
 
   function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
-  root.NSCCSettings = { init, checkLatest, newer, parseVersionFile, QUALITY_NAMES, LATEST_URL };
+  root.NSCCSettings = { init, checkLatest, newer, parseVersionFile, updateCommand, QUALITY_NAMES, LATEST_URL };
 })(typeof window !== "undefined" ? window : globalThis);
