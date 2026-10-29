@@ -109,6 +109,23 @@
     </div>
   </div>
 
+  <!-- if something goes wrong while opening, show it on the loading screen (instead of loading forever) -->
+  <script>
+    (function () {
+      function show(msg) {
+        var el = document.getElementById("loading");
+        if (!el || el.dataset.failed) return;
+        el.dataset.failed = "1";
+        el.innerHTML = '<div class="load-error"><b>MiiNSCC couldn\'t open.</b><br>' +
+          String(msg).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }) +
+          '<br><small>Try closing the tab and opening MiiNSCC again. If it keeps happening, send a screenshot of this.</small></div>';
+      }
+      window.addEventListener("error", function (e) { show((e.message || "Unknown error") + (e.filename ? " (" + e.filename.split("/").pop() + ":" + e.lineno + ")" : "")); });
+      window.addEventListener("unhandledrejection", function (e) { show(e.reason && (e.reason.stack || e.reason.message) || e.reason); });
+      setTimeout(function () { if (document.getElementById("loading")) show("It's taking much longer than it should (over 25 seconds)."); }, 25000);
+    })();
+  </script>
+
   <!-- Three.js (3D), stored in the project so it works offline -->
   <script src="js/vendor/three.min.js"></script>
   <script src="js/vendor/GLTFLoader.js"></script>

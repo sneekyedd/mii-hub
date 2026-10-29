@@ -19,7 +19,9 @@
   const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const QUICK_PLACES = ["Lunch", "Meeting", "Client visit", "Working from home", "Out sick"];
 
-  try { await Promise.all(["400", "700", "800"].map((w) => document.fonts.load(w + " 20px Nunito"))); } catch (e) { /* optional */ }
+  // (nothing at startup may hang: each step gives up after a moment and carries on)
+  const atMost = (ms, p) => Promise.race([p, new Promise((res) => setTimeout(res, ms))]);
+  try { await atMost(2000, Promise.all(["400", "700", "800"].map((w) => document.fonts.load(w + " 20px Nunito")))); } catch (e) { /* optional */ }
 
   // The time. For trying things out, the page can pretend it's another time:
   // index.html?now=2026-10-28T17:59:30 (or window.miinscc.setTime(...) in the console).
@@ -33,7 +35,7 @@
     return { now: () => Date.now() + offset, set: (ms) => { offset = ms - Date.now(); } };
   })();
   const store = window.NSCCStore.createStore({ now: clock.now });
-  await store.ready;
+  await atMost(4000, store.ready);
   const hub = new window.NSCCOfficeHub.OfficeHub($("office"), $("overlay"));
   hub.clock = clock.now;
   hub.start();

@@ -256,3 +256,8 @@ body.dragover .drop-hint { opacity: 1; }
 :root[data-theme="dark"] .update-result.available .upd-small, :root[data-theme="dark"] .update-result.available li { color: #f2d49b; }
 :root[data-theme="dark"] .update-result.ok { color: #6ddc8f; }
 :root[data-theme="dark"] .perf-warn { background: #3a1a1a; border-color: #c45a5a; color: #ffd6d6; }
+
+/* the loading screen when opening failed */
+.load-error { max-width: 640px; padding: 22px 26px; border-radius: 18px; background: #fff3f0; border: 2px solid #e07a5f; color: #3d1d14; font-size: 1.05rem; font-weight: 600; line-height: 1.45; text-align: left; }
+.load-error b { font-size: 1.25rem; }
+.load-error small { display: block; margin-top: 8px; font-weight: 600; color: #6b3a2e; }

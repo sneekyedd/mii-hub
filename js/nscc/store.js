@@ -79,6 +79,8 @@
         req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: "id" });
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => resolve(null);
+        req.onblocked = () => resolve(null); // (another tab is holding an older copy open)
+        setTimeout(() => resolve(null), 4000); // (the browser never answered: keep going without it)
       } catch (e) { resolve(null); }
     }));
     const fallback = memoryDB();
