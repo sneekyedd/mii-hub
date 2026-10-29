@@ -2,7 +2,8 @@
  * js/nscc/app.js
  * Connects the page to the store (store.js) and the 3D office (officeHub.js):
  *   - the "Add Mii" window (a saved Mii, or upload a new .glb)
- *   - the location panel (click a Mii, or a name in the top bar)
+ *   - the location panel (click a Mii, or a name in the top bar), with its Workspace picker
+ *     (its own desk, Office A / B, or any free desk)
  *   - the top bar of who's out of the office
  *   - the 6:00 PM rule (everyone goes home; see logic.js)
  * The store is the only source of truth: every change goes to the store, and
@@ -46,6 +47,7 @@
   // ---------- the Miis' 3D models and pictures ----------
   let saved = await store.listSaved();
   let board = await store.getBoard();
+  let assignments = await store.getAssignments();
   const savedById = () => new Map(saved.map((r) => [r.id, r]));
   const templates = new Map(); // id -> Promise<template>
   function templateFor(rec) {
@@ -70,8 +72,19 @@
     syncing = syncing.then(() => doSync(first)).catch((e) => console.error(e));
     return syncing;
   }
+  // who has which desk / office: the office shows it, and Miis go to their own spot
+  function nameOf(id) {
+    const m = board.find((x) => x.id === id), r = savedById().get(id);
+    return (m && m.name) || (r && r.name) || "";
+  }
+  function pushAssignments() {
+    const names = {};
+    for (const id of Object.keys(assignments)) names[id] = nameOf(id);
+    hub.setAssignments(assignments, board.map((m) => m.id), names);
+  }
   async function doSync(first) {
     board = await store.getBoard();
+    pushAssignments();
     const byId = savedById();
     const now = clock.now();
     const actions = L.reconcile(board, hub.presence(), first);
@@ -107,6 +120,7 @@
 
   store.on((e) => {
     if (e.type === "saved") store.listSaved().then((list) => { saved = list; sync(false); });
+    else if (e.type === "assign") store.getAssignments().then((a) => { assignments = a; pushAssignments(); if (panelId) renderPanel(false); });
     else sync(false);
   });
 
@@ -156,16 +170,55 @@
     const m = board.find((x) => x.id === panelId);
     if (!m) return;
     $("panelName").textContent = m.name;
-    $("panelStatus").textContent = L.isOut(m) ? "Out: " + m.location + " · " + "Left " + L.formatTime(m.leftAt) : "In the office";
+    const w = hub.walker(m.id);
+    $("panelStatus").textContent = L.isOut(m) ? "Out: " + m.location + " · " + "Left " + L.formatTime(m.leftAt) : "In the office" + (w && w.desk ? " · " + w.desk.label : "");
     $("panelStatus").classList.toggle("out", L.isOut(m));
     portraitInto($("panelFace"), savedById().get(m.id));
     if (fresh || document.activeElement !== input) input.value = m.location || "";
     $("backBtn").hidden = !L.isOut(m);
+    if (fresh) hideSwap();
+    renderWorkspace();
   }
   function closePanel() {
     panelId = null;
+    hideSwap();
     $("panel").hidden = true;
   }
+
+  // ---------- the Workspace picker: own desk, Office A / B, or any free desk ----------
+  const wsSelect = $("workspaceSelect");
+  const spots = () => hub.office.workSpots.filter((s) => s.assignable);
+  const spotLabel = (id) => { const s = spots().find((x) => x.id === id); return s ? s.label : "any free desk"; };
+  function renderWorkspace() {
+    if (!panelId) return;
+    const mine = assignments[panelId] || "";
+    const opt = (value, text) => '<option value="' + escapeHtml(value) + '"' + (value === mine ? " selected" : "") + ">" + escapeHtml(text) + "</option>";
+    const owned = (s) => { const o = L.ownerOf(assignments, s.id); return o && o !== panelId ? " · " + (nameOf(o) || "someone") : o === panelId ? " · yours" : " · free"; };
+    const offices = spots().filter((s) => s.private), desks = spots().filter((s) => !s.private).sort((a, b) => a.number - b.number);
+    const html = opt("", "Any free desk") +
+      '<optgroup label="Private offices">' + offices.map((s) => opt(s.id, s.label + owned(s))).join("") + "</optgroup>" +
+      '<optgroup label="Desks">' + desks.map((s) => opt(s.id, s.label + owned(s))).join("") + "</optgroup>";
+    if (wsSelect.dataset.html !== html) { wsSelect.innerHTML = html; wsSelect.dataset.html = html; }
+    wsSelect.value = mine;
+  }
+  function hideSwap() { $("swapAsk").hidden = true; $("swapAsk").innerHTML = ""; }
+  wsSelect.addEventListener("change", () => {
+    const id = panelId, spot = wsSelect.value || null;
+    if (!id) return;
+    const other = spot ? L.ownerOf(assignments, spot) : null;
+    if (!other || other === id) { hideSwap(); store.assignSpot(id, spot); return; }
+    // it's someone else's: swap? (they get this Mii's old spot, or any free desk)
+    const box = $("swapAsk"), mine = assignments[id] || null;
+    box.innerHTML = "<p><b>" + escapeHtml(spotLabel(spot)) + "</b> is " + escapeHtml(nameOf(other) || "someone") + "'s. Swap? " +
+      escapeHtml(nameOf(other) || "They") + " gets " + (mine ? "<b>" + escapeHtml(spotLabel(mine)) + "</b>" : "any free desk") + '.</p><div class="ask-row"><button type="button" class="btn primary" data-v="yes">Swap</button><button type="button" class="btn" data-v="no">Cancel</button></div>';
+    box.hidden = false;
+    box.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+      hideSwap();
+      if (b.dataset.v === "yes" && panelId === id) store.assignSpot(id, spot);
+      else renderWorkspace();
+    }));
+    box.querySelector("button").focus();
+  });
   async function saveLocation(text) {
     if (!panelId) return;
     await store.setLocation(panelId, text);

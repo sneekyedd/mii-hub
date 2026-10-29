@@ -6,6 +6,8 @@
  *                  ("" = in the office) and the time it left (leftAt)
  *   - saved Miis:  every Mii ever added on this computer (name + its .glb file),
  *                  so it can be put back on the board with one click next day
+ *   - workspaces:  which desk or private office belongs to which Mii (these stay
+ *                  from day to day; a Mii without one takes any free desk)
  *
  * Right now it keeps everything in this browser (the board in localStorage, the
  * saved Miis in IndexedDB) and keeps tabs on the same computer in sync.
@@ -25,7 +27,11 @@
  *   removeFromBoard(id)        take a Mii off today's board (it walks out)
  *   setLocation(id, text)      "" = back in the office; anything else = out, there
  *   sweep()                    take expired Miis off the board (6 PM rule; see logic.js)
- *   on(fn)                     fn({ type: "board" | "saved" }) after any change,
+ *   getAssignments()           -> { miiId: spotId } (spot ids from office.js: "desk-3", "office-A")
+ *   assignSpot(miiId, spotId)  give that Mii its own spot (null = any free desk). If the spot
+ *                              was someone else's, they swap (see logic.js assignSpot)
+ *                              -> { assignments, swapped }
+ *   on(fn)                     fn({ type: "board" | "saved" | "assign" }) after any change,
  *                              also changes made in another tab. Returns an "off" function.
  */
 (function (root) {
@@ -33,6 +39,7 @@
 
   const L = root.NSCCLogic || (typeof require !== "undefined" ? require("./logic.js") : null);
   const BOARD_KEY = "miinscc-board";
+  const ASSIGN_KEY = "miinscc-assignments";
 
   // ---------- small storage backends (swappable, so tests can use memory ones) ----------
   function memoryKV() {
@@ -57,7 +64,7 @@
         onChange: null,
       };
       // another tab changed the board
-      root.addEventListener("storage", (e) => { if (e.key === BOARD_KEY && kv.onChange) kv.onChange(); });
+      root.addEventListener("storage", (e) => { if ((e.key === BOARD_KEY || e.key === ASSIGN_KEY) && kv.onChange) kv.onChange(e.key); });
       return kv;
     } catch (e) {
       return memoryKV(); // (private window with storage blocked: works, but forgets on reload)
@@ -140,11 +147,30 @@
       return saved;
     }
 
-    if (kv.onChange !== undefined) kv.onChange = () => emit("board");
+    function readAssignments() {
+      try {
+        const raw = JSON.parse(kv.get(ASSIGN_KEY) || "null");
+        const out = {};
+        if (raw && raw.assignments && typeof raw.assignments === "object") {
+          for (const id of Object.keys(raw.assignments)) if (typeof raw.assignments[id] === "string" && raw.assignments[id]) out[id] = raw.assignments[id];
+        }
+        return out;
+      } catch (e) {
+        return {};
+      }
+    }
+    function writeAssignments(assignments) {
+      kv.set(ASSIGN_KEY, JSON.stringify({ version: 1, assignments, updatedAt: now() }));
+      if (channel) channel.post({ type: "assign" });
+      emit("assign");
+    }
+
+    if (kv.onChange !== undefined) kv.onChange = (key) => emit(key === ASSIGN_KEY ? "assign" : "board");
     if (channel) channel.onMessage = async (msg) => {
       if (!msg) return;
       if (msg.type === "saved") { await loadSaved(); emit("saved"); }
       else if (msg.type === "board") emit("board");
+      else if (msg.type === "assign") emit("assign");
     };
 
     const store = {
@@ -168,6 +194,8 @@
         if (currentBoard().some((m) => m.id === id)) throw new Error("that Mii is on the board");
         await db.delete(id);
         saved = saved.filter((r) => r.id !== id);
+        const a = readAssignments();
+        if (a[id]) { delete a[id]; writeAssignments(a); } // (its desk is free again)
         if (channel) channel.post({ type: "saved" });
         emit("saved");
       },
@@ -201,6 +229,14 @@
         if (gone.length) writeBoard(all.filter((m) => !L.isExpired(m, t)));
         return gone;
       },
+      async getAssignments() { return readAssignments(); },
+      async assignSpot(miiId, spotId) {
+        if (typeof miiId !== "string" || !miiId) throw new Error("which Mii?");
+        const before = readAssignments();
+        const result = L.assignSpot(before, miiId, spotId ? String(spotId) : null);
+        if (JSON.stringify(result.assignments) !== JSON.stringify(before)) writeAssignments(result.assignments);
+        return result;
+      },
       on(fn) { listeners.add(fn); return () => listeners.delete(fn); },
       emit, // (for a future server-backed store: call when the server reports a change)
     };
@@ -208,7 +244,7 @@
     return store;
   }
 
-  const api = { createStore, memoryKV, memoryDB, BOARD_KEY };
+  const api = { createStore, memoryKV, memoryDB, BOARD_KEY, ASSIGN_KEY };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.NSCCStore = api;
 })(typeof self !== "undefined" ? self : this);

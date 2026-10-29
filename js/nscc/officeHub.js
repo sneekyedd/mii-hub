@@ -7,6 +7,8 @@
  * The app tells it what to do (see app.js):
  *   hub.addMii(id, template, look, how, desk)   how: "appear" (straight to its desk), "enter" (in through
  *                                         the door) or "return" (in through the door, back from somewhere)
+ *   hub.setAssignments(assignments, onBoard, names)  who has which desk / office ({ miiId: spotId }),
+ *                                         who's on today's board, and everyone's name (for the desk signs)
  *   hub.sendOut(id, kind, place)          kind: "leave" (still on the board, out) or "remove" (off the board)
  *   hub.bringBack(id)                     it was walking out: turn round and go back to work
  *   hub.presence()                        { id: "in" | "entering" | "leaving" | "removing" }
@@ -128,6 +130,7 @@
     goTo(x, z, then, alone) {
       const path = this.hub.nav.findPath(this.x, this.z, x, z, alone ? null : this.hub.standingMiis(this));
       this.anchor = null;
+      this.arms = "down"; // (whatever it was doing there - typing, cheering - it stops to walk)
       if (!path) { this.state = "idle"; this.timer = rnd(0.5, 1.5); this.spot = null; this.arrive = null; return false; }
       this.path = path;
       this.state = "walk";
@@ -169,6 +172,8 @@
       this.time = 0;
       this.timers = [];
       this.chatIn = rnd(35, 70);  // the next little chat (seconds)
+      this.assignments = {};      // { miiId: spotId } who has their own desk / office
+      this.onBoard = [];          // who's on today's board (in or out)
       this.onSelect = null;
       this.onGone = null;         // (id, mode) a Mii went out of the door
       this.clock = () => Date.now(); // what time it is (the app can set its own)
@@ -222,7 +227,7 @@
       const depth = this.office.bounds.maxZ - this.office.bounds.minZ;
       const dist = clamp(Math.max((v.width / 2) / Math.tan(hfov / 2) * 1.0, (depth * 0.6) / Math.tan(vfov / 2)), 12, 60);
       const t = new THREE.Vector3(v.target[0], v.target[1], v.target[2]);
-      const dir = new THREE.Vector3(0, v.tilt, 1).normalize();
+      const dir = new THREE.Vector3(Math.sin(v.yaw || 0), v.tilt, Math.cos(v.yaw || 0)).normalize();
       this.camera.position.copy(dir.multiplyScalar(dist)).add(t);
       this.controls.target.copy(t);
       this.controls.minDistance = dist * 0.55;
@@ -284,15 +289,49 @@
     walker(id) { return this.walkers.find((w) => w.id === id) || null; }
     later(w, delay, fn) { this.timers.push({ at: this.time + delay, w, fn }); }
 
-    // A free desk for a Mii: desk number `prefer` if it's free (the app keeps that
-    // the same all day, so a Mii comes back to the same desk), or the first free one.
+    // A Mii's desk: its own desk or office if it has one; otherwise a free desk that isn't
+    // anyone else's (desk number `prefer` if it's free: the app keeps that the same all day,
+    // so a Mii comes back to the same desk). null = no desk left (it just takes breaks).
     deskFor(w, prefer) {
+      if (prefer !== undefined) w.prefer = prefer;
       if (w.desk) return w.desk;
-      const taken = new Set(this.walkers.map((o) => o.desk).filter(Boolean));
       const desks = this.office.workSpots.filter((s) => s.kind === "desk");
-      const want = prefer >= 0 ? desks[prefer % desks.length] : null;
-      w.desk = want && !taken.has(want) ? want : desks.find((d) => !taken.has(d)) || desks[this.walkers.indexOf(w) % desks.length];
+      const taken = {};
+      for (const o of this.walkers) if (o !== w && o.desk) taken[o.desk.id] = o.id;
+      const id = window.NSCCLogic.pickDesk({ id: w.id, desks, assignments: this.assignments, taken, onBoard: this.onBoard, prefer: w.prefer });
+      w.desk = desks.find((d) => d.id === id) || null;
       return w.desk;
+    }
+    // Who has which desk / office. Miis sitting at a spot that's now someone else's (or that
+    // were given a new spot) get up and go to the right one.
+    setAssignments(assignments, onBoard, names) {
+      this.assignments = Object.assign({}, assignments || {});
+      if (onBoard) this.onBoard = onBoard.slice();
+      names = names || {};
+      for (const w of this.walkers) {
+        if (!w.desk) continue;
+        const mine = this.assignments[w.id];
+        const owner = window.NSCCLogic.ownerOf(this.assignments, w.desk.id);
+        if ((mine && mine !== w.desk.id) || (owner && owner !== w.id)) this.relocate(w);
+      }
+      // ones without a desk (none was free) may find one now
+      for (const w of this.walkers) if (!w.desk && w.mode === "in") this.relocate(w);
+      if (this.office.setOwner) {
+        for (const s of this.office.workSpots) if (s.assignable) {
+          const owner = window.NSCCLogic.ownerOf(this.assignments, s.id);
+          this.office.setOwner(s.id, owner ? names[owner] || "" : "");
+        }
+      }
+    }
+    // Leave the old desk and pick again (it walks over there next).
+    relocate(w) {
+      const old = w.desk;
+      w.desk = null;
+      if (w.mode !== "in") return; // (coming in: it'll go to the right desk anyway)
+      if (old && w.spot === old) {
+        if (w.state === "activity") { w.spot = null; return; } // (gets up, then goes to the new one)
+        if (w.state === "walk") { w.state = "idle"; w.timer = 0.2; w.path = null; w.arrive = null; w.spot = null; }
+      }
     }
 
     addMii(id, template, look, how, prefer) {
@@ -300,7 +339,10 @@
       const w = new Walker(this, id, template, look);
       this.walkers.push(w);
       const desk = this.deskFor(w, prefer);
-      if (how === "appear") {
+      if (how === "appear" && !desk) {
+        const p = this.randomFloorPoint(w);
+        w.x = p.x; w.z = p.z; w.appear = 0.4; w.inSince = this.time - 30;
+      } else if (how === "appear") {
         // (opening the page: everyone who's in is already at work)
         w.x = desk.x; w.z = desk.z;
         w.spot = desk;
@@ -321,9 +363,13 @@
     walkIn(w, returning) {
       const o = this.office;
       w.mode = "entering";
+      // (down the hallway to the door: the way out, backwards)
+      const out = o.outsidePath && o.outsidePath.length ? o.outsidePath : [o.outsidePoint];
+      w.doorPath = out.slice(0, -1).reverse().concat([o.doorPoint]);
       w.x = o.outsidePoint.x; w.z = o.outsidePoint.z;
-      w.yaw = w.targetYaw = Math.atan2(o.doorPoint.x - w.x, o.doorPoint.z - w.z);
+      w.yaw = w.targetYaw = Math.atan2(w.doorPath[0].x - w.x, w.doorPath[0].z - w.z);
       w.appear = 0; w.vanish = 0;
+      w.arms = "down";
       w.state = "door-in";
       w.anchor = null; w.seatBlend = 0; w.spot = null;
       this.later(w, 1.2, () => w.say(C.pick(returning ? C.RETURN : C.ARRIVE), 2.6));
@@ -345,7 +391,8 @@
       w.showEmote(kind === "remove" && place === "endOfDay" ? "🌙" : "👋", 3);
       w.leaveBy = this.time + 25;
       const d = this.office.doorPoint;
-      this.later(w, 0.6, () => { if (w.mode === "leaving" || w.mode === "removing") w.goTo(d.x, d.z, () => { w.state = "door-out"; }, true); });
+      const out = this.office.outsidePath && this.office.outsidePath.length ? this.office.outsidePath : [this.office.outsidePoint];
+      this.later(w, 0.6, () => { if (w.mode === "leaving" || w.mode === "removing") w.goTo(d.x, d.z, () => { w.state = "door-out"; w.doorPath = out.slice(); }, true); });
     }
 
     // It was on its way out, but someone cleared its location: back to work.
@@ -373,16 +420,16 @@
     nextTask(w) {
       if (w.mode !== "in") return;
       const desk = this.deskFor(w);
-      const atDesk = w.lastSpot === desk;
-      if (!atDesk || (w.breaks > 0 && Math.random() < 0.85)) {
+      const atDesk = !!desk && w.lastSpot === desk;
+      if (desk && (!atDesk || (w.breaks > 0 && Math.random() < 0.85))) {
         w.breaks = 0;
         return this.useSpot(w, desk);
       }
       w.breaks++;
-      const free = this.office.workSpots.filter((s) => s.kind !== "desk" && !this.walkers.some((o) => o !== w && o.spot === s));
+      const free = this.office.workSpots.filter((s) => s.kind !== "desk" && !s.gather && !this.walkers.some((o) => o !== w && o.spot === s));
       if (free.length && Math.random() < 0.8) return this.useSpot(w, C.pick(free));
       // a little walk around the room
-      const p = this.randomFloorPoint();
+      const p = this.randomFloorPoint(w);
       w.goTo(p.x, p.z, () => { w.state = "idle"; w.timer = rnd(2, 5); w.targetYaw = this.viewYaw(w) + rnd(-0.6, 0.6); });
     }
     useSpot(w, spot) {
@@ -392,19 +439,55 @@
     startActivity(w, spot) {
       w.state = "activity";
       w.lastSpot = spot;
-      w.timer = spot.kind === "desk" ? rnd(45, 140) : rnd(7, 13);
+      w.timer = spot.kind === "desk" ? rnd(45, 140) : spot.gather ? Math.max(6, (w.meetUntil || 0) - this.time) : rnd(7, 13);
       w.anchor = spot.seat ? { at: spot.seat, yaw: spot.yaw } : null;
       w.targetYaw = spot.yaw;
-      const icon = { coffee: "☕", water: "💧", stretch: "🙆", window: "☀️", board: "📝" }[spot.kind];
+      const icon = { coffee: "☕", water: "💧", stretch: "🙆", window: "☀️", board: "📝", server: "🖥️", storage: "📦", workbench: "🔧", sofa: "🛋️", meeting: "📋" }[spot.kind];
       if (icon) w.showEmote(icon, w.timer);
-      if (spot.kind !== "desk" && C.BREAK[spot.kind] && Math.random() < 0.45) this.later(w, 1, () => { if (w.spot === spot) w.say(C.pick(C.BREAK[spot.kind])); });
+      if (spot.kind !== "desk" && !spot.gather && C.BREAK[spot.kind] && Math.random() < 0.45) this.later(w, 1, () => { if (w.spot === spot) w.say(C.pick(C.BREAK[spot.kind])); });
     }
-    randomFloorPoint() {
-      for (let i = 0; i < 20; i++) {
+    // Somewhere to stand about: in the open office (not in someone's private office).
+    randomFloorPoint(w) {
+      const rooms = this.office.rooms || [];
+      const inRoom = (p) => rooms.find((r) => r.areas.some((a) => p.x >= a.minX && p.x <= a.maxX && p.z >= a.minZ && p.z <= a.maxZ));
+      const ok = (p) => {
+        const r = inRoom(p);
+        if (r && r.private) { const mine = w && w.desk; return !!mine && mine.room === r.id; }
+        return !r || r.kind === "open";
+      };
+      let last = null;
+      for (let i = 0; i < 30; i++) {
         const p = this.nav.randomFree();
+        last = p;
+        if (!ok(p)) continue;
         if (!this.walkers.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < 1.5)) return p;
       }
-      return this.nav.randomFree();
+      return last || this.nav.randomFree();
+    }
+
+    // ---------- a little meeting in the conference room now and then ----------
+    // (two or three Miis who are free go and sit round the table for a bit, then back to work)
+    runMeetings(dt) {
+      this.meetIn = (this.meetIn === undefined ? rnd(120, 240) : this.meetIn) - dt;
+      if (this.meetIn > 0) return;
+      this.meetIn = rnd(200, 400);
+      const chairs = this.office.workSpots.filter((s) => s.gather && !this.walkers.some((o) => o.spot === s));
+      const free = this.walkers.filter((w) => this.canChat(w) && !w.anchored);
+      const pool = free.length >= 2 ? free : this.walkers.filter((w) => this.canChat(w));
+      if (pool.length < 2 || chairs.length < 2) return;
+      const n = Math.min(chairs.length, pool.length, Math.random() < 0.5 ? 2 : 3);
+      const people = pool.slice().sort(() => Math.random() - 0.5).slice(0, n);
+      const lines = C.BREAK.meeting || ["Quick catch-up!"];
+      people.forEach((w, i) => {
+        this.endChat(w);
+        w.clearEmote();
+        w.anchor = null;
+        w.state = "idle";
+        this.useSpot(w, chairs[i]);
+        w.meetUntil = this.time + rnd(16, 24);
+        if (i === 0) this.later(w, 1, () => w.say(C.pick(["Quick meeting, everyone?", "Got a minute? Let's sync up.", "Meeting room, two minutes!"]), 2.6));
+        this.later(w, 9 + i * 3, () => { if (w.spot && w.spot.gather && w.state === "activity") w.say(C.pick(lines), 2.6); });
+      });
     }
 
     // ---------- a little chat now and then ----------
@@ -484,6 +567,7 @@
         for (const t of due) if (!t.w || this.walkers.includes(t.w)) t.fn();
       }
       this.runChats(dt);
+      this.runMeetings(dt);
       const d = this.office.doorPoint;
       let door = false;
       for (const w of this.walkers.slice()) {
@@ -533,17 +617,25 @@
           }
           break;
         }
-        case "door-in": // from outside, straight through the doorway
-          if (this.stepStraight(w, o.doorPoint.x, o.doorPoint.z, dt)) {
+        case "door-in": { // from outside, along the hallway and through the doorway
+          const next = w.doorPath && w.doorPath.length ? w.doorPath[0] : o.doorPoint;
+          if (!this.stepStraight(w, next.x, next.z, dt)) break;
+          if (w.doorPath && w.doorPath.length > 1) { w.doorPath.shift(); break; }
+          {
             w.goTo(o.insidePoint.x + rnd(-1.5, 1.5), o.insidePoint.z + rnd(-0.5, 1), () => {
               if (w.mode === "entering") { w.mode = "in"; w.inSince = this.time; }
               w.state = "idle"; w.timer = rnd(0.3, 0.8); w.targetYaw = this.viewYaw(w);
             }, true);
           }
           break;
-        case "door-out": // out through the doorway, then gone
-          if (this.stepStraight(w, o.outsidePoint.x, o.outsidePoint.z, dt)) w.state = "vanish";
+        }
+        case "door-out": { // out through the doorway and down the hallway, then gone
+          const next = w.doorPath && w.doorPath.length ? w.doorPath[0] : o.outsidePoint;
+          if (!this.stepStraight(w, next.x, next.z, dt)) break;
+          if (w.doorPath && w.doorPath.length > 1) w.doorPath.shift();
+          else w.state = "vanish";
           break;
+        }
         case "vanish":
           w.vanish = Math.min(1, w.vanish + dt * 2.5);
           break;
@@ -736,9 +828,13 @@
       if (w.blinkIn <= 0) { w.blinkT = 0.13; w.blinkIn = Math.random() < 0.18 ? 0.3 : rnd(2, 6); }
       if (w.blinkT > 0) w.blinkT -= dt;
       if (M.setEyesClosed) M.setEyesClosed(w.inst, w.blinkT > 0);
+      // Walking always uses the normal arm swing. Talking with the hands only while standing
+      // still in a chat (not on the way somewhere, even when slowing down at a corner).
+      const arms = moving ? "down" : w.arms;
+      const talking = !!w.bubble && !moving && w.walkAmt < 0.05 && (w.state === "talk" || w.state === "wait" || (w.state === "idle" && !!w.partner));
       rig.pose({
         t: this.time + (w.id.length % 7) * 0.37, dt, smooth: true,
-        walk: w.walkAmt, phase: w.phase, arms: w.arms, style: st, talking: !!w.bubble,
+        walk: w.walkAmt, phase: w.phase, arms, style: st, talking,
         nod: 0, lookYaw: w.lookYaw,
         lookUp: (w.state === "activity" && w.spot && w.spot.lookUp ? w.spot.lookUp : 0) + w.lookUp,
         sit: !!sitting,

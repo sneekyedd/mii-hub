@@ -8,6 +8,9 @@
  *   - The board is cleared at 6:00 PM local time: every Mii added before 6 PM
  *     leaves the board then. (A Mii added after 6 PM stays until midnight.)
  *   - The top bar lists only the Miis that are out, with the time they left.
+ *   - Workspaces: a Mii can be given its own desk or private office (or "any free desk").
+ *     A spot belongs to one Mii at most; a Mii without one takes a free desk that
+ *     isn't anyone else's.
  */
 (function (root) {
   "use strict";
@@ -114,7 +117,60 @@
     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
   }
 
-  const api = { END_OF_DAY_HOUR, MAX_LOCATION, cleanLocation, expiresAt, isExpired, nextSweep, isAfterEndOfDay, formatTime, withLocation, isOut, topBarEntries, reconcile, dayKey };
+  // ---------- workspaces (who sits where) ----------
+  // assignments: { miiId: spotId } (a Mii missing from it = "any free desk")
+
+  // Who a spot belongs to (a Mii id), or null.
+  function ownerOf(assignments, spotId) {
+    for (const id of Object.keys(assignments || {})) if (assignments[id] === spotId) return id;
+    return null;
+  }
+
+  // Gives spot `spotId` to Mii `miiId` (null / "" = back to "any free desk").
+  // If the spot was someone else's, the two swap: the other Mii gets this Mii's old
+  // spot (or "any free desk" if it didn't have one).
+  // Returns { assignments (a new object), swapped: the other Mii's id or null }.
+  function assignSpot(assignments, miiId, spotId) {
+    const next = Object.assign({}, assignments || {});
+    const old = next[miiId] || null;
+    if (!spotId) { delete next[miiId]; return { assignments: next, swapped: null }; }
+    const other = ownerOf(next, spotId);
+    let swapped = null;
+    if (other && other !== miiId) {
+      if (old) next[other] = old; else delete next[other];
+      swapped = other;
+    }
+    next[miiId] = spotId;
+    return { assignments: next, swapped };
+  }
+
+  // Which desk a Mii should use right now (a spot id, or null when there's none left).
+  //   o.id:          the Mii
+  //   o.desks:       the desks in the office, in the order to fill them [{ id, private? }]
+  //   o.assignments: { miiId: spotId }
+  //   o.taken:       { spotId: miiId } desks other Miis are using right now
+  //   o.onBoard:     ids of the Miis on today's board (in or out)
+  //   o.prefer:      (optional) a number: try this desk first (so a Mii keeps its desk all day)
+  // Its own spot if it has one. Otherwise a free desk that isn't anyone's (private offices
+  // are never used by anyone else). If every free desk belongs to someone, one whose owner
+  // isn't here today.
+  function pickDesk(o) {
+    const assignments = o.assignments || {}, taken = o.taken || {};
+    const mine = assignments[o.id];
+    if (mine && o.desks.some((d) => d.id === mine)) return mine;
+    const owners = {};
+    for (const id of Object.keys(assignments)) owners[assignments[id]] = id;
+    const onBoard = new Set(o.onBoard || []);
+    const open = o.desks.filter((d) => !d.private && !(taken[d.id] && taken[d.id] !== o.id));
+    const shared = o.desks.filter((d) => !d.private);
+    const want = typeof o.prefer === "number" && o.prefer >= 0 && shared.length ? shared[o.prefer % shared.length] : null;
+    const pick = (list) => (want && list.includes(want) ? want.id : list.length ? list[0].id : null);
+    const free = open.filter((d) => !owners[d.id]);
+    if (free.length) return pick(free);
+    return pick(open.filter((d) => !onBoard.has(owners[d.id])));
+  }
+
+  const api = { END_OF_DAY_HOUR, MAX_LOCATION, cleanLocation, expiresAt, isExpired, nextSweep, isAfterEndOfDay, formatTime, withLocation, isOut, topBarEntries, reconcile, dayKey, ownerOf, assignSpot, pickDesk };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.NSCCLogic = api;
 })(typeof self !== "undefined" ? self : this);

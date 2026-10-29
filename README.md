@@ -1,11 +1,12 @@
 # MiiNSCC
 
-MiiNSCC is an office board you can watch. Everyone at work is a little 3D Mii in one
-shared office. When you're at work, your Mii sits at a desk and types, gets a coffee now
-and then, stretches, and sometimes has a quick friendly chat with someone.
+MiiNSCC is an office board you can watch. Everyone at work is a little 3D Mii in our
+office, **A223 Information Technology**. When you're at work, your Mii sits at its desk and
+types, gets a coffee now and then, stretches, checks the servers, and sometimes has a quick
+friendly chat (or a little meeting in the conference room) with someone.
 
 When you head out, type where you're going ("Lunch", "Client visit", "Dentist"...).
-Your Mii gets up, walks out of the door, and shows up in the **top bar** with your face,
+Your Mii gets up, walks out of the front door and down the hallway, and shows up in the **top bar** with your face,
 your name, where you are, and the time you left. Clear the text when you're back and your
 Mii walks back in and goes back to work.
 
@@ -38,7 +39,7 @@ without internet.
    - click a **saved Mii** (anyone added on this computer before), or
    - **upload a new Mii**: a full-body 3D Mii **.glb** file exported from Mii Creator
      (you can also drag the file onto the page). There's a sample Mii to try it out.
-   The Mii walks in through the door and goes to a desk.
+   The Mii walks up the hallway, in through the front door, and goes to its desk.
 2. **Add more** any time with the **+ Add Mii** button (top right).
 3. **Going out?** Click your Mii (anyone can change anyone's). Type where you are and
    press **Enter** (or pick one of the quick buttons). Your Mii walks out of the door.
@@ -46,6 +47,13 @@ without internet.
    office"). Your Mii walks back in.
 5. **6:00 PM:** everyone leaves and the board is empty until the next day. A Mii added
    after 6 PM stays until midnight.
+6. **Your own desk:** click your Mii and pick your desk under **Workspace**: a desk
+   number, **Office A** or **Office B**, or **Any free desk** (the default). The list shows
+   who already has each one. Picking one that's someone else's asks first, then you swap
+   (they get your old spot, or any free desk). Your Mii goes to its own spot when it's working
+   and comes back to it after breaks; Miis without one take a free desk that isn't anyone's.
+   This is remembered from day to day. The desk numbers are on the desks, and the owner's
+   name shows on their desk and on their office door.
 
 You can spin the camera all the way round by dragging and zoom with the mouse wheel; **🎯 Center the office** brings it back.
 
@@ -61,9 +69,9 @@ date and time). The page then pretends it's that time.
 | What | File |
 | --- | --- |
 | The page | `index.html`, `css/style.css` |
-| **The office (placeholder, swappable)** | `js/nscc/office.js` |
+| **The office (rooms, desks, the front door; swappable)** | `js/nscc/office.js` |
 | **All shared state (the store)** | `js/nscc/store.js` |
-| The rules (in/out, 6 PM, top bar) | `js/nscc/logic.js` |
+| The rules (in/out, 6 PM, top bar, who sits where) | `js/nscc/logic.js` |
 | What the Miis say (easy to add lines) | `js/nscc/chatter.js` |
 | The 3D office view (walking, sitting, door) | `js/nscc/officeHub.js` |
 | Buttons, windows, top bar | `js/nscc/app.js` |
@@ -72,24 +80,44 @@ date and time). The page then pretends it's that time.
 
 ### The office (`js/nscc/office.js`)
 
-The office is a **placeholder**: simple desks, a coffee corner, a water cooler, windows and
-a door. It will be replaced by the real office later. Everything about the room is in this
-one file, behind one function:
+The office is built from the floor plan and the desk plan:
+
+| Room | What's in it |
+| --- | --- |
+| **A223 Information Technology** (the big open office, left and top) | 10 numbered desks where the desk plan puts them (and facing the way it shows), a long workbench along the server room wall, the coffee corner (coffee machine, fridge, water cooler, a table and a sofa), plants, windows, a whiteboard, a printer, the wall clock and the big A223 sign |
+| **E: Server room** (top right) | two rows of server racks with blinking lights, cable trays with cables overhead, a cooling unit with a turning fan, a UPS box. You get in through the storage room |
+| **D: Storage room** (under E) | shelves with boxes, spare screens and parts bins, more boxes on the floor |
+| **C: Conference room** | a table with four chairs, a screen with a slide on it, a whiteboard. Now and then two or three Miis meet there for a bit. It isn't anyone's desk |
+| **B and A: private offices** | a desk with a chair (by B's left wall and by A's right wall), a guest chair, a rug, a lamp, a photo, plants; B has a bookshelf, A a cabinet, a floor lamp and a picture |
+| **The hallway** (right, between D and A) | outside the office. The **front door** is where the hallway meets the open office: Miis only come in and go out that way |
+
+The room walls are low with glass on top, so you can see into every room from any side;
+the outer walls hide while the camera is behind them. Everything about the room is in
+this one file, behind one function:
 
 ```js
 NSCCOffice.build(scene) -> {
   root,          // the 3D room (added to the scene)
   bounds,        // the floor area Miis can walk on
-  obstacles,     // furniture to walk around
-  workSpots,     // desks (to sit and type) and break spots (coffee, water, stretch...)
-  doorPoint,     // just inside the door
-  outsidePoint,  // just outside the door: Miis appear and disappear here
+  obstacles,     // furniture and walls to walk around
+  workSpots,     // desks (to sit and type; "Desk 1".."Desk 10", "Office A", "Office B")
+                 // and break spots (coffee, water, servers, storage, the conference room...)
+  rooms,         // the rooms (A, B, C, D, E, the open office, the hallway)
+  doorPoint,     // just inside the front door
+  outsidePath,   // the way down the hallway from the door
+  outsidePoint,  // the end of the hallway: Miis appear and disappear here
   insidePoint,   // a few steps into the room
   cameraView,    // where the camera looks, and how far it can turn
+  walls,         // the outer walls (hidden while the camera is behind them)
   background,
-  update(t, info) // optional animations (the door opening, the wall clock)
+  setOwner(spotId, name), // shows who a desk / office belongs to
+  update(t, info) // animations (the door opening, the clock, the server lights, the fan)
 }
 ```
+
+To move a desk, change its line in `DESKS` in `office.js` (where it is, and which way the
+person sitting there looks). To change what room C is, change the part marked "C: the
+conference room".
 
 To use a new office, write a file with the same `build()` and load it in `index.html`
 instead. The details are at the top of `office.js`.
@@ -97,11 +125,12 @@ instead. The details are at the top of `office.js`.
 ### The store (`js/nscc/store.js`)
 
 All shared state goes through this one module: who is on today's board, each person's
-location text and the time they left, and the saved Miis. Every method is async (returns
+location text and the time they left, the saved Miis, and who has which desk or office
+(`getAssignments()`, `assignSpot(miiId, spotId)`). Every method is async (returns
 a Promise) and the store tells the page about every change (`store.on(...)`).
 
-Right now it saves everything **in this browser**: the board in localStorage and the
-saved Miis (with their .glb files) in IndexedDB. Tabs open on the same computer stay in
+Right now it saves everything **in this browser**: the board and the desks in localStorage
+and the saved Miis (with their .glb files) in IndexedDB. Tabs open on the same computer stay in
 sync. Each computer has its own board for now.
 
 ## Planned
@@ -109,7 +138,6 @@ sync. Each computer has its own board for now.
 - **A server**, so the TV and everyone's computers share one board. The plan: a small
   WebSocket server, and a store with the same methods as `store.js` that talks to it.
   The rest of the page doesn't need to change.
-- **The real office** model, replacing the placeholder in `office.js`.
 
 ## Tests
 
@@ -118,8 +146,10 @@ npm test
 ```
 
 Checks the store, going out and coming back in, the 6 PM rule (also when the page is
-opened again after 6 PM or the next day), the top bar, and that the Miis only make
-friendly small talk.
+opened again after 6 PM or the next day), the top bar, who sits where (own desks, swaps,
+nobody on someone else's desk), the office (every desk and spot can be reached on foot
+from the front door, the door opens onto the hallway, the desk plan), and that the Miis
+only make friendly small talk.
 
 ## Thanks
 

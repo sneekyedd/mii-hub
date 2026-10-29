@@ -8,9 +8,10 @@
  * (Keep the part between the two markers plain JSON: the update check reads it as JSON.)
  */
 window.NSCC_VERSION = /*JSON*/{
-  "version": "0.2.4",
+  "version": "0.3.0",
   "date": "2026-10-29",
   "notes": [
+    "0.3.0: The real office! A223 Information Technology with its rooms: the server room (E), the storage room (D), a conference room (C) and two private offices (A and B), with the desks where they really are. Everyone comes in and goes out through the front door from the hallway. Give someone their own desk or office under Workspace in their panel (the desk numbers show in the office). Miis no longer wave their arms about while walking. And a fresh green look.",
     "0.2.4: Background music (the same looping song as Mii Hub). Turn it on or off in ⚙️ Settings.",
     "0.2.3: The update message is easy to read (in light and dark mode) and shows the exact command to paste to get the update, with a Copy button.",
     "0.2.2: Spin the camera all the way round the office (the wall in the way hides, like a dollhouse). When the view is turned or zoomed, a Center the office button glides it back.",

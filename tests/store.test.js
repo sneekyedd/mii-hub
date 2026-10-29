@@ -132,6 +132,51 @@ function fakeChannelPair() {
   await tab2.setLocation(cy.id, "Gym");
   assert.strictEqual((await tab1.getBoard())[0].location, "Gym");
 
+  // ---------- workspaces (who sits where): saved, swapped, kept from day to day, in sync ----------
+  {
+    now = at(9, 0, 5);
+    const kv4 = S.memoryKV(), db4 = S.memoryDB();
+    const [d1, d2] = fakeChannelPair();
+    const s1 = S.createStore({ kv: kv4, db: db4, channel: d1, now: clock });
+    const s2 = S.createStore({ kv: kv4, db: db4, channel: d2, now: clock });
+    await Promise.all([s1.ready, s2.ready]);
+    const seen2 = [], seen1 = [];
+    s1.on((e) => seen1.push(e.type));
+    s2.on((e) => seen2.push(e.type));
+    assert.deepStrictEqual(await s1.getAssignments(), {});
+    const x = await s1.saveMii({ name: "X", bytes }), y = await s1.saveMii({ name: "Y", bytes });
+    let r = await s1.assignSpot(x.id, "desk-4");
+    assert.deepStrictEqual(r.assignments, { [x.id]: "desk-4" });
+    assert.ok(seen1.includes("assign"), "a change event");
+    await new Promise((res) => setTimeout(res, 10));
+    assert.ok(seen2.includes("assign"), "the other tab hears about it");
+    assert.deepStrictEqual(await s2.getAssignments(), { [x.id]: "desk-4" });
+    // taking someone's spot swaps
+    await s2.assignSpot(y.id, "office-B");
+    r = await s2.assignSpot(y.id, "desk-4");
+    assert.strictEqual(r.swapped, x.id);
+    assert.deepStrictEqual(await s1.getAssignments(), { [x.id]: "office-B", [y.id]: "desk-4" });
+    // nothing changes = no event
+    seen1.length = 0;
+    await s1.assignSpot(y.id, "desk-4");
+    assert.deepStrictEqual(seen1, []);
+    // it stays after 6 PM and the next day (it isn't part of the daily board)
+    now = at(8, 0, 6);
+    const next = S.createStore({ kv: kv4, db: db4, channel: null, now: clock });
+    await next.ready;
+    assert.deepStrictEqual(await next.getAssignments(), { [x.id]: "office-B", [y.id]: "desk-4" });
+    // back to "any free desk"
+    await next.assignSpot(x.id, null);
+    assert.deepStrictEqual(await next.getAssignments(), { [y.id]: "desk-4" });
+    // forgetting a saved Mii frees its desk
+    await next.deleteSaved(y.id);
+    assert.deepStrictEqual(await next.getAssignments(), {});
+    await assert.rejects(next.assignSpot("", "desk-1"));
+    // a broken saved value doesn't break anything
+    kv4.set(S.ASSIGN_KEY, "{not json");
+    assert.deepStrictEqual(await next.getAssignments(), {});
+  }
+
   off();
   console.log("All store tests passed.");
 })().catch((e) => { console.error(e); process.exit(1); });

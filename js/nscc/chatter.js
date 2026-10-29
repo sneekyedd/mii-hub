@@ -39,6 +39,9 @@
       stretch: ["Stretch break!", "Ahh, that's better.", "Time to move a bit."],
       window: ["Nice view today.", "Look at those clouds!", "What a day outside."],
       board: ["Hmm, good idea.", "Let me add that.", "Lots of plans!"],
+      server: ["All the lights are green!", "Checking the backups.", "Servers look happy today."],
+      storage: ["Where's that cable...", "Found a spare mouse!", "So many boxes!"],
+      meeting: ["Quick look at the plan.", "Nice and quiet in here.", "Let me check the screen."],
     },
 
     // walking in through the door

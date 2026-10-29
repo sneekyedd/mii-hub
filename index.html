@@ -8,7 +8,7 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>MiiNSCC</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232fa4e7'/%3E%3Ccircle cx='32' cy='26' r='12' fill='%23fff'/%3E%3Crect x='16' y='40' width='32' height='16' rx='8' fill='%23fff'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231f8a50'/%3E%3Ccircle cx='32' cy='26' r='12' fill='%23fff'/%3E%3Crect x='16' y='40' width='32' height='16' rx='8' fill='%23fff'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -47,6 +47,11 @@
     </label>
     <div class="chips" id="chips"></div>
     <p class="hint">Press Enter to save. Clear the field when you're back.</p>
+    <label class="field workspace-field">
+      <span>Workspace</span>
+      <select id="workspaceSelect"></select>
+    </label>
+    <div class="swap-ask" id="swapAsk" hidden role="alertdialog" aria-live="polite"></div>
     <div class="panel-actions">
       <button class="btn" id="backBtn" type="button">I'm back in the office</button>
       <button class="link-btn" id="removeBtn" type="button">Remove from today's board</button>

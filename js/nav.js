@@ -83,6 +83,21 @@
       return { c: Math.max(0, Math.min(this.cols - 1, c)), r: Math.max(0, Math.min(this.rows - 1, r)) };
     }
 
+    // The grid square for a spot. (A free spot right next to a wall can land on a blocked
+    // square: then a free square next to it, in a straight line from the spot, is used.)
+    cellNear(p) {
+      const k = this.cellOf(p.x, p.z);
+      if (this.free(k.c, k.r)) return k;
+      const near = [];
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        const q = this.cellCenter(k.c + dc, k.r + dr);
+        near.push({ c: k.c + dc, r: k.r + dr, d: Math.hypot(q.x - p.x, q.z - p.z), q });
+      }
+      near.sort((a, b) => a.d - b.d);
+      const ok = near.find((n) => this.free(n.c, n.r) && this.clearLine(p.x, p.z, n.q.x, n.q.z));
+      return ok ? { c: ok.c, r: ok.r } : k;
+    }
+
     free(c, r) {
       if (c < 0 || r < 0 || c >= this.cols || r >= this.rows || this.blocked[r * this.cols + c]) return false;
       if (this.others) {
@@ -167,8 +182,8 @@
       if (this.clearLine(sx, sz, goalPt.x, goalPt.z)) return [goalPt];
 
       const startPt = this.nearestFree(sx, sz);
-      const s = this.cellOf(startPt.x, startPt.z);
-      const g = this.cellOf(goalPt.x, goalPt.z);
+      const s = this.cellNear(startPt);
+      const g = this.cellNear(goalPt);
       const cols = this.cols;
       const N = cols * this.rows;
       const gScore = new Float32Array(N).fill(Infinity);
