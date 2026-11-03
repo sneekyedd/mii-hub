@@ -146,6 +146,7 @@ module.exports = function accounts(ctx) {
   // token: a new one to hand out (null when signing in with one you have)
   function signedIn(p, acc, token, tokenHash) {
     p.acUser = keyOf(acc.user);
+    p.acName = acc.user; // how the username is written (Ranked's leaderboard shows it)
     p.acTokenHash = token ? sha256(token) : tokenHash;
     return Object.assign({ user: acc.user, token }, listReply(acc));
   }
@@ -350,7 +351,7 @@ module.exports = function accounts(ctx) {
 
   async function logout(p) {
     const key = p.acUser, h = p.acTokenHash;
-    p.acUser = null; p.acTokenHash = null;
+    p.acUser = null; p.acName = null; p.acTokenHash = null;
     if (!key) return {};
     return locked(key, async () => {
       const acc = await loadAccount(key);

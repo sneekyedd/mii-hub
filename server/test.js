@@ -1,9 +1,11 @@
-// Tests for the Paintball server: lobbies, passwords, warmup, matches, rounds, voting. Run: npm test (in this folder)
+// Tests for the Paintball server: lobbies, passwords, warmup, matches, rounds, voting, Ranked. Run: npm test (in this folder)
 process.env.COUNTDOWN_MS = "50";
 process.env.RESPAWN_MS = "300";
 process.env.ROUND_FREEZE_MS = "50";
 process.env.ROUND_END_MS = "60";
 process.env.INTERMISSION_MS = "1500";
+// ranked: small and quick (3 players a match at most, first to 3, a short grace period)
+Object.assign(process.env, { RANKED_SIZE: "3", RANKED_TO_WIN: "3", RANKED_COUNTDOWN_MS: "250", RANKED_FILL_MS: "300", RECONNECT_MS: "400", RANKED_TICK_MS: "50" });
 // accounts are saved in a throwaway folder
 const fs = require("fs"), os = require("os"), path = require("path"), crypto = require("crypto");
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "mii-hub-accounts-"));
@@ -362,13 +364,235 @@ async function player(port, name, mii) {
   assert(!r.ok && r.code === "slow", "the account is protected from guessing on new connections too");
   assert(!fs.readdirSync(process.env.DATA_DIR, { recursive: true }).some((f) => f.endsWith(".tmp")), "no half-written files");
   for (const c of [d1, d2, d3, d4, d5]) c.ws.close();
-  fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true });
+
+  // ---- Ranked: the math ----
+  const RK = S.ranked.R;
+  {
+    const lbl = (m, o) => RK.rankFor(m, o).label;
+    assert.strictEqual(lbl(0), "Iron IV"); assert.strictEqual(lbl(99), "Iron IV"); assert.strictEqual(lbl(100), "Iron III"); assert.strictEqual(lbl(399), "Iron I");
+    assert.strictEqual(lbl(400), "Bronze IV"); assert.strictEqual(lbl(1199), "Silver I"); assert.strictEqual(lbl(1200), "Gold IV"); assert.strictEqual(lbl(1650), "Platinum IV");
+    assert.strictEqual(lbl(2050), "Emerald IV"); assert.strictEqual(lbl(2799), "Diamond I"); assert.strictEqual(lbl(2800), "Master"); assert.strictEqual(lbl(3199), "Master");
+    assert.strictEqual(lbl(3200), "Grandmaster"); assert.strictEqual(lbl(9000), "Grandmaster"); assert.strictEqual(lbl(-50), "Iron IV");
+    assert.strictEqual(lbl(2900, { predator: true }), "Predator", "a top-10 Master is a Predator");
+    assert.strictEqual(lbl(2500, { predator: true }), "Diamond III", "Predator needs at least Master");
+    assert.strictEqual(lbl(1500, { placed: false }), "Unranked", "unranked during placements");
+    assert(RK.rankFor(1300).step > RK.rankFor(1299).step && RK.rankFor(2800).step > RK.rankFor(2799).step && RK.rankFor(3200, { predator: true }).step > RK.rankFor(5000).step, "ranks go up in order");
+    const pr = RK.progress(1250);
+    assert(pr.floor === 1200 && pr.ceil === 1300 && pr.pct === 0.5, "progress through a division");
+    assert(RK.progress(3000).floor === 2800 && RK.progress(3000).ceil === 3200, "Master's progress is to Grandmaster");
+    assert.strictEqual(RK.START_MMR, 1200, "everyone starts at the Silver / Gold line");
+    // Elo: 1 vs 1 between equals is ±K/2; placements swing twice as much
+    assert.deepStrictEqual(RK.eloDeltas([{ mmr: 1200, place: 1 }, { mmr: 1200, place: 2 }]), [20, -20]);
+    assert.deepStrictEqual(RK.eloDeltas([{ mmr: 1200, place: 1, k: 80 }, { mmr: 1200, place: 2, k: 80 }]), [40, -40]);
+    // beating someone better is worth more; an upset costs the favorite more
+    const up = RK.eloDeltas([{ mmr: 1000, place: 1 }, { mmr: 1400, place: 2 }]), fav = RK.eloDeltas([{ mmr: 1400, place: 1 }, { mmr: 1000, place: 2 }]);
+    assert(up[0] > 30 && fav[0] < 10 && fav[0] >= 1 && up[1] < -30, "upsets are worth more: " + up + " / " + fav);
+    // free-for-all: placement by placement, the winner gains, last loses, middle places in between
+    const ffa = RK.eloDeltas([1, 2, 3, 4].map((place) => ({ mmr: 1200, place })));
+    assert(ffa[0] === 20 && ffa[3] === -20 && ffa[1] > 0 && ffa[2] < 0 && ffa[0] + ffa[1] + ffa[2] + ffa[3] === 0, "FFA deltas " + ffa);
+    const tie = RK.eloDeltas([{ mmr: 1200, place: 1 }, { mmr: 1200, place: 1 }, { mmr: 1200, place: 3 }]);
+    assert(tie[0] === tie[1] && tie[0] > 0 && tie[2] < 0, "a shared place is a draw between them");
+    const big = RK.eloDeltas([{ mmr: 3000, place: 1 }, { mmr: 200, place: 2 }]);
+    assert(big[0] === 1 && big[1] === -1, "a win always gains, last always loses: " + big);
+    // matchmaking: the range widens the longer you wait
+    assert.strictEqual(RK.searchRange(0), 100); assert.strictEqual(RK.searchRange(10e3), 300); assert.strictEqual(RK.searchRange(60e3), Infinity);
+    for (let t = 0; t < 59e3; t += 1000) assert(RK.searchRange(t + 1000) >= RK.searchRange(t), "never narrows");
+    const now = 1e6, o = { size: 4, fillMs: 20e3 };
+    const qa = { key: "a", mmr: 1200, at: now }, qb = { key: "b", mmr: 1700, at: now };
+    assert.strictEqual(RK.formMatches([qa, qb], now, o).length, 0, "500 MMR apart: not straight away");
+    assert.strictEqual(RK.formMatches([Object.assign({}, qa, { at: now - 21e3 }), Object.assign({}, qb, { at: now - 21e3 })], now, o).length, 1, "...but after waiting the range is wide enough");
+    const four = ["a", "b", "c", "d"].map((key, i) => ({ key, mmr: 1200 + i * 20, at: now }));
+    assert.deepStrictEqual(RK.formMatches(four, now, o).map((g) => g.length), [4], "4 close players: a full match at once");
+    assert.strictEqual(RK.formMatches(four.slice(0, 3), now, o).length, 0, "3 players wait for a 4th...");
+    assert.deepStrictEqual(RK.formMatches(four.slice(0, 3).map((e) => Object.assign({}, e, { at: now - 20e3 })), now, o).map((g) => g.length), [3], "...for a while, then start with 3");
+    const spread = [{ key: "lo", mmr: 400, at: now - 5e3 }, { key: "lo2", mmr: 450, at: now - 5e3 }, { key: "hi", mmr: 2500, at: now - 5e3 }, { key: "hi2", mmr: 2480, at: now - 5e3 }];
+    const gs = RK.formMatches(spread, now, { size: 2, fillMs: 1e3 });
+    assert(gs.length === 2 && gs.every((g) => Math.abs(g[0].mmr - g[1].mmr) < 100), "similar MMRs are matched together");
+  }
+
+  // ---- Ranked: placements, rank protection, Predator, saving ----
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mii-hub-ranked-"));
+    const st = RK.createStore({ dataDir: dir });
+    for (let i = 0; i < 4; i++) {
+      const r = st.applyMatch([{ key: "pat", user: "Pat", place: 1 }, { key: "sam", user: "Sam", place: 2 }]);
+      assert(r.pat.delta === null && r.pat.after.mmr === null && r.pat.after.rank.tier === "unranked" && r.pat.placement.done === i + 1, "placements: MMR hidden");
+      assert.strictEqual(st.info("pat").mmr, null, "hidden in your info too");
+    }
+    assert(st.get("pat").mmr > 1300, "placements swing big: " + st.get("pat").mmr);
+    const r5 = st.applyMatch([{ key: "pat", user: "Pat", place: 1 }, { key: "sam", user: "Sam", place: 2 }]);
+    assert(r5.pat.justPlaced && r5.pat.after.mmr === st.get("pat").mmr && r5.pat.after.rank.tier !== "unranked", "5th placement reveals the rank: " + r5.pat.after.rank.label);
+    assert(r5.sam.justPlaced && st.get("sam").mmr < 1200, "the loser places lower: " + r5.sam.after.rank.label);
+    // rank protection: promote into Gold, then the first loss can't drop you out of it
+    const P = st._players();
+    P.pat.mmr = 1190; P.pat.shield = false; P.sam.mmr = 1190;
+    let r = st.applyMatch([{ key: "pat", place: 1 }, { key: "sam", place: 2 }]);
+    assert(r.pat.promoted && r.pat.tierUp && r.pat.after.rank.label === "Gold IV" && P.pat.shield && r.pat.shield, "promoted into Gold (protected)");
+    assert(!r.sam.promoted && !r.sam.demoted && r.sam.after.rank.label === "Silver I", "Sam stays in Silver I: " + r.sam.after.rank.label);
+    r = st.applyMatch([{ key: "sam", place: 1 }, { key: "pat", place: 2 }]);
+    assert(r.pat.protected && P.pat.mmr === 1200 && r.pat.after.rank.label === "Gold IV" && !P.pat.shield, "first loss after promoting: stays in Gold");
+    r = st.applyMatch([{ key: "sam", place: 1 }, { key: "pat", place: 2 }]);
+    assert(!r.pat.protected && r.pat.demoted && r.pat.tierDown && r.pat.after.rank.label === "Silver I", "the next loss demotes");
+    // Predator: the top 10 at Master or higher, recomputed as MMR changes
+    for (let i = 0; i < 12; i++) P["m" + i] = { user: "M" + i, mmr: 2810 + i * 10, games: 9, wins: 5, shield: false, peak: 0, updated: i };
+    P.dia = { user: "Dia", mmr: 2790, games: 30, wins: 20, shield: false, peak: 0, updated: 0 };
+    let preds = st.predators();
+    assert(preds.size === 10 && !preds.has("m0") && !preds.has("m1") && preds.has("m11") && !preds.has("dia"), "top 10 Masters are Predators");
+    assert.strictEqual(st.rankOf("m11").tier, "predator"); assert.strictEqual(st.rankOf("m0").tier, "master"); assert.strictEqual(st.rankOf("dia").label, "Diamond I");
+    P.m0.mmr = 3500;
+    preds = st.predators();
+    assert(preds.has("m0") && !preds.has("m2") && st.rankOf("m2").tier === "master", "recomputed when MMR changes");
+    const lb = st.top(5);
+    assert(lb.length === 5 && lb[0].key === "m0" && lb[0].rank.tier === "predator" && lb.every((x, i) => !i || lb[i - 1].mmr >= x.mmr), "leaderboard sorted");
+    // saved, and back after a restart
+    st.save();
+    await st.flush();
+    const again = RK.createStore({ dataDir: dir });
+    assert.strictEqual(again.get("pat").mmr, P.pat.mmr, "MMR survives a restart");
+    assert.strictEqual(again.rankOf("m0").tier, "predator", "Predator too");
+    assert.strictEqual(again.info("pat").placements.done, 5);
+    assert(!fs.readdirSync(dir).some((f) => f.endsWith(".tmp")), "no half-written ranked files");
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  // ---- Ranked online: queue, matches, leavers ----
+  {
+    const ranked = async (name) => {
+      const c = await player(port, name);
+      const r = await ask(c, { t: "acSignup", user: "rk" + name, pass: "secret123" });
+      assert(r.ok, "signed up " + name + ": " + r.msg);
+      c.token = r.token; c.user = "rk" + name; c.key = c.user.toLowerCase();
+      return c;
+    };
+    const old6 = await client(port);
+    old6.send({ t: "hello", v: 6, name: "Old" });
+    await wait(50);
+    assert(/different versions/.test(old6.last("err").msg), "version 6 is told to update");
+    old6.ws.close();
+    const anon = await player(port, "Anon");
+    anon.send({ t: "rkQueue" });
+    await wait(40);
+    assert.strictEqual(anon.last("rkErr").code, "signin", "Ranked needs an account");
+    const A = await ranked("Ada"), B = await ranked("Bea");
+    A.send({ t: "rkInfo" });
+    await wait(40);
+    let me = A.last("rkMe");
+    assert(me.signedIn && me.info.rank.tier === "unranked" && me.info.mmr === null && me.info.placements.done === 0 && me.rules.size === 3, "your rank: unranked, 0/5");
+    A.send({ t: "rkQueue" });
+    await wait(30);
+    A.send({ t: "rkQueue" });
+    await wait(30);
+    assert(A.last("rkQueued") && A.last("rkErr").code === "already" && S.ranked.queue.size === 1, "can't queue twice");
+    const A2 = await player(port, "Ada again");
+    await ask(A2, { t: "acToken", user: A.user, token: A.token });
+    A2.send({ t: "rkQueue" });
+    await wait(30);
+    assert(A2.last("rkErr").code === "already" && S.ranked.queue.size === 1, "...not even from another device");
+    A2.ws.close();
+    B.send({ t: "rkQueue" });
+    await wait(500); // 2 of 3: they start after RANKED_FILL_MS
+    assert(A.last("rkFound") && B.last("rkFound") && A.last("rkFound").players.length === 2, "match found");
+    let st = A.last("start");
+    assert(st && st.ranked && st.toWin === 3 && st.mode === "respawn" && S.MAPS[st.map], "ranked match: respawn, first to 3, random map");
+    const rr = A.last("room").room;
+    assert(rr.ranked && rr.players.every((p) => p.rank && p.rank.tier === "unranked"), "players have rank badges");
+    assert(!anon.last("rooms").rooms.some((x) => x.id === rr.id), "ranked rooms aren't in the lobby list");
+    anon.send({ t: "join", room: rr.id });
+    await wait(40);
+    assert(!anon.last("room"), "and can't be joined");
+    const spawnBoth = async (x, y) => { x.send({ t: "spawn", x: 0, z: 10, yaw: 0 }); y.send({ t: "spawn", x: 0, z: -10, yaw: 0 }); await wait(320); };
+    const kills = async (x, y, n) => { for (let i = 0; i < n; i++) { x.send({ t: "hit", v: y.id, z: "head", d: 143, w: "ak" }); await wait(330); y.send({ t: "spawn", x: 5, z: 5, yaw: 0 }); await wait(20); } };
+    // a fake "I won" message does nothing: only the server's own count matters
+    A.send({ t: "over", winner: A.id }); A.send({ t: "rkResult", place: 1 });
+    await spawnBoth(A, B);
+    await kills(A, B, 3);
+    await wait(80);
+    let over = A.last("over");
+    assert(over && over.ranked && over.winner === A.id, "first to 3 wins");
+    let ra = A.last("rkResult"), rb = B.last("rkResult");
+    assert(ra.place === 1 && rb.place === 2 && ra.of === 2 && ra.placement.done === 1 && ra.delta === null, "placement 1/5 (MMR hidden)");
+    assert(S.ranked.store.get(A.key).mmr === 1240 && S.ranked.store.get(B.key).mmr === 1160, "placement swing ±40");
+    assert(!Array.from(S.rooms.values()).some((x) => x.ranked) && !S.ranked.activeRanked.size, "the ranked room is closed");
+    // the leaver penalty: B drops out mid-match, comes back in time, then leaves for good
+    A.send({ t: "rkQueue" }); B.send({ t: "rkQueue" });
+    await wait(500);
+    assert(B.all("rkFound").length === 2, "2nd match");
+    await spawnBoth(A, B);
+    A.send({ t: "hit", v: B.id, z: "head", d: 143, w: "ak" });
+    await wait(60);
+    B.ws.close();
+    await wait(60);
+    assert(A.last("rkAway"), "B dropped: a short wait for them to come back");
+    const B2 = await player(port, "Bea");
+    await ask(B2, { t: "acToken", user: B.user, token: B.token });
+    B2.send({ t: "rkInfo" });
+    await wait(40);
+    assert(B2.last("rkMe").active, "you have a match to get back to");
+    B2.send({ t: "rkRejoin" });
+    await wait(80);
+    assert(B2.last("start") && B2.last("start").late && A.last("rkBack"), "back in");
+    assert.strictEqual(A.last("room").room.players.find((p) => p.id === A.id).score, 1, "score kept");
+    B2.send({ t: "leave" });
+    await wait(80);
+    ra = A.last("rkResult"); rb = B2.last("rkResult");
+    assert(A.last("rkGone") && ra.place === 1 && rb && rb.leaver && rb.place === 2, "leaving = last place (a loss)");
+    assert(S.ranked.store.get(B.key).mmr < 1160 && S.ranked.store.get(B.key).games === 2, "leaver lost MMR");
+    // disconnecting and not coming back: a loss after the grace period
+    A.send({ t: "rkQueue" }); B2.send({ t: "rkQueue" });
+    for (let i = 0; i < 200 && !B2.last("rkFound"); i++) await wait(25);
+    assert(B2.last("rkFound") && A.last("rkSearch").range > 100, "3rd match (150 MMR apart: after the range widened)");
+    await spawnBoth(A, B2);
+    const bMmr = S.ranked.store.get(B.key).mmr;
+    B2.ws.close();
+    await wait(200);
+    assert(S.ranked.store.get(B.key).mmr === bMmr, "not yet: there's a grace period");
+    await wait(450);
+    assert(S.ranked.store.get(B.key).mmr < bMmr && S.ranked.store.get(B.key).games === 3, "gone for good: counts as a loss");
+    assert(A.last("over") && A.all("rkResult").length === 3, "the one left wins");
+    // too few players: someone leaves before it starts -> called off, nobody's MMR changes
+    const C = await ranked("Cy");
+    const before = [A.key, C.key].map((k) => (S.ranked.store.get(k) || { mmr: null }).mmr);
+    A.send({ t: "rkQueue" }); C.send({ t: "rkQueue" });
+    for (let i = 0; i < 200 && !C.last("rkFound"); i++) await wait(25);
+    assert(C.last("rkFound"), "matched with a wider range after a moment");
+    C.send({ t: "leave" });
+    await wait(60);
+    assert(A.last("rkCancel") && /called off/.test(A.last("rkCancel").msg), "called off");
+    assert.deepStrictEqual([A.key, C.key].map((k) => (S.ranked.store.get(k) || { mmr: null }).mmr), before, "no MMR change");
+    assert(S.ranked.queue.has(A.key) && A.last("rkQueued").requeued, "the others go back to searching");
+    C.send({ t: "rkQueue" });
+    await wait(40);
+    assert.strictEqual(C.last("rkErr").code, "cooldown", "the leaver waits a bit");
+    A.send({ t: "rkCancel" });
+    await wait(40);
+    assert(A.last("rkCancelled") && !S.ranked.queue.size, "cancel searching");
+    // searching too often is slowed down
+    for (let i = 0; i < 10; i++) { A.send({ t: "rkQueue" }); A.send({ t: "rkCancel" }); }
+    await wait(80);
+    assert.strictEqual(A.last("rkErr").code, "slow", "queue joins are rate-limited");
+    // the leaderboard (Ada is placed after a few more matches; here we make her placed)
+    const PL = S.ranked.store._players();
+    PL[A.key].games = 5; PL[A.key].mmr = 1450;
+    PL.zed = { user: "Zed", mmr: 2000, games: 20, wins: 10, shield: false, peak: 2000, updated: 1 };
+    await wait(900);
+    A.send({ t: "rkTop" });
+    await wait(50);
+    const top = A.last("rkTop");
+    assert(top.list[0].user === "Zed" && top.list.some((x) => x.you && x.user === "rkAda" && x.rank.label === "Gold II") && top.you.pos === top.list.find((x) => x.you).pos, "leaderboard with you highlighted");
+    assert(!JSON.stringify(top).includes("secret123") && !top.list.some((x) => "key" in x), "nothing private on the leaderboard");
+    // saved to disk (survives a restart)
+    await S.ranked.store.flush();
+    const disk = RK.createStore({ dataDir: process.env.DATA_DIR });
+    assert.strictEqual(disk.get(B.key).mmr, S.ranked.store.get(B.key).mmr, "ranked.json next to the accounts");
+    for (const c of [anon, A, C]) c.ws.close();
+  }
 
   for (const c of [a, f, g, h]) c.ws.close();
   await wait(80);
   assert.strictEqual(S.rooms.size, 0, "empty lobbies removed");
   await S.stop();
   assert(!S.running(), "stopped");
-  console.log("All Paintball, chess and account server tests passed.");
+  fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true });
+  console.log("All Paintball, chess, account and Ranked server tests passed.");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

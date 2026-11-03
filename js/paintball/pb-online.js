@@ -10,6 +10,10 @@
  *      Host Lobby: a name, an optional password and how many players.
  *   3. The lobby's host presses Start. Everyone plays Respawn mode: first to
  *      20 eliminations (or the most after 10 minutes).
+ *   Ranked: signed in to a Mii Hub account, "Find Ranked Match" puts you in the
+ *      server's queue; it matches you with players of a similar MMR and starts a
+ *      free-for-all on a random map. Your rank is drawn by pb-ranked.js. This
+ *      connection signs in with your account's token (acToken, like account.js).
  *
  * The match itself is pb-game.js (Match with a `net`). The server is the
  * referee: it keeps everyone's HP and score.
@@ -17,7 +21,7 @@
 (function (root) {
   "use strict";
 
-  const VERSION = 6;          // must match the server's VERSION
+  const VERSION = 7;          // must match the server's VERSION
   const DEFAULT_PORT = 8787;
   // Where everyone meets to find lobbies (the Mii Hub Paintball server, see server/README.md).
   // It's built into the app from a secret when it's built (pb-config.js), so it's not in the code.
@@ -115,7 +119,11 @@
       spawned: new Map(), // who's alive in the match and where they came in (for joining late)
       askPass: null,      // the lobby we're typing a password for
       failed: false,
+      rk: freshRanked(),  // Ranked: your rank, searching, the match found (see rankedBox)
     };
+    function freshRanked() {
+      return { signedIn: false, checking: false, info: null, rules: null, queued: null, search: null, found: null, active: false, err: "" };
+    }
     let container = null;
     const rerender = () => { if (container && !ctx.inMatch()) render(container); };
     const setStatus = (text, cls) => { st.status = text; st.statusCls = cls || ""; rerender(); };
@@ -171,7 +179,7 @@
       st.net = net;
       st.connecting = false;
       net.handle({
-        welcome: (m) => { st.serverName = m.name || "Server"; st.online = m.online; setStatus("", ""); },
+        welcome: (m) => { st.serverName = m.name || "Server"; st.online = m.online; setStatus("", ""); rankedSignIn(); },
         rooms: (m) => { st.rooms = m.rooms; rerender(); },
         room: (m) => {
           st.room = m.room; st.askPass = null;
@@ -199,8 +207,30 @@
         votes: (m) => { st.votes = m; },
         spawn: (m) => st.spawned.set(m.id, m),
         kill: (m) => st.spawned.delete(m.v),
+        // ---- Ranked ----
+        acRes: (m) => {
+          if (m.q !== RK_Q) return;
+          st.rk.checking = false;
+          if (m.ok) { st.rk.signedIn = true; st.rk.err = ""; net.send({ t: "rkInfo" }); }
+          else { st.rk.signedIn = false; st.rk.err = m.code === "token" ? "Please sign in again (⚙️ Settings → Account)." : m.msg; }
+          rerender();
+        },
+        rkMe: (m) => {
+          Object.assign(st.rk, { signedIn: m.signedIn, info: m.info, active: m.active, rules: m.rules });
+          st.rk.queued = m.queued ? st.rk.queued || { since: performance.now() - m.queued.wait } : null;
+          rerender();
+        },
+        rkQueued: (m) => { st.rk.queued = st.rk.queued || { since: performance.now() }; st.rk.search = { n: m.n }; st.rk.err = ""; st.rk.found = null; rerender(); },
+        rkSearch: (m) => { if (st.rk.queued) { st.rk.search = m; st.rk.queued.since = performance.now() - m.wait; } },
+        rkCancelled: () => { st.rk.queued = null; rerender(); },
+        rkErr: (m) => { st.rk.err = m.msg; if (m.code === "signin") st.rk.signedIn = false; rerender(); },
+        rkFound: (m) => { st.rk.queued = null; st.rk.found = m; st.rk.err = ""; rerender(); },
+        rkTop: (m) => showTop(m),
+        // called off while the map was still loading (in a match, the match shows it)
+        rkCancel: (m) => { if (!ctx.inMatch()) { st.room = null; st.rk.found = null; setStatus(m.msg, "err"); } },
         close: () => {
           st.net = null; st.room = null; st.rooms = []; st.roster.clear(); st.loading.clear();
+          st.rk = freshRanked();
           st.failed = true;
           setStatus("Lost the connection to the Paintball server.", "err");
         },
@@ -215,9 +245,38 @@
       if (st.net) st.net.send({ t: "hello", v: VERSION, name: you.name || "Mii", color: ctx.paintFor(tpl), mii, skins: root.PBCrates && PBCrates.equipped ? PBCrates.equipped() : null });
     }
 
+    // ---- Ranked ----
+    const RK_Q = "rk-signin";
+    // sign this connection in to your Mii Hub account (Ranked needs to know who you are)
+    function rankedSignIn() {
+      if (!st.net || st.rk.signedIn || st.rk.checking) return;
+      const auth = root.MiiAccount && root.MiiAccount.rankedAuth ? root.MiiAccount.rankedAuth() : null;
+      if (!auth) { st.rk.signedIn = false; st.net.send({ t: "rkInfo" }); rerender(); return; } // (the rules, for the card)
+      st.rk.checking = true;
+      st.net.send({ t: "acToken", q: RK_Q, user: auth.user, token: auth.token });
+      rerender();
+    }
+    function queueRanked() { if (st.net) { st.rk.err = ""; st.net.send({ t: "rkQueue" }); } }
+    function cancelRanked() { if (st.net) st.net.send({ t: "rkCancel" }); }
+    function rejoinRanked() { if (st.net) { st.rk.err = ""; st.net.send({ t: "rkRejoin" }); } }
+    function showTop(m) {
+      if (!container || ctx.inMatch() || !root.PBRanked) return;
+      const host = container.closest(".pb-root") || container;
+      const old = host.querySelector(".pbr-lbov");
+      if (old) old.remove();
+      host.appendChild(root.PBRanked.leaderboard(m));
+    }
+    function rankedBox() {
+      return root.PBRanked.card(st.rk, {
+        queue: queueRanked, cancel: cancelRanked, rejoin: rejoinRanked,
+        top: () => { if (st.net) st.net.send({ t: "rkTop" }); },
+      });
+    }
+
     function disconnect(quiet) {
       if (st.net) st.net.close();
       st.net = null; st.room = null; st.rooms = []; st.roster.clear(); st.loading.clear();
+      st.rk = freshRanked();
       if (!quiet) setStatus("");
     }
 
@@ -248,13 +307,16 @@
           youColor: colorOf(st.net.id),
           net: st.net, roster: entries.filter(Boolean), roomName: st.room.name, map: (st.phase && st.phase.map) || st.room.map,
           initial: { phase: st.phase, round: st.roundMsg, over: st.over, inter: st.inter, votes: st.votes },
+          ranked: !!st.room.ranked, roomPlayers: st.room.players,
           onLeave: () => leaveLobby(),
+          onRequeue: () => queueRanked(),
         });
       } finally { st.starting = false; }
     }
     function leaveLobby() {
       if (st.net) { st.net.send({ t: "leave" }); st.net.send({ t: "list" }); }
       st.room = null; st.phase = st.roundMsg = st.over = st.inter = st.votes = null;
+      st.rk.found = null;
       st.spawned.clear();
     }
 
@@ -293,7 +355,10 @@
 
       const right = el("div");
       if (!st.net) right.appendChild(connectBox(addr));
-      else if (!st.room) right.append(findBox(), hostBox());
+      else if (!st.room) {
+        if (root.PBRanked) right.appendChild(rankedBox());
+        right.append(findBox(), hostBox());
+      }
       else right.appendChild(lobbyBox());
       wrap.append(left, right);
       c.appendChild(wrap);
@@ -400,6 +465,7 @@
 
     // you've joined a lobby: the map is loading
     function lobbyBox() {
+      if (st.room.ranked && st.rk.found && root.PBRanked) return root.PBRanked.found(st.rk.found);
       const box = el("div", "pb-box");
       box.appendChild(el("h3", null, (st.room.locked ? "🔒 " : "") + st.room.name));
       box.appendChild(el("div", "pb-status", "Joining…"));
@@ -411,7 +477,7 @@
       dispose() { disconnect(true); container = null; },
       get net() { return st.net; },
       get state() { return st; },
-      connect, hostLobby, joinLobby, leaveLobby,
+      connect, hostLobby, joinLobby, leaveLobby, queueRanked, cancelRanked,
     };
   }
 

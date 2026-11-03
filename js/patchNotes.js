@@ -11,7 +11,17 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-10-28", title: "Little polish",
+      v: null, date: "2026-11-03", title: "Ranked Paintball",
+      notes: [
+        "🏆 Ranked is here! In Paintball's Online tab, sign in and press Find Ranked Match: you're matched with players of a similar rank for a free-for-all (up to 4 players, first to 15, random map).",
+        "Climb from Iron through Bronze, Silver, Gold, Platinum, Emerald and Diamond (divisions IV to I) to Master and Grandmaster. The top 10 players on the server are Predators. Every rank has its own badge.",
+        "Your first 5 matches are placement matches: your rank is revealed after them. Win to gain MMR (beating better players is worth more), and after a promotion your next loss can't drop you a tier.",
+        "See your MMR change at the end of every match (with a celebration when you rank up), and check the Leaderboard. Leaving a ranked match counts as a loss, but if your connection drops you get 30 seconds to rejoin.",
+        "Online Paintball needs this update to connect to the server.",
+      ],
+    },
+    {
+      v: "1.2.16", date: "2026-10-28", title: "Little polish",
       notes: [
         "A Mii's menu and the home panel slide in and out smoothly.",
         "The rare Mustang on Café Street drives down the middle of the road now, so it never drives through the cyclists (the tram waits until it's gone).",

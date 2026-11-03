@@ -4,7 +4,8 @@
  * or online against other people (pb-online.js + the server in /server).
  *
  *   Lobby   "VS a Mii": pick the Mii you play as and the Mii you play against.
- *           "Online": connect to a server, make or join a room.
+ *           "Online": connect to a server, make or join a room, or play Ranked
+ *           (matchmaking by MMR; ranks and badges are in pb-ranked.js).
  *   Modes   Respawn: you're back 2 s after being splattered, first to 20
  *           eliminations wins (or the most after 10 minutes).
  *           Rounds (VS a Mii only): first to 10 rounds, 3 s freeze + 1:30 each.
@@ -404,7 +405,7 @@
       if (current && current.close === close) current = null;
       if (opts.onClose) opts.onClose();
     }
-    function lobbyKeys(e) { if (e.key === "Escape" && !match) { e.preventDefault(); close(); } }
+    function lobbyKeys(e) { if (e.key === "Escape" && !match && !rootEl.querySelector(".pbr-lbov")) { e.preventDefault(); close(); } }
     document.addEventListener("keydown", lobbyKeys, true);
 
     function showLobby() {
@@ -542,8 +543,14 @@
           const tYou = await opts.templateFor(you);
           match = new Match({
             root: rootEl, opts, settings, you, tYou, net: cfg.net, roster: cfg.roster, youColor: cfg.youColor, map: mapId,
-            initial: cfg.initial, roomName: cfg.roomName,
-            onExit: (to) => { match && match.dispose(); match = null; root.__pb = null; if (cfg.onLeave) cfg.onLeave(); if (to === "hub") close(); else showLobby(); },
+            initial: cfg.initial, roomName: cfg.roomName, ranked: cfg.ranked, roomPlayers: cfg.roomPlayers,
+            onExit: (to) => {
+              match && match.dispose(); match = null; root.__pb = null;
+              if (cfg.onLeave) cfg.onLeave();
+              if (to === "hub") return close();
+              if (to === "requeue" && cfg.onRequeue) cfg.onRequeue(); // ranked: straight back to searching
+              showLobby();
+            },
           });
           load.remove();
           current.match = match;
@@ -608,6 +615,9 @@
       this.rootEl = o.root;
       this.net = o.net || null;
       this.online = !!this.net;
+      this.ranked = this.online && !!o.ranked;
+      this.ranks = new Map(); // ranked: server id -> rank (for the badges)
+      for (const p of o.roomPlayers || []) if (p.rank) this.ranks.set(p.id, p.rank);
       this.mode = this.online ? "respawn" : (o.mode === "rounds" ? "rounds" : "respawn");
       this.toWin = this.mode === "rounds" ? TO_WIN : (o.toWin || RESPAWN_TO_WIN);
       this.timeLimit = this.mode === "respawn" ? (o.timeLimit ? o.timeLimit / 1000 : TIME_LIMIT) : 0;
@@ -920,7 +930,7 @@
       // overlays: click to play, the menu (Esc), results
       this.ovClick = el("div", "pb-overlay");
       const p1 = el("div", "pb-panel");
-      const title = this.online ? "🌐 " + (this.o.roomName || "Online match") : "🎯 " + this.you.name + " vs " + this.bot.name;
+      const title = this.ranked ? "🏆 " + (this.o.roomName || "Ranked match") : this.online ? "🌐 " + (this.o.roomName || "Online match") : "🎯 " + this.you.name + " vs " + this.bot.name;
       p1.append(el("h2", null, title), el("p", null, "Click to play. Your mouse controls your aim (press Esc for the menu)."));
       p1.appendChild(el("button", "pb-btn primary", "Click to play"));
       this.ovClick.appendChild(p1);
@@ -929,7 +939,7 @@
       this.ovPause = el("div", "pb-overlay");
       const p2 = el("div", "pb-panel");
       p2.append(el("h2", null, this.online ? "Menu" : "Paused"));
-      if (this.online) p2.appendChild(el("p", null, "The match keeps going while you're in here!"));
+      if (this.online) p2.appendChild(el("p", null, "The match keeps going while you're in here!" + (this.ranked ? " Leaving a ranked match counts as a loss." : "")));
       const setBox = el("div");
       settingsControls(setBox, this.settings, (k) => {
         saveSettings(this.settings);
@@ -940,7 +950,7 @@
       const btns = el("div", "btns");
       const resume = el("button", "pb-btn primary", "Resume");
       resume.addEventListener("click", (e) => { e.stopPropagation(); this.lock(); });
-      const quit = el("button", "pb-btn", this.online ? "Leave match" : "Quit match");
+      const quit = el("button", "pb-btn", this.ranked ? "Leave match (counts as a loss)" : this.online ? "Leave match" : "Quit match");
       quit.addEventListener("click", (e) => { e.stopPropagation(); this.quit(); });
       btns.append(resume, quit);
       p2.append(setBox, btns);
@@ -976,13 +986,22 @@
         side.t.style.setProperty("--c", f.color);
         if (side.img.getAttribute("src") !== (f.portrait || "")) side.img.src = f.portrait || "";
         side.nm.textContent = f.name;
+        // ranked: their rank badge next to the name
+        const rk = this.ranked && root.PBRanked ? this.ranks.get(f.netId) : null;
+        const key = rk ? rk.tier + rk.div : "";
+        if ((side.rkKey || "") !== key) {
+          if (side.badge) side.badge.remove();
+          side.badge = rk ? root.PBRanked.badge(rk, 30) : null;
+          if (side.badge) side.nm.before(side.badge);
+          side.rkKey = key;
+        }
         side.sc.textContent = f.score;
       };
       set(this.hudLeft, this.you);
       const other = this.bot || this.leader();
       if (other && other !== this.you) set(this.hudRight, other);
       this.hudRight.t.style.visibility = other && other !== this.you ? "" : "hidden";
-      this.hudSub.textContent = this.phase === "warmup" ? "Waiting for players" : this.mode === "rounds" ? "First to " + this.toWin + " rounds" : "First to " + this.toWin;
+      this.hudSub.textContent = this.phase === "warmup" ? "Waiting for players" : this.mode === "rounds" ? "First to " + this.toWin + " rounds" : (this.ranked ? "Ranked · first to " : "First to ") + this.toWin;
     }
 
     banner(big, small, cls, secs) {
@@ -1016,7 +1035,7 @@
       b.innerHTML = "";
       const h = el("h3");
       const mn = mapName(this.mapId);
-      const title = this.mode === "rounds" ? mn + " · Round " + this.round : this.online ? mn + " · " + (this.o.roomName || "Online") : mn + " · Respawn";
+      const title = this.mode === "rounds" ? mn + " · Round " + this.round : this.ranked ? mn + " · Ranked" : this.online ? mn + " · " + (this.o.roomName || "Online") : mn + " · Respawn";
       h.append(el("span", null, title), el("small", null, this.mode === "rounds" ? "First to " + this.toWin + " rounds" : "First to " + this.toWin + " eliminations"));
       b.appendChild(h);
       const tbl = el("table");
@@ -1032,7 +1051,11 @@
         const extra = f === this.you ? " (you)" : f === this.bot ? " · " + root.MiniGames.skillLevel(this.opts.statsFor(this.o.opp).skill) : "";
         const nm = el("span", null, f.name + extra);
         nm.style.color = f.color;
-        name.append(img, nm);
+        name.append(img);
+        const rk = this.ranked && root.PBRanked ? this.ranks.get(f.netId) : null;
+        if (rk) name.appendChild(root.PBRanked.badge(rk, 24));
+        name.append(nm);
+        if (rk) { const t = el("small", null, " " + rk.label); t.style.opacity = 0.6; name.appendChild(t); }
         tr.appendChild(name);
         const mine = f === this.you || f === this.bot; // we only know shots/accuracy for players on this computer
         const cells = [f.score, s.kills, s.deaths, s.kills ? Math.round((s.hs / s.kills) * 100) + "%" : "–", mine ? s.dmg : "–", mine && s.shots ? Math.round((s.hits / s.shots) * 100) + "%" : "–"];
@@ -1209,9 +1232,18 @@
         bye: (m) => this.removeRemote(m.id),
         skins: (m) => { const f = fOf(m.id); if (f && f !== this.you) { f.skins = m.s; this.reskinAvatar(f); } },
         room: (m) => {
-          for (const p of m.room.players) { const f = fOf(p.id); if (f) { f.score = p.score; f.stats.deaths = Math.max(f.stats.deaths, p.deaths); } }
+          for (const p of m.room.players) {
+            if (p.rank) this.ranks.set(p.id, p.rank);
+            const f = fOf(p.id); if (f) { f.score = p.score; f.stats.deaths = Math.max(f.stats.deaths, p.deaths); }
+          }
           this.updateScore();
         },
+        // ---- Ranked ----
+        rkResult: (m) => this.showRankResult(m),
+        rkAway: (m) => this.notice("📡 " + m.name + " lost connection: " + Math.round(m.in / 1000) + " s to come back"),
+        rkBack: (m) => this.notice("📡 " + m.name + " is back"),
+        rkGone: (m) => this.notice("🚪 " + m.name + " left the match (counts as a loss for them)"),
+        rkCancel: (m) => this.calledOff(m.msg),
         warmup: (m) => this.netWarmup(m),
         start: (m) => this.netStart(m, 0),
         round: (m) => this.netRound(m, 0),
@@ -1305,7 +1337,7 @@
       this.phaseEnd = this.now + freeze;
       this.matchEnd = this.phaseEnd + this.timeLimit;
       if (!m.late) for (const f of this.fighters) if (f.kind === "remote") { f.alive = false; f.dead = 0; }
-      const name = this.mode === "rounds" ? "ROUNDS" : "RESPAWN";
+      const name = this.ranked ? "RANKED" : this.mode === "rounds" ? "ROUNDS" : "RESPAWN";
       const sub = this.mode === "rounds" ? "Last one standing wins the round · first to " + this.toWin : "First to " + this.toWin + " eliminations";
       if (this.mode === "respawn") {
         this.respawn(this.you, this.pickSpawn(this.you, true), true);
@@ -2377,12 +2409,23 @@
         p.appendChild(el("div", "score", winner ? winner.name + " wins with " + winner.score : why || ""));
       }
       if (why && why !== "disconnected") p.appendChild(el("p", null, why));
+      // ranked: your new MMR and rank (filled in when the server's result arrives)
+      this.rankBox = null;
+      if (this.ranked && why !== "disconnected") {
+        this.rankBox = el("div", "pb-status", "Updating your rank…");
+        p.appendChild(this.rankBox);
+        if (this.rankResult) this.showRankResult(this.rankResult);
+      } else if (this.ranked) {
+        p.appendChild(el("p", null, "Open the Online tab again and press Rejoin Match quickly, or it counts as a loss."));
+      }
       const tbl = el("table");
       tbl.innerHTML = "<tr><th></th><th>" + (this.mode === "rounds" ? "Rounds" : "Score") + "</th><th>K</th><th>D</th><th>HS %</th></tr>";
       for (const f of this.fighters.slice().sort((x, z) => z.score - x.score)) {
         const s = f.stats;
         const tr = el("tr");
         const n = el("td", null, f.name + (f === this.you ? " (you)" : "")); n.style.color = f.color;
+        const rk = this.ranked && root.PBRanked ? this.ranks.get(f.netId) : null;
+        if (rk) n.prepend(root.PBRanked.badge(rk, 24));
         tr.appendChild(n);
         for (const c of [f.score, s.kills, s.deaths, s.kills ? Math.round((s.hs / s.kills) * 100) + "%" : "–"]) tr.appendChild(el("td", null, String(c)));
         tbl.appendChild(tr);
@@ -2400,8 +2443,13 @@
       const btns = el("div", "btns");
       if (this.online) {
         this.voteBox = null;
-        if (why !== "disconnected") { this.voteBox = el("div", "pb-vote"); p.appendChild(this.voteBox); }
-        const leave = el("button", "pb-btn", why === "disconnected" ? "OK" : "Leave lobby");
+        if (why !== "disconnected" && !this.ranked) { this.voteBox = el("div", "pb-vote"); p.appendChild(this.voteBox); }
+        if (this.ranked && why !== "disconnected") {
+          const again = el("button", "pb-btn primary", "Find another match");
+          again.addEventListener("click", () => this.o.onExit("requeue"));
+          btns.append(again);
+        }
+        const leave = el("button", "pb-btn", why === "disconnected" ? "OK" : this.ranked ? "Back to the menu" : "Leave lobby");
         leave.addEventListener("click", () => this.o.onExit("leave"));
         btns.append(leave);
       } else {
@@ -2418,6 +2466,34 @@
       ov.classList.add("show");
     }
     finishMatch() { this.finish(this.you.score > this.bot.score ? this.you : this.bot); }
+
+    // ranked: the server's verdict (MMR +/-, promotions) on the results screen
+    showRankResult(m) {
+      this.rankResult = m;
+      if (!this.rankBox || !root.PBRanked) return;
+      const box = root.PBRanked.result(m);
+      this.rankBox.replaceWith(box);
+      this.rankBox = box;
+      if (m.promoted || m.justPlaced) this.audio.play("roundWin");
+    }
+    // ranked: called off before it started (someone left while it loaded)
+    calledOff(msg) {
+      if (this.over) return;
+      this.over = true;
+      if (document.exitPointerLock && this.locked()) document.exitPointerLock();
+      const ov = this.ovResult;
+      ov.innerHTML = "";
+      const p = el("div", "pb-panel pb-result");
+      p.append(el("div", "big", "CALLED OFF"), el("p", null, msg || "The match was called off."), el("p", null, "You're back in the queue: searching for another match…"));
+      const btns = el("div", "btns");
+      const ok = el("button", "pb-btn primary", "OK");
+      ok.addEventListener("click", () => this.o.onExit("leave"));
+      btns.appendChild(ok);
+      p.appendChild(btns);
+      ov.appendChild(p);
+      ov.classList.add("show");
+      setTimeout(() => { if (!this.disposed) this.o.onExit("leave"); }, 2500);
+    }
 
     quit() {
       this.over = true;
