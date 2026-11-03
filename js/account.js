@@ -898,6 +898,8 @@
     saveNow,
     settingsSection,
     get user() { return signedIn() ? meta.user : null; },
+    // for Ranked Paintball: signs its own connection in to your account (null when you're not signed in)
+    rankedAuth() { return signedIn() ? { user: meta.user, token: meta.token } : null; },
     get online() { return online; },
     _meta: () => Object.assign({}, meta, { token: meta.token ? "(set)" : null }), // for tests
   };

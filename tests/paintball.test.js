@@ -329,4 +329,56 @@ const mapReport = [];
 }
 console.log("Maps OK: " + LY.MAPS.length + " maps; own layouts: " + mapReport.join("; "));
 
+// ---------------------------------------------------------------------
+// Ranked (pb-ranked.js): ranks, divisions, Predator, badges
+// ---------------------------------------------------------------------
+{
+  const RK = require("../js/paintball/pb-ranked.js");
+  const SR = require("../server/ranked.js");
+  // the same ladder as the server's
+  assert.deepStrictEqual(RK.TIERS, SR.TIERS, "client and server ranks match");
+  assert.strictEqual(RK.PLACEMENTS, SR.PLACEMENTS);
+  for (let m = -100; m <= 4000; m += 7) {
+    for (const o of [{}, { predator: true }, { placed: false }]) assert.deepStrictEqual(RK.rankFor(m, o), SR.rankFor(m, o), "same rank for " + m + " " + JSON.stringify(o));
+    assert.deepStrictEqual(RK.progress(m), SR.progress(m), "same progress for " + m);
+  }
+  const lbl = (m, o) => RK.rankFor(m, o).label;
+  assert.deepStrictEqual([0, 100, 200, 300].map((m) => lbl(m)), ["Iron IV", "Iron III", "Iron II", "Iron I"], "divisions IV -> I");
+  assert.deepStrictEqual([400, 800, 1200, 1600, 2000, 2400].map((m) => RK.rankFor(m).name), ["Bronze", "Silver", "Gold", "Platinum", "Emerald", "Diamond"]);
+  assert.strictEqual(lbl(2799), "Diamond I"); assert.strictEqual(lbl(2800), "Master"); assert.strictEqual(lbl(3200), "Grandmaster");
+  assert.strictEqual(RK.rankFor(2800).div, 0, "Master has no divisions");
+  assert.strictEqual(lbl(3000, { predator: true }), "Predator"); assert.strictEqual(lbl(2650, { predator: true }), "Diamond II", "Predator needs Master");
+  assert.strictEqual(RK.nextRank(1250).label, "Gold III"); assert.strictEqual(RK.nextRank(2750).label, "Master"); assert.strictEqual(RK.nextRank(3000).label, "Grandmaster"); assert.strictEqual(RK.nextRank(3500), null);
+  // every rank has its own badge, and it's well-formed SVG
+  const seen = new Set();
+  const ranks = [RK.rankFor(0, { placed: false })];
+  for (const t of RK.TIERS) {
+    if (t.id === "predator") ranks.push(RK.rankFor(3000, { predator: true }));
+    else if (t.divs) for (let d = 0; d < t.divs; d++) ranks.push(RK.rankFor(t.min + d * 100));
+    else ranks.push(RK.rankFor(t.min));
+  }
+  assert.strictEqual(ranks.length, 1 + 7 * 4 + 3, "every rank + division");
+  for (const r of ranks) {
+    const svg = RK.badgeSVG(r, 64);
+    assert(svg.startsWith("<svg") && svg.endsWith("</svg>") && /width="64"/.test(svg), r.label + " badge");
+    // tags open and close in order
+    const stack = [];
+    for (const m of svg.matchAll(/<(\/?)([a-zA-Z]+)[^>]*?(\/?)>/g)) {
+      if (m[3]) continue;
+      if (m[1]) assert.strictEqual(stack.pop(), m[2], r.label + ": </" + m[2] + ">"); else stack.push(m[2]);
+    }
+    assert.strictEqual(stack.length, 0, r.label + " closed");
+    assert(!/NaN|undefined/.test(svg), r.label + " has no NaN");
+    assert(svg.includes(RK.COLORS[r.tier][1]), r.label + " in its tier color");
+    if (r.div) assert(svg.includes(">" + RK.ROMAN[r.div] + "</text>"), r.label + " shows its division");
+    else assert(!/>(I|II|III|IV)<\/text>/.test(svg), r.label + " has no division");
+    assert(!seen.has(svg), r.label + " looks different from the others");
+    seen.add(svg);
+  }
+  const tierColors = RK.TIERS.map((t) => RK.COLORS[t.id][1]);
+  assert.strictEqual(new Set(tierColors).size, tierColors.length, "a color per tier");
+  assert(RK.badgeURL(RK.rankFor(1500)).startsWith("data:image/svg+xml"), "badges as images");
+  console.log("Ranked OK: " + ranks.length + " badges, client and server ranks match.");
+}
+
 console.log("All paintball tests passed. Stop " + (t * 1000).toFixed(0) + " ms, counter-strafe " + (t2 * 1000).toFixed(0) + " ms, jump " + top.toFixed(2) + " m, AK hits at 10 m: still " + rates.akStill + " / running " + rates.akRun + " / jumping " + rates.akJump + ", AK head " + E.damageFor("head", 10) + " / chest " + E.damageFor("chest", 10));
