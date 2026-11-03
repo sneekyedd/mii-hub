@@ -16,7 +16,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        # (a fixed macOS version: "macos-latest" sometimes never gets a machine and is cancelled)
+        os: [windows-latest, macos-15, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
