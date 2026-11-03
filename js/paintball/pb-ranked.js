@@ -372,7 +372,7 @@
       const sub = el("span", null, "");
       const fillSub = () => {
         const q = s.search || {};
-        sub.textContent = (q.range ? "Looking for players within ±" + q.range + " MMR" : "Looking for anyone") + (q.n ? " · " + q.n + " searching" : "");
+        sub.textContent = (q.range ? "Looking for players within ±" + q.range + " MMR" : q.range === null ? "Looking for anyone (you've waited a while)" : "Looking for players near your rank") + (q.n ? " · " + q.n + " searching" : "");
       };
       fillSub();
       const txt = el("div"); txt.append(t, sub);
@@ -459,6 +459,8 @@
     btns.appendChild(close);
     p.appendChild(btns);
     ov.appendChild(p);
+    // you, in view (when you're further down the list)
+    setTimeout(() => { const me = t.querySelector("tr.you"); if (me && me.scrollIntoView) me.scrollIntoView({ block: "nearest" }); }, 0);
     return ov;
   }
 

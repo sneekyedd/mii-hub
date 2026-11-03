@@ -1035,7 +1035,7 @@
       b.innerHTML = "";
       const h = el("h3");
       const mn = mapName(this.mapId);
-      const title = this.mode === "rounds" ? mn + " · Round " + this.round : this.online ? mn + " · " + (this.o.roomName || "Online") : mn + " · Respawn";
+      const title = this.mode === "rounds" ? mn + " · Round " + this.round : this.ranked ? mn + " · Ranked" : this.online ? mn + " · " + (this.o.roomName || "Online") : mn + " · Respawn";
       h.append(el("span", null, title), el("small", null, this.mode === "rounds" ? "First to " + this.toWin + " rounds" : "First to " + this.toWin + " eliminations"));
       b.appendChild(h);
       const tbl = el("table");
