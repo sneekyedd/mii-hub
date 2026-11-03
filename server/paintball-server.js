@@ -17,6 +17,7 @@
  *     believable (damage numbers, fire rate), decides kills, respawns and who wins
  *   - also hosts online chess games (see chess-rooms.js)
  *   - and Mii Hub accounts with cloud saves (see accounts.js; saved in DATA_DIR, default ./data)
+ *   - and Ranked: a matchmaking queue, ranks and MMR per account (see ranked.js; saved in DATA_DIR/ranked.json)
  *
  * Every message is a small JSON object with a type "t" (see PROTOCOL below).
  */
@@ -26,7 +27,7 @@ const http = require("http");
 const crypto = require("crypto");
 const { WebSocketServer } = require("ws");
 
-const VERSION = 6; // (2: lobbies with warmup, modes and voting; 3: AWP loadout; 4: weapon skins; 5: online chess; 6: more maps)
+const VERSION = 7; // (2: lobbies with warmup, modes and voting; 3: AWP loadout; 4: weapon skins; 5: online chess; 6: more maps; 7: Ranked)
 const PORT = parseInt(process.env.PORT || "8787", 10);
 const HOST = process.env.HOST || undefined; // e.g. 127.0.0.1 = only reachable through Tailscale Funnel
 const MAX_PLAYERS = Math.max(2, Math.min(16, parseInt(process.env.MAX_PLAYERS || "8", 10))); // most a host can pick
@@ -42,6 +43,17 @@ const INTERMISSION_MS = parseInt(process.env.INTERMISSION_MS || "15000", 10);
 const SERVER_NAME = process.env.SERVER_NAME || "Admin Server"; // what players see in the list (never the address)
 const MAX_MII_BYTES = 6 * 1024 * 1024;
 const MAX_ROOMS = 200;
+
+// Ranked (see ranked.js): free-for-all Respawn, matched by MMR
+const envInt = (k, d) => { const v = parseInt(process.env[k] || "", 10); return isFinite(v) ? v : d; };
+const RANKED_SIZE = Math.max(2, Math.min(8, envInt("RANKED_SIZE", 4)));   // players in a ranked match (at most)
+const RANKED_TO_WIN = Math.max(1, envInt("RANKED_TO_WIN", 15));          // first to 15 eliminations
+const RANKED_TIME = 8 * 60e3;                                             // or the most after 8 minutes
+const RANKED_COUNTDOWN_MS = envInt("RANKED_COUNTDOWN_MS", 8000);          // time to load the map
+const RANKED_FILL_MS = envInt("RANKED_FILL_MS", 20000);                   // start with fewer players after waiting this long
+const RECONNECT_MS = envInt("RECONNECT_MS", 30000);                      // a dropped player can come back this long
+const RANKED_TICK_MS = Math.max(20, envInt("RANKED_TICK_MS", 1000));      // how often the matchmaker looks
+const DODGE_MS = 2 * 60e3;                                                // leaving before a match starts: wait to search again
 
 // Damage rules (the same numbers as the game: CS:GO's AK, AWP, Deagle and knife)
 const AK_ZONES = { head: 4, chest: 1, arm: 1, stomach: 1.25, leg: 0.75 };
@@ -63,6 +75,11 @@ const KNIFE_DAMAGE = [25, 40, 65, 90, 180];
  *   hit    { v, z, d, w, b }             you hit player v in zone z for d damage with weapon w (b = backstab)
  *   spawn  { x, z, yaw }                 you're back in after being splattered
  *   ping   { c }
+ *   rkInfo   {}                         your rank (you sign in on this connection first: acToken, see accounts.js)
+ *   rkQueue  {}                         search for a ranked match (or rejoin the one you dropped out of)
+ *   rkCancel {}                         stop searching
+ *   rkRejoin {}                         back into the ranked match you got disconnected from
+ *   rkTop    {}                         the Ranked leaderboard
  * server -> client
  *   welcome { id, v, maxPlayers, name, online }   rooms { rooms }   room { room }   mii { id, name, color, mii, skins }   skins { id, s }   bye { id }
  *   warmup { map }                   nobody to play with yet: run around freely (on this map)
@@ -73,6 +90,13 @@ const KNIFE_DAMAGE = [25, 40, 65, 90, 180];
  *   over { winner, scores, mode }  intermission { in, modes, maps }  votes { modes, maps }  voted { mode, map, name, random }
  *   (intermission maps: two maps + { id: "random" }; "random" ends up as a map that wasn't one of the two)
  *   pong { c, s }  err { msg }
+ *   rkMe { signedIn, info, queued, active, rules }   info = { user, rank, mmr (null in placements), games, wins, placements, progress, pos, shield }
+ *   rkQueued { n, size }  rkSearch { wait, range, n }  rkCancelled {}  rkErr { code, msg }
+ *   rkFound { map, players }   then the usual room / mii / start (room.ranked: true, players have a rank)
+ *   rkAway { name, in }  rkBack { name }  rkGone { name }   someone dropped out / came back / is out for good
+ *   rkResult { place, of, delta, before, after, placement, justPlaced, promoted, demoted, protected, leaver }
+ *   rkCancel { msg }   the match was called off before it started (nobody's MMR changed)
+ *   rkTop { list: [{ pos, user, mmr, rank, games, wins, you }], you }
  */
 
 let nextId = 1;
@@ -98,15 +122,17 @@ const hashPass = (salt, pw) => crypto.createHash("sha256").update(salt + "\u0000
 
 function roomInfo(room) {
   return {
-    id: room.id, name: room.name, host: room.host, state: room.state, map: room.map, toWin: TO_WIN, timeLimit: TIME_LIMIT, max: room.max, locked: !!room.pass,
+    id: room.id, name: room.name, host: room.host, state: room.state, map: room.map, toWin: modeOf(room).toWin, timeLimit: modeOf(room).timeLimit, max: room.max, locked: !!room.pass,
+    ranked: !!room.ranked,
     players: room.players.map((id) => {
       const p = players.get(id);
-      return { id, name: p.name, color: p.color, score: p.score, deaths: p.deaths, alive: p.alive };
+      const e = room.ranked && room.ranked.entrants.get(p.rkKey);
+      return Object.assign({ id, name: p.name, color: p.color, score: p.score, deaths: p.deaths, alive: p.alive }, e ? { rank: e.rank, user: e.user } : {});
     }),
   };
 }
 function roomList() {
-  return Array.from(rooms.values()).map((r) => {
+  return Array.from(rooms.values()).filter((r) => !r.ranked).map((r) => {
     const host = players.get(r.host);
     return { id: r.id, name: r.name, host: host ? host.name : "", players: r.players.length, max: r.max, state: r.state, locked: !!r.pass };
   });
@@ -141,6 +167,8 @@ const MAP_LIST = [
 ];
 const MAPS = {};
 for (const [id, name] of MAP_LIST) MAPS[id] = { id, name };
+const RANKED_MODE = { id: "respawn", name: "Ranked", toWin: RANKED_TO_WIN, timeLimit: RANKED_TIME };
+const modeOf = (room) => (room.ranked ? RANKED_MODE : MODES[room.mode] || MODES.respawn);
 const RANDOM = { id: "random", name: "Random", desc: "Any other map, picked by chance." };
 const anyOf = (list) => list[Math.floor(Math.random() * list.length)];
 // two different maps to vote on (not the one just played)
@@ -172,21 +200,22 @@ function maybeStart(room) {
   if (room.state === "warmup" && room.players.length >= 2) startMatch(room, room.mode);
 }
 
-function startMatch(room, mode) {
+function startMatch(room, mode, countdown) {
   clearTimers(room);
-  const M = MODES[mode] || MODES.respawn;
-  room.mode = M.id;
+  const cd = countdown == null ? COUNTDOWN_MS : countdown;
+  room.mode = (MODES[mode] || MODES.respawn).id;
+  const M = modeOf(room);
   room.state = "live";
-  room.startedAt = Date.now() + COUNTDOWN_MS;
+  room.startedAt = Date.now() + cd;
   room.round = 0;
   for (const id of room.players) {
     const p = players.get(id);
     p.score = 0; p.deaths = 0; p.hp = 100; p.alive = false; p.diedAt = 0; p.inRound = false;
     p.lastAk = 0; p.lastAwp = 0; p.lastDeagle = 0; p.lastKnife = 0;
   }
-  broadcast(room, { t: "start", in: COUNTDOWN_MS, mode: M.id, map: room.map, toWin: M.toWin, timeLimit: M.timeLimit });
-  if (M.id === "respawn") room.timer = setTimeout(() => endMatch(room), COUNTDOWN_MS + TIME_LIMIT);
-  else startRound(room, COUNTDOWN_MS);
+  broadcast(room, { t: "start", in: cd, mode: M.id, map: room.map, toWin: M.toWin, timeLimit: M.timeLimit, ranked: !!room.ranked });
+  if (M.id === "respawn") room.timer = setTimeout(() => endMatch(room), cd + M.timeLimit);
+  else startRound(room, cd);
   roomChanged(room);
 }
 
@@ -221,6 +250,7 @@ function checkRound(room) {
 function endMatch(room) {
   if (room.state !== "live") return;
   clearTimers(room);
+  if (room.ranked) return rankedEnd(room);
   let winner = null, best = -1;
   for (const id of room.players) { const p = players.get(id); if (p.score > best) { best = p.score; winner = id; } }
   broadcast(room, { t: "over", winner, scores: scores(room), mode: room.mode });
@@ -266,7 +296,8 @@ function finishVote(room) {
   else { room.mode = mode; toWarmup(room); }
 }
 
-function leaveRoom(p) {
+// why: "disconnect" when the connection dropped (ranked gives you a little while to come back)
+function leaveRoom(p, why) {
   const room = p.room && rooms.get(p.room);
   p.room = null;
   clearTimeout(p.spawnTimer);
@@ -274,6 +305,7 @@ function leaveRoom(p) {
   room.players = room.players.filter((id) => id !== p.id);
   if (room.votes) room.votes.delete(p.id);
   broadcast(room, { t: "bye", id: p.id });
+  if (room.ranked) return rankedLeft(room, p, why);
   if (!room.players.length) { clearTimers(room); rooms.delete(room.id); }
   else {
     if (room.host === p.id) room.host = room.players[0];
@@ -305,10 +337,10 @@ function joinRoom(p, room) {
   roomChanged(room);
   // what's going on in here right now
   const now = Date.now();
-  const M = MODES[room.mode] || MODES.respawn;
+  const M = modeOf(room);
   if (room.state === "warmup") send(p, { t: "warmup", map: room.map });
   else if (room.state === "live") {
-    send(p, { t: "start", in: Math.max(0, room.startedAt - now), mode: room.mode, map: room.map, toWin: M.toWin, timeLimit: M.timeLimit ? M.timeLimit - Math.max(0, now - room.startedAt) : 0, late: true, round: room.round });
+    send(p, { t: "start", in: Math.max(0, room.startedAt - now), mode: room.mode, map: room.map, toWin: M.toWin, timeLimit: M.timeLimit ? M.timeLimit - Math.max(0, now - room.startedAt) : 0, late: true, round: room.round, ranked: !!room.ranked });
   } else if (room.state === "intermission") {
     send(p, { t: "over", winner: null, scores: scores(room), mode: room.mode, late: true });
     send(p, { t: "intermission", in: Math.max(0, room.voteEnds - now), modes: Object.values(MODES).map((m) => ({ id: m.id, name: m.name, desc: m.desc })), maps: mapOptions(room) });
@@ -375,6 +407,215 @@ const chess = require("./chess-rooms.js")({ players, send, clean, num, log: (s) 
 // so do accounts and cloud saves
 const accounts = require("./accounts.js")({ send, clean, log: (s) => log(s) });
 
+// ---------------------------------------------------------------------
+// Ranked: the queue, ranked matches, results (the math and saving are in ranked.js)
+// ---------------------------------------------------------------------
+const R = require("./ranked.js");
+const store = R.createStore({ dataDir: accounts.DATA_DIR, log: (s) => log(s) });
+const queue = new Map();        // account -> { key, user, p, mmr, at }   (searching)
+const activeRanked = new Map(); // account -> ranked room id (a match you're in, or dropped out of)
+const dodged = new Map();       // account -> when they can search again
+const rkHits = new Map();       // account -> [times they started searching]
+const rankedRules = () => ({ size: RANKED_SIZE, toWin: RANKED_TO_WIN, timeLimit: RANKED_TIME, placements: R.PLACEMENTS, reconnect: RECONNECT_MS });
+const rkErr = (p, code, msg) => send(p, { t: "rkErr", code, msg });
+
+function rankedMe(p) {
+  const key = p.acUser;
+  const q = key && queue.get(key);
+  const id = key && activeRanked.get(key);
+  const room = id && rooms.get(id);
+  const e = room && room.ranked.entrants.get(key);
+  send(p, {
+    t: "rkMe", signedIn: !!key, off: store.off, info: key ? store.info(key, p.acName) : null,
+    queued: q && q.p === p ? { wait: Date.now() - q.at } : null,
+    active: !!(e && e.away && !e.gone), rules: rankedRules(),
+  });
+}
+
+function rankedQueue(p) {
+  if (!p.ready) return;
+  if (store.off) return rkErr(p, "off", "Ranked isn't available on this server right now.");
+  const key = p.acUser;
+  if (!key) return rkErr(p, "signin", "Ranked needs a Mii Hub account. Sign in first!");
+  const now = Date.now();
+  // a few searches a minute is plenty (per connection and per account)
+  p.rkTries = (p.rkTries || []).filter((t) => now - t < 60e3);
+  const acct = (rkHits.get(key) || []).filter((t) => now - t < 60e3);
+  rkHits.set(key, acct);
+  if (p.rkTries.length >= 8 || acct.length >= 12) return rkErr(p, "slow", "Slow down a little: try again in a minute.");
+  p.rkTries.push(now); acct.push(now);
+  if (activeRanked.has(key) && rankedRejoin(p, true)) return;
+  const q = queue.get(key);
+  if (q) return rkErr(p, "already", q.p === p ? "You're already searching." : "You're already searching on another device.");
+  if (p.room) return rkErr(p, "inroom", "Leave your lobby first.");
+  const until = dodged.get(key) || 0;
+  if (until > now) {
+    const s = Math.ceil((until - now) / 1000);
+    return rkErr(p, "cooldown", "You left a ranked match before it started. You can search again in " + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") + ".");
+  }
+  const rec = store.get(key);
+  queue.set(key, { key, user: p.acName || key, p, mmr: rec ? rec.mmr : R.START_MMR, at: now });
+  send(p, { t: "rkQueued", n: queue.size, size: RANKED_SIZE });
+}
+function rankedUnqueue(p, tell) {
+  let was = false;
+  for (const [k, q] of queue) if (q.p === p) { queue.delete(k); was = true; }
+  if (tell && was) send(p, { t: "rkCancelled" });
+}
+
+// the matchmaker: every second, make matches from who's searching
+function rankedTick() {
+  const now = Date.now();
+  for (const [k, q] of queue) if (q.p.acUser !== k || !players.has(q.p.id) || q.p.room) queue.delete(k);
+  const groups = R.formMatches(Array.from(queue.values()), now, { size: RANKED_SIZE, fillMs: RANKED_FILL_MS });
+  for (const g of groups) {
+    if (rooms.size >= MAX_ROOMS) break; // (they keep searching)
+    for (const q of g) queue.delete(q.key);
+    startRanked(g);
+  }
+  for (const q of queue.values()) {
+    const range = R.searchRange(now - q.at);
+    send(q.p, { t: "rkSearch", wait: now - q.at, range: isFinite(range) ? range : null, n: queue.size });
+  }
+}
+const rkTimer = setInterval(rankedTick, RANKED_TICK_MS);
+if (rkTimer.unref) rkTimer.unref();
+
+function startRanked(group) {
+  const id = "k" + (nextId++);
+  const map = anyOf(Object.keys(MAPS));
+  const room = {
+    id, name: "Ranked · " + MAPS[map].name, host: group[0].p.id, players: [], state: "starting", timer: null, roundTimer: null, startedAt: 0,
+    max: group.length, salt: "", pass: null, mode: "respawn", map, votes: new Map(), voteMaps: null, round: 0,
+    ranked: { entrants: new Map(), done: false },
+  };
+  rooms.set(id, room);
+  const preds = store.predators();
+  for (const q of group) {
+    room.ranked.entrants.set(q.key, { key: q.key, user: q.user, name: q.p.name, pid: q.p.id, score: 0, deaths: 0, away: false, gone: false, leftAt: 0, timer: null, rank: store.rankOf(q.key, preds), queuedAt: q.at });
+    activeRanked.set(q.key, id);
+  }
+  const who = group.map((q) => ({ name: q.p.name, user: q.user, rank: room.ranked.entrants.get(q.key).rank }));
+  for (const q of group) send(q.p, { t: "rkFound", map, name: MAPS[map].name, players: who });
+  for (const q of group) { q.p.rkKey = q.key; joinRoom(q.p, room); }
+  startMatch(room, "respawn", RANKED_COUNTDOWN_MS);
+  log("🏆 ranked match " + id + " on " + map + ": " + group.map((q) => q.key + " (" + q.mmr + ")").join(", "));
+}
+
+// someone left a ranked match: a dropped connection gets RECONNECT_MS to come back, leaving on purpose is final
+function rankedLeft(room, p, why) {
+  const Rk = room.ranked;
+  const e = Rk.entrants.get(p.rkKey);
+  p.rkKey = null;
+  if (Rk.done || !e) { if (!room.players.length && Rk.done) rooms.delete(room.id); return; }
+  e.score = p.score; e.deaths = p.deaths; e.pid = null; e.leftAt = Date.now();
+  if (why === "disconnect" && RECONNECT_MS > 0) {
+    e.away = true;
+    broadcast(room, { t: "rkAway", name: e.name, in: RECONNECT_MS });
+    e.timer = setTimeout(() => { e.away = false; rankedGone(room, e); }, RECONNECT_MS);
+  } else rankedGone(room, e);
+  if (!Rk.done) roomChanged(room);
+}
+function rankedGone(room, e) {
+  if (room.ranked.done || e.gone) return;
+  e.gone = true;
+  activeRanked.delete(e.key);
+  broadcast(room, { t: "rkGone", name: e.name });
+  checkRanked(room);
+}
+function checkRanked(room) {
+  const Rk = room.ranked;
+  if (Rk.done) return;
+  const list = Array.from(Rk.entrants.values());
+  // someone left before it even started: called off, nobody's MMR changes
+  const early = list.find((e) => e.gone && e.leftAt < room.startedAt);
+  if (early) {
+    dodged.set(early.key, Date.now() + DODGE_MS);
+    return rankedCancel(room, early.name + " left before the match started, so it was called off. Nobody's MMR changed.");
+  }
+  // one player (or nobody) still in: it's over
+  if (list.filter((e) => !e.gone).length <= 1) endMatch(room);
+}
+function closeRanked(room) {
+  room.ranked.done = true;
+  clearTimers(room);
+  for (const e of room.ranked.entrants.values()) { clearTimeout(e.timer); activeRanked.delete(e.key); }
+  for (const id of room.players) { const p = players.get(id); if (p) { p.room = null; p.rkKey = null; clearTimeout(p.spawnTimer); } }
+  room.players = [];
+  rooms.delete(room.id);
+}
+function rankedCancel(room, msg) {
+  const back = room.players.map((id) => players.get(id)).filter(Boolean);
+  broadcast(room, { t: "rkCancel", msg });
+  const at = new Map(Array.from(room.ranked.entrants.values()).map((e) => [e.key, e.queuedAt]));
+  closeRanked(room);
+  // everyone else goes straight back to searching (keeping their place in the queue)
+  for (const p of back) {
+    if (!p.acUser || queue.has(p.acUser)) continue;
+    const rec = store.get(p.acUser);
+    queue.set(p.acUser, { key: p.acUser, user: p.acName || p.acUser, p, mmr: rec ? rec.mmr : R.START_MMR, at: at.get(p.acUser) || Date.now() });
+    send(p, { t: "rkQueued", n: queue.size, size: RANKED_SIZE, requeued: true });
+  }
+  log("🏆 ranked match " + room.id + " called off");
+}
+
+// the end: placements from the server's own score (most eliminations, then fewest deaths); leavers last
+function rankedEnd(room) {
+  const Rk = room.ranked;
+  for (const id of room.players) { const p = players.get(id); const e = p && Rk.entrants.get(p.rkKey); if (e) { e.score = p.score; e.deaths = p.deaths; } }
+  const list = Array.from(Rk.entrants.values());
+  for (const e of list) if (e.away) { e.away = false; e.gone = true; } // still disconnected at the end: left
+  const stayed = list.filter((e) => !e.gone);
+  const better = (a, b) => b.score > a.score || (b.score === a.score && b.deaths < a.deaths); // is b ahead of a?
+  const results = list.map((e) => ({
+    key: e.key, user: e.user, leaver: e.gone,
+    place: e.gone ? stayed.length + 1 : 1 + stayed.filter((o) => better(e, o)).length,
+  }));
+  const res = list.length >= 2 ? store.applyMatch(results) : {};
+  // the winner: the one player in 1st place (a shared 1st place has no single winner)
+  const firsts = results.filter((r) => r.place === 1 && !r.leaver);
+  const win = firsts.length === 1 ? Rk.entrants.get(firsts[0].key) : null;
+  broadcast(room, { t: "over", winner: win && win.pid ? win.pid : null, scores: scores(room), mode: "respawn", ranked: true });
+  for (const e of list) {
+    const r = res[e.key];
+    if (!r) continue;
+    // (leavers get theirs too, if they're still online somewhere)
+    const p = e.pid ? players.get(e.pid) : Array.from(players.values()).find((x) => x.acUser === e.key && !x.room);
+    if (p) send(p, Object.assign({ t: "rkResult" }, r));
+  }
+  log("🏆 ranked match " + room.id + " over: " + results.map((r) => r.key + " #" + r.place + (r.leaver ? " (left)" : "") + (res[r.key] && res[r.key].delta != null ? " " + (res[r.key].delta >= 0 ? "+" : "") + res[r.key].delta : "")).join(", "));
+  const online = room.players.map((id) => players.get(id)).filter(Boolean);
+  closeRanked(room);
+  for (const p of online) rankedMe(p);
+}
+
+// back into the ranked match you dropped out of
+function rankedRejoin(p, quiet) {
+  const key = p.acUser;
+  const room = key && rooms.get(activeRanked.get(key));
+  const e = room && !room.ranked.done && room.ranked.entrants.get(key);
+  if (!e || e.gone) { if (key) activeRanked.delete(key); if (!quiet) rkErr(p, "nomatch", "That match is over."); return false; }
+  if (!e.away) { rkErr(p, "elsewhere", "You're already playing this match on another device."); return true; }
+  clearTimeout(e.timer);
+  e.away = false; e.pid = p.id; e.name = p.name;
+  rankedUnqueue(p);
+  if (p.room) leaveRoom(p);
+  p.rkKey = key;
+  joinRoom(p, room);
+  p.score = e.score; p.deaths = e.deaths;
+  broadcast(room, { t: "rkBack", name: p.name }, p.id);
+  roomChanged(room);
+  return true;
+}
+
+function rankedTop(p) {
+  const now = Date.now();
+  if (now - (p.lastTop || 0) < 800) return; // (one a second is plenty)
+  p.lastTop = now;
+  const list = store.top(50).map((r) => ({ pos: r.pos, user: r.user, mmr: r.mmr, rank: r.rank, games: r.games, wins: r.wins, you: r.key === p.acUser }));
+  send(p, { t: "rkTop", list, you: p.acUser ? store.info(p.acUser, p.acName) : null });
+}
+
 function onMessage(p, msg) {
   if (chess.handle(p, msg)) return;
   if (accounts.handle(p, msg)) return;
@@ -398,8 +639,14 @@ function onMessage(p, msg) {
       break;
     }
     case "list": sendRoomList(p); break;
+    case "rkInfo": rankedMe(p); break;
+    case "rkQueue": rankedQueue(p); break;
+    case "rkCancel": rankedUnqueue(p, true); break;
+    case "rkRejoin": if (p.ready) rankedRejoin(p); break;
+    case "rkTop": rankedTop(p); break;
     case "create": {
       if (!p.ready) return;
+      rankedUnqueue(p, true);
       if (rooms.size >= MAX_ROOMS) return send(p, { t: "err", msg: "There are too many lobbies right now. Try joining one!" });
       const id = "r" + (nextId++);
       const pw = clean(msg.password, 32);
@@ -416,7 +663,8 @@ function onMessage(p, msg) {
     case "join": {
       if (!p.ready) return;
       const r = rooms.get(msg.room);
-      if (!r) return send(p, { t: "err", msg: "That lobby doesn't exist any more." });
+      if (!r || r.ranked) return send(p, { t: "err", msg: "That lobby doesn't exist any more." });
+      rankedUnqueue(p, true);
       if (r.pass) {
         // a few tries a minute, so nobody can guess passwords by trying thousands
         p.tries = (p.tries || []).filter((t) => now - t < 60e3);
@@ -479,7 +727,7 @@ function onMessage(p, msg) {
         if (room.mode === "respawn") p.score++;
         broadcast(room, { t: "kill", v: v.id, by: p.id, w: msg.w, h: msg.z === "head" ? 1 : 0, b: msg.b ? 1 : 0, scores: scores(room) });
         roomChanged(room);
-        if (room.mode === "respawn" && p.score >= TO_WIN) endMatch(room);
+        if (room.mode === "respawn" && p.score >= modeOf(room).toWin) endMatch(room);
         else checkRound(room);
       }
       break;
@@ -537,7 +785,8 @@ wss.on("connection", (ws, req) => {
     try { onMessage(p, msg); } catch (e) { log("error handling " + msg.t + ": " + e.message); }
   });
   ws.on("close", () => {
-    leaveRoom(p);
+    rankedUnqueue(p);
+    leaveRoom(p, "disconnect");
     chess.leave(p);
     accounts.leave(p);
     players.delete(p.id);
@@ -583,8 +832,9 @@ function start(port) {
 function stop() {
   return new Promise((resolve) => {
     for (const p of players.values()) { try { p.ws.close(1001, "The host stopped the game"); } catch (e) { /* ignore */ } }
-    for (const r of rooms.values()) clearTimeout(r.timer);
+    for (const r of rooms.values()) { clearTimers(r); if (r.ranked) for (const e of r.ranked.entrants.values()) clearTimeout(e.timer); }
     rooms.clear();
+    queue.clear(); activeRanked.clear();
     setTimeout(() => {
       for (const p of players.values()) { try { p.ws.terminate(); } catch (e) { /* ignore */ } }
       players.clear();
@@ -601,4 +851,4 @@ if (require.main === module) {
   }).catch((err) => { log("Couldn't start: " + err.message); process.exit(1); });
 }
 
-module.exports = { server, wss, VERSION, PORT, rooms, players, chess, accounts, start, stop, running, MAPS, voteMaps, randomOther };
+module.exports = { server, wss, VERSION, PORT, rooms, players, chess, accounts, start, stop, running, MAPS, voteMaps, randomOther, ranked: { store, queue, activeRanked, tick: rankedTick, R } };
