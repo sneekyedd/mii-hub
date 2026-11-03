@@ -226,6 +226,8 @@
         rkErr: (m) => { st.rk.err = m.msg; if (m.code === "signin") st.rk.signedIn = false; rerender(); },
         rkFound: (m) => { st.rk.queued = null; st.rk.found = m; st.rk.err = ""; rerender(); },
         rkTop: (m) => showTop(m),
+        // called off while the map was still loading (in a match, the match shows it)
+        rkCancel: (m) => { if (!ctx.inMatch()) { st.room = null; st.rk.found = null; setStatus(m.msg, "err"); } },
         close: () => {
           st.net = null; st.room = null; st.rooms = []; st.roster.clear(); st.loading.clear();
           st.rk = freshRanked();
