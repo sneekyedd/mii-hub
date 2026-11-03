@@ -186,6 +186,11 @@ A first-person shooter on **Shipment** (from Call of Duty 4), made to feel like 
   - **Host Lobby:** give it a name, an optional password (leave it empty for anyone to join) and how many players (2–8). Your lobby shows up in everyone's list.
   - **In a lobby** you're straight onto the map: run around freely until someone else joins, then the match starts by itself. Online modes: **Respawn** (first to 20) and **Rounds** (no respawning: the last one standing wins the round, first to 7).
   - **Between matches** there's a 15-second vote for the next mode (and map, when there are more). A tie is picked at random. If everyone else leaves, you're back to running around until someone joins.
+  - **🏆 Ranked** (at the top of the Online tab, needs a Mii Hub account): press **Find Ranked Match** and the server matches you with players of a similar rating (the range widens the longer you wait, with a clock and a Cancel button). Ranked matches are **free-for-all Respawn, up to 4 players, first to 15 eliminations** (or the most after 8 minutes) on a random map, no voting. The server decides the placings from its own kill count (most eliminations, then fewest deaths).
+    - **Ranks:** Iron, Bronze, Silver, Gold, Platinum, Emerald and Diamond (each with divisions IV → I, 100 MMR apiece), then Master (2800+), Grandmaster (3200+) and **Predator**: the server's top 10 players at Master or higher. Each rank has its own badge, shown in the menu, next to names in ranked matches and on the scoreboard.
+    - **MMR** is Elo, placing by placing: finishing above someone counts as beating them, and beating better players is worth more. The winner always gains, last place always loses. Your first **5 placement matches** move it twice as much and keep it hidden until your rank is revealed (everyone starts at 1200, the Silver / Gold line). After you promote into a new tier, your next loss can't drop you out of it.
+    - **Leaving counts as a loss** (last place). If your connection drops you get 30 seconds to rejoin. If someone leaves before the match starts, it's called off with no MMR change (and the others go back to searching).
+    - The end-of-match screen shows your MMR change with an animated bar (and a celebration when you promote). **Leaderboard** shows the best players, with you highlighted.
   - Everyone meets on the Mii Hub Paintball server: see **[server/README.md](server/README.md)** for how it's set up.
 - **You see the world through your Mii's eyes**, with its Mii hands and shirt color holding the gun.
 - **The HUD** shows your HP, your paint (ammo), the clock and score, and a kill feed. Hold **Tab** for the scoreboard (score, kills, deaths, headshot %, damage, accuracy, and ping online).
@@ -283,6 +288,7 @@ js/paintball/         Paintball (only loaded when you open it):
   pb-models.js          the paint AK and AWP, the butterfly knife, your Mii hands and how skins are drawn
   pb-skins.js           the skin catalog (rarities, odds, trade-ups)
   pb-crates.js          credits, crates, the opening reel and the Locker
+  pb-ranked.js          Ranked: the ranks, their badges, the rank card, leaderboard and MMR screen
 js/music.js           the background music (loops between exact points; the song is in js/hubMusic.js)
 js/chess.js           chess rules and the Mii chess brain
 js/chessUI.js         the chess board and windows

@@ -249,7 +249,7 @@
     function rankedSignIn() {
       if (!st.net || st.rk.signedIn || st.rk.checking) return;
       const auth = root.MiiAccount && root.MiiAccount.rankedAuth ? root.MiiAccount.rankedAuth() : null;
-      if (!auth) { st.rk.signedIn = false; rerender(); return; }
+      if (!auth) { st.rk.signedIn = false; st.net.send({ t: "rkInfo" }); rerender(); return; } // (the rules, for the card)
       st.rk.checking = true;
       st.net.send({ t: "acToken", q: RK_Q, user: auth.user, token: auth.token });
       rerender();

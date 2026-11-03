@@ -1337,7 +1337,7 @@
       this.phaseEnd = this.now + freeze;
       this.matchEnd = this.phaseEnd + this.timeLimit;
       if (!m.late) for (const f of this.fighters) if (f.kind === "remote") { f.alive = false; f.dead = 0; }
-      const name = this.mode === "rounds" ? "ROUNDS" : "RESPAWN";
+      const name = this.ranked ? "RANKED" : this.mode === "rounds" ? "ROUNDS" : "RESPAWN";
       const sub = this.mode === "rounds" ? "Last one standing wins the round · first to " + this.toWin : "First to " + this.toWin + " eliminations";
       if (this.mode === "respawn") {
         this.respawn(this.you, this.pickSpawn(this.you, true), true);

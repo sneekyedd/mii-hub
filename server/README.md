@@ -115,6 +115,20 @@ Set these before starting (e.g. on Windows: `set PORT=9000` then `node paintball
 | `MAX_PLAYERS` | `8` | most players in one room (2–16) |
 | `DATA_DIR` | `server/data` | where accounts and cloud saves are kept |
 | `MAX_ACCOUNTS` | `5000` | most accounts the server will create |
+| `RANKED_SIZE` | `4` | most players in a ranked match (2–8) |
+| `RANKED_FILL_MS` | `20000` | after this long searching, a ranked match starts with fewer players (at least 2) |
+| `RECONNECT_MS` | `30000` | how long a dropped ranked player has to rejoin before it counts as a loss |
+
+## Ranked
+
+Players signed in to an account can search for a ranked match. The server keeps a queue,
+matches people with a similar MMR (±100 at first, 20 wider every second, anyone after a
+minute), and runs free-for-all Respawn matches (first to 15, 8 minutes) on a random map.
+It decides the placings and the MMR itself; nothing the game sends about results is trusted.
+Ratings are saved in `ranked.json` in the same `data` folder as the accounts (written safely:
+a temporary file first, then renamed), so they survive restarts. Back it up with the rest.
+A match that's running when the server restarts is simply lost (nobody's MMR changes).
+The rank table and the Elo rules are at the top of `ranked.js`.
 
 ## Accounts and cloud saves
 
@@ -148,6 +162,7 @@ way as before (`git pull`, or download the ZIP again) and restart it.
   can fire, knife hits only up close), takes the HP off, and tells everyone.
 - Respawn mode: 2 s after being splattered you come back; first to **20** eliminations wins,
   or whoever has the most after **10 minutes**.
+- Ranked (protocol version 7): see the section above and `ranked.js`.
 - The messages are described at the top of `paintball-server.js`. `npm test` runs the server's tests.
 
 ## Option B: Render.com (free, nothing at home)

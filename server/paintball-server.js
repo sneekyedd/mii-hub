@@ -571,7 +571,8 @@ function rankedEnd(room) {
     key: e.key, user: e.user, leaver: e.gone,
     place: e.gone ? stayed.length + 1 : 1 + stayed.filter((o) => better(e, o)).length,
   }));
-  const res = list.length >= 2 ? store.applyMatch(results) : {};
+  // (everybody gone, e.g. the server's network dropped for all of them: abandoned, no MMR change)
+  const res = list.length >= 2 && stayed.length ? store.applyMatch(results) : {};
   // the winner: the one player in 1st place (a shared 1st place has no single winner)
   const firsts = results.filter((r) => r.place === 1 && !r.leaver);
   const win = firsts.length === 1 ? Rk.entrants.get(firsts[0].key) : null;
