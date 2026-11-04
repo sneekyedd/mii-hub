@@ -343,9 +343,9 @@
   // A Mii's picture (it may still be drawing: the app fills in img[data-portrait] when it's ready)
   function portraitImg(img, opts, rec) {
     if (!rec) return img;
-    img.dataset.portrait = rec.id;
+    img.dataset.portrait = rec.id; // (the app fills it in when the picture is ready)
     const url = opts.portraitFor(rec);
-    if (url) img.src = url;
+    if (url) img.src = url; else img.removeAttribute("src"); // (no empty src: that shows a broken-image icon)
     return img;
   }
 
@@ -354,7 +354,7 @@
     const grid = el("div", "pb-minis");
     for (const r of recs) {
       const b = el("button", "pb-mini");
-      const img = el("img"); img.src = opts.portraitFor(r) || ""; img.alt = "";
+      const img = portraitImg(el("img"), opts, r); img.alt = "";
       b.append(img, el("b", null, r.name || "Mii"), el("span", null, sub ? sub(r) : " "));
       if (r === selected) b.classList.add("sel");
       if (r === disabled) b.classList.add("off");
@@ -984,7 +984,7 @@
       const set = (side, f) => {
         if (!f.portrait && f.rec) f.portrait = this.opts.portraitFor(f.rec);
         side.t.style.setProperty("--c", f.color);
-        if (side.img.getAttribute("src") !== (f.portrait || "")) side.img.src = f.portrait || "";
+        if (f.portrait && side.img.getAttribute("src") !== f.portrait) side.img.src = f.portrait;
         side.nm.textContent = f.name;
         // ranked: their rank badge next to the name
         const rk = this.ranked && root.PBRanked ? this.ranks.get(f.netId) : null;

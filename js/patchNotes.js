@@ -11,7 +11,13 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-11-03", title: "Ranked Paintball",
+      v: null, date: "2026-11-04", title: "Pictures fixed",
+      notes: [
+        "Paintball: every Mii's picture shows up in the menus now (some stayed blank, with a broken-image icon, if they were still being drawn when you opened Paintball).",
+      ],
+    },
+    {
+      v: "1.2.17", date: "2026-11-03", title: "Ranked Paintball",
       notes: [
         "🏆 Ranked is here! In Paintball's Online tab, sign in and press Find Ranked Match: you're matched with players of a similar rank for a free-for-all (up to 4 players, first to 15, random map).",
         "Climb from Iron through Bronze, Silver, Gold, Platinum, Emerald and Diamond (divisions IV to I) to Master and Grandmaster. The top 10 players on the server are Predators. Every rank has its own badge.",

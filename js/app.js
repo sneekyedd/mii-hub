@@ -505,8 +505,13 @@
       portraits.set(rec.id, { key, url: cached ? cached.url : "" });
       Promise.resolve(tpl || templateFor(rec)).then((t) => {
         const url = M.portrait(t, lookFor(rec, t), 96);
+        if (!url) throw new Error("no picture");
         portraits.set(rec.id, { key, url });
         document.querySelectorAll('img[data-portrait="' + rec.id + '"]').forEach((img) => { img.src = url; });
+      }).catch(() => {
+        // (it couldn't be drawn this time, e.g. the model was still busy: try again next time it's asked for)
+        const c = portraits.get(rec.id);
+        if (c && c.key === key && !c.url) portraits.delete(rec.id);
       });
     }
     return portraits.get(rec.id).url;
