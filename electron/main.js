@@ -44,7 +44,9 @@ function createWindow() {
     return { action: "deny" };
   });
   // Dropping a file outside the drop area shouldn't replace the app with that file.
-  win.webContents.on("will-navigate", (e) => e.preventDefault());
+  // (Reloading the page itself is fine: signing in or out and switching worlds reload it.)
+  const pageOnly = (u) => String(u).split("#")[0].split("?")[0];
+  win.webContents.on("will-navigate", (e, url) => { if (pageOnly(url) !== pageOnly(win.webContents.getURL())) e.preventDefault(); });
 
   // F11 = full screen, Ctrl/Cmd + R = reload, Ctrl/Cmd + Shift + I = developer tools
   win.webContents.on("before-input-event", (e, input) => {
@@ -56,6 +58,8 @@ function createWindow() {
   });
 
   win.on("closed", () => { win = null; });
+  ipcMain.removeHandler("reload-page");
+  ipcMain.handle("reload-page", () => { if (win) win.webContents.reload(); });
 }
 
 app.on("second-instance", () => {

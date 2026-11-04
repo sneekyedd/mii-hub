@@ -346,7 +346,7 @@
     await bRun("slots", "readwrite", (s) => s.put({ id: "next", miis: snap.miis, keys: snap.keys }));
     meta.next = info;
     saveMeta();
-    location.reload();
+    (window.miiHubDesktop && window.miiHubDesktop.reload ? window.miiHubDesktop.reload() : location.reload());
   }
   async function applyNext() {
     const info = meta.next;
@@ -879,7 +879,7 @@
     if (!signedIn()) {
       meta.offline = false; saveMeta();
       leaving = true;
-      location.reload();
+      (window.miiHubDesktop && window.miiHubDesktop.reload ? window.miiHubDesktop.reload() : location.reload());
       return;
     }
     const sure = await dialog("Sign out?", "This world stays on this device, and you can sign back in any time.", [{ label: "Sign out", value: true, kind: "primary" }, { label: "Cancel", value: false }]);
@@ -890,7 +890,7 @@
     meta.token = null; meta.offline = false;
     saveMeta();
     leaving = true;
-    location.reload();
+    (window.miiHubDesktop && window.miiHubDesktop.reload ? window.miiHubDesktop.reload() : location.reload());
   }
 
   root.MiiAccount = {

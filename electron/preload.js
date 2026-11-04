@@ -15,4 +15,6 @@ contextBridge.exposeInMainWorld("miiHubDesktop", {
   openInBrowser: () => ipcRenderer.invoke("open-in-browser"),
   // 📷 group pictures: saved in the Downloads folder
   savePhoto: (dataUrl, fileName) => ipcRenderer.invoke("save-photo", dataUrl, fileName),
+  // reload the page (signing in or out, switching worlds)
+  reload: () => ipcRenderer.invoke("reload-page"),
 });

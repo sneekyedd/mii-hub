@@ -1950,7 +1950,7 @@
     prefs.simSpeed = 1;
     saveSettings();
     try { localStorage.removeItem(PROGRESS_KEY); } catch (e) { /* private window */ }
-    location.reload();
+    (window.miiHubDesktop && window.miiHubDesktop.reload ? window.miiHubDesktop.reload() : location.reload());
   }
 
   // ---------- desktop app: version and updates ----------

@@ -11,7 +11,13 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-11-04", title: "Pictures fixed",
+      v: null, date: "2026-11-04", title: "Sign in from Settings",
+      notes: [
+        "⚙️ Settings → Sign in… takes you to the sign-in screen again in the desktop app (it did nothing). Signing out and switching worlds work there too.",
+      ],
+    },
+    {
+      v: "1.2.18", date: "2026-11-04", title: "Pictures fixed",
       notes: [
         "Paintball: every Mii's picture shows up in the menus now (some stayed blank, with a broken-image icon, if they were still being drawn when you opened Paintball).",
       ],
