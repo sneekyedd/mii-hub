@@ -13,10 +13,12 @@ const assert = require("assert");
 const WebSocket = require("ws");
 const S = require("./paintball-server.js");
 
-// every online client in the app must speak the server's version
-for (const f of ["../js/paintball/pb-online.js", "../js/chessOnline.js"]) {
-  const m = fs.readFileSync(path.join(__dirname, f), "utf8").match(/const VERSION = (\d+)/);
-  assert(m && +m[1] === S.VERSION, f + " VERSION must match the server's (" + S.VERSION + ")");
+// the app's online version (shared by Paintball and Chess) must match the server's
+{
+  const m = fs.readFileSync(path.join(__dirname, "../js/onlineVersion.js"), "utf8").match(/MiiOnlineVersion = (\d+)/);
+  assert(m && +m[1] === S.VERSION, "js/onlineVersion.js must match the server's VERSION (" + S.VERSION + ")");
+  for (const f of ["../js/paintball/pb-online.js", "../js/chessOnline.js"])
+    assert(/const VERSION = root\.MiiOnlineVersion;/.test(fs.readFileSync(path.join(__dirname, f), "utf8")), f + " uses the shared online version");
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

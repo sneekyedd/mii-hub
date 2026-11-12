@@ -21,7 +21,7 @@
 (function (root) {
   "use strict";
 
-  const VERSION = 7;          // must match the server's VERSION
+  const VERSION = root.MiiOnlineVersion; // shared with Chess (js/onlineVersion.js)
   const DEFAULT_PORT = 8787;
   // Where everyone meets to find lobbies (the Mii Hub Paintball server, see server/README.md).
   // It's built into the app from a secret when it's built (pb-config.js), so it's not in the code.
