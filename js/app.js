@@ -36,11 +36,15 @@
   hub.friendships = settings.friendships || {};
   hub.chattiness = settings.chattiness || 1;
   // Settings (⚙️): light/dark mode, sandbox mode, simulation speed
+  const PLANET_FLIGHTS = false; // (see prefs.fly below)
   const prefs = {
     theme: settings.theme === "light" || settings.theme === "dark" ? settings.theme : "system",
     sandbox: !!settings.sandbox,
     simSpeed: [1, 2, 4].includes(settings.simSpeed) ? settings.simSpeed : 1,
-    fly: settings.fly !== false, // the camera flies between places (off = jump straight there, for slower computers)
+    // The camera flying over the little planet between places is parked for now (it needs
+    // polish): places fade in instead. Set PLANET_FLIGHTS to true to bring it (and its
+    // Settings option) back; the flight code itself is all still there (hub3d.js, planet3d.js).
+    fly: PLANET_FLIGHTS && settings.fly !== false,
     quality: ["auto", "high", "medium", "low"].includes(settings.quality) ? settings.quality : "auto", // graphics quality (see hub3d.js)
   };
   hub.timeScale = prefs.simSpeed;
@@ -2019,7 +2023,7 @@
       '<section class="set-sec"><h4>Look</h4>' +
         '<div class="set-row"><span>🌙 Dark mode</span>' + seg("theme", [["system", "Auto"], ["light", "☀️ Light"], ["dark", "🌙 Dark"]], prefs.theme) + "</div>" +
         '<div class="set-row"><span>🖥️ Graphics quality<small>Lower = smoother on slower computers. Auto adjusts as you play' + (prefs.quality === "auto" ? " (now: " + hub.qualityNow() + ")" : "") + '</small></span>' + seg("quality", [["auto", "Auto"], ["high", "High"], ["medium", "Medium"], ["low", "Low"]], prefs.quality) + "</div>" +
-        '<div class="set-row"><span>🌍 Going places<small>Fly over the planet to the next place, or jump straight there (faster on slower computers)</small></span>' + seg("fly", [["on", "✈️ Fly"], ["off", "⚡ Jump"]], prefs.fly ? "on" : "off") + "</div>" +
+        (PLANET_FLIGHTS ? '<div class="set-row"><span>🌍 Going places<small>Fly over the planet to the next place, or jump straight there (faster on slower computers)</small></span>' + seg("fly", [["on", "✈️ Fly"], ["off", "⚡ Jump"]], prefs.fly ? "on" : "off") + "</div>" : "") +
         (desktop ? '<div class="set-row"><span>🌐 Show as tab in browser<small>Opens Mii Hub in your web browser too. (Its Miis are saved separately from the app\'s.)</small></span><button class="tb-btn" id="openBrowserBtn">Open</button></div>' : "") +
       "</section>" +
       '<section class="set-sec"><h4>Your Miis</h4>' +

@@ -1600,6 +1600,10 @@ body {
 .scene-fade { position: absolute; inset: 0; pointer-events: none; background: #fff; opacity: 0; }
 .scene-fade.go { animation: sceneFade 0.55s ease-out; }
 @keyframes sceneFade { from { opacity: 0.8; } to { opacity: 0; } }
+/* going to another place: the new place fades in from the page's background */
+.scene-fade.place { background: var(--bg); }
+.scene-fade.place.go { animation: placeFade 0.7s ease-in-out; }
+@keyframes placeFade { 0%, 15% { opacity: 1; } 100% { opacity: 0; } }
 
 /* "Reduce motion" in the computer's settings: (almost) nothing moves on its own */
 @media (prefers-reduced-motion: reduce) {

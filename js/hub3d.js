@@ -512,14 +512,16 @@
       const start = new THREE.Vector3().setFromSpherical(s).add(t);
       this.glideCamera(end, t.clone(), 1.1, { pos: start, target: t.clone() });
     }
-    // A soft flash of light when the view changes all at once (into a home and out again...)
-    fadeIn() {
+    // A soft flash of light when the view changes all at once (into a home and out again...).
+    // kind "place": going to another place, which fades in from the page's background.
+    fadeIn(kind) {
       if (reducedMotion() || !this.canvas.parentElement) return;
       const el = this.fadeEl || (this.fadeEl = document.createElement("div"));
-      el.className = "scene-fade";
+      const base = "scene-fade" + (kind === "place" ? " place" : "");
+      el.className = base;
       if (!el.parentNode) this.canvas.after(el);
       void el.offsetWidth; // (start the fade again)
-      el.className = "scene-fade go";
+      el.className = base + " go";
     }
 
     // Glides the camera over to look at a Mii (closer up, the same way round).
@@ -575,7 +577,7 @@
       this.useWorld(world);
       this.keepCamera = false;
       if (fly) this.startFlight(from, look);
-      else { this.endFlight(true); this.fitCamera(); this.fadeIn(); }
+      else { this.endFlight(true); this.fitCamera(); this.fadeIn("place"); }
       if (this.onSceneChange) this.onSceneChange(id);
       this.onChange();
     }

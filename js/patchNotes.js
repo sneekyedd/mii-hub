@@ -11,7 +11,13 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-11-04", title: "Sign in from Settings",
+      v: null, date: "2026-11-12", title: "Smoother place changes",
+      notes: [
+        "🌍 Going to another place now fades in smoothly. The flight over the little planet is resting for now while we polish it (it'll be back).",
+      ],
+    },
+    {
+      v: "1.2.19", date: "2026-11-04", title: "Sign in from Settings",
       notes: [
         "⚙️ Settings → Sign in… takes you to the sign-in screen again in the desktop app (it did nothing). Signing out and switching worlds work there too.",
       ],
