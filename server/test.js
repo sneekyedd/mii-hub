@@ -13,6 +13,12 @@ const assert = require("assert");
 const WebSocket = require("ws");
 const S = require("./paintball-server.js");
 
+// every online client in the app must speak the server's version
+for (const f of ["../js/paintball/pb-online.js", "../js/chessOnline.js"]) {
+  const m = fs.readFileSync(path.join(__dirname, f), "utf8").match(/const VERSION = (\d+)/);
+  assert(m && +m[1] === S.VERSION, f + " VERSION must match the server's (" + S.VERSION + ")");
+}
+
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 function client(port) {
   return new Promise((resolve) => {

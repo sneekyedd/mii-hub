@@ -11,7 +11,7 @@
 (function (root) {
   "use strict";
 
-  const VERSION = 5;          // must match the server's VERSION (server/paintball-server.js)
+  const VERSION = 7;          // must match the server's VERSION (server/paintball-server.js); server/test.js checks this
   const DEFAULT_PORT = 8787;
   const TIMES = [
     { id: "0+0", label: "No clock", time: 0, inc: 0 },

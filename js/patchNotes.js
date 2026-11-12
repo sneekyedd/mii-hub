@@ -11,7 +11,13 @@
 
   const NOTES = [
     {
-      v: null, date: "2026-11-12", title: "Smoother place changes",
+      v: null, date: "2026-11-12", title: "Online chess works again",
+      notes: [
+        "♟️ Online chess connects again (it said the app and server were different versions).",
+      ],
+    },
+    {
+      v: "1.2.20", date: "2026-11-12", title: "Smoother place changes",
       notes: [
         "🌍 Going to another place now fades in smoothly. The flight over the little planet is resting for now while we polish it (it'll be back).",
       ],
